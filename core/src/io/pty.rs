@@ -10,11 +10,33 @@ pub struct Pty {
 
 impl Pty {
     /// Open a new PTY and spawn a shell process.
+    /// If `command` is Some, the shell is invoked with `-l -c "command"` (login + command).
     pub fn spawn(
         shell: &str,
         cols: u16,
         rows: u16,
         env_vars: &[(&str, &str)],
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        Self::spawn_inner(shell, cols, rows, env_vars, None)
+    }
+
+    /// Spawn with an initial command to execute.
+    pub fn spawn_with_command(
+        shell: &str,
+        cols: u16,
+        rows: u16,
+        env_vars: &[(&str, &str)],
+        command: &str,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        Self::spawn_inner(shell, cols, rows, env_vars, Some(command))
+    }
+
+    fn spawn_inner(
+        shell: &str,
+        cols: u16,
+        rows: u16,
+        env_vars: &[(&str, &str)],
+        command: Option<&str>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let winsize = Winsize {
             ws_row: rows,
@@ -66,6 +88,10 @@ impl Pty {
                 std::env::set_var("TERM", "xterm-256color");
                 std::env::set_var("COLORTERM", "truecolor");
 
+                // Remove Claude Code env vars so nested sessions work
+                std::env::remove_var("CLAUDECODE");
+                std::env::remove_var("CLAUDE_CODE_ENTRYPOINT");
+
                 // Execute the shell
                 let shell_cstr = CString::new(shell).unwrap();
                 let login_arg = CString::new(format!(
@@ -75,7 +101,13 @@ impl Pty {
                 .unwrap();
                 #[allow(unreachable_code)]
                 {
-                    execvp(&shell_cstr, &[login_arg]).expect("execvp failed");
+                    if let Some(cmd) = command {
+                        let c_flag = CString::new("-c").unwrap();
+                        let c_cmd = CString::new(cmd).unwrap();
+                        execvp(&shell_cstr, &[login_arg, c_flag, c_cmd]).expect("execvp failed");
+                    } else {
+                        execvp(&shell_cstr, &[login_arg]).expect("execvp failed");
+                    }
                     unreachable!();
                 }
             }

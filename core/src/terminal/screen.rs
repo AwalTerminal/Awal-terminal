@@ -1,5 +1,6 @@
 use crate::terminal::cell::{Cell, CellAttrs, Color};
 use crate::terminal::modes::TerminalModes;
+use unicode_width::UnicodeWidthChar;
 
 #[derive(Clone, Debug)]
 pub struct Cursor {
@@ -137,6 +138,20 @@ impl Screen {
     }
 
     pub fn write_char(&mut self, ch: char) {
+        let width = ch.width().unwrap_or(1);
+        if width == 0 {
+            return; // skip zero-width characters for now
+        }
+
+        // If wide char won't fit on the line, wrap first
+        if width == 2 && self.cursor.col == self.cols - 1 && self.modes.auto_wrap {
+            // Fill current cell with space and wrap
+            let row = self.cursor.row;
+            let col = self.cursor.col;
+            self.active_grid_mut().cell_mut(row, col).reset();
+            self.cursor.col = self.cols; // trigger wrap below
+        }
+
         if self.cursor.col >= self.cols {
             if self.modes.auto_wrap {
                 self.cursor.col = 0;
@@ -156,7 +171,11 @@ impl Screen {
         let col = self.cursor.col;
         let fg = self.cursor.fg;
         let bg = self.cursor.bg;
-        let attrs = self.cursor.attrs;
+        let mut attrs = self.cursor.attrs;
+
+        if width == 2 {
+            attrs.insert(CellAttrs::WIDE);
+        }
 
         let cell = self.active_grid_mut().cell_mut(row, col);
         cell.ch = ch;
@@ -164,6 +183,18 @@ impl Screen {
         cell.bg = bg;
         cell.attrs = attrs;
         self.cursor.col += 1;
+
+        // For wide characters, place a spacer in the next cell
+        if width == 2 && self.cursor.col < self.cols {
+            let spacer_col = self.cursor.col;
+            let spacer = self.active_grid_mut().cell_mut(row, spacer_col);
+            spacer.ch = ' ';
+            spacer.fg = fg;
+            spacer.bg = bg;
+            spacer.attrs = CellAttrs::WIDE_SPACER;
+            self.cursor.col += 1;
+        }
+
         self.dirty = true;
     }
 

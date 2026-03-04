@@ -6,7 +6,7 @@ use std::os::fd::RawFd;
 use std::slice;
 
 /// Opaque handle to a terminal surface.
-pub struct CTSurface {
+pub struct ATSurface {
     screen: Screen,
     parser: Parser,
     pty: Option<Pty>,
@@ -16,8 +16,8 @@ pub struct CTSurface {
 
 /// Create a new terminal surface with the given dimensions.
 #[no_mangle]
-pub extern "C" fn ct_surface_new(cols: u32, rows: u32) -> *mut CTSurface {
-    let surface = Box::new(CTSurface {
+pub extern "C" fn at_surface_new(cols: u32, rows: u32) -> *mut ATSurface {
+    let surface = Box::new(ATSurface {
         screen: Screen::new(cols as usize, rows as usize),
         parser: Parser::new(),
         pty: None,
@@ -29,7 +29,7 @@ pub extern "C" fn ct_surface_new(cols: u32, rows: u32) -> *mut CTSurface {
 
 /// Destroy a terminal surface.
 #[no_mangle]
-pub extern "C" fn ct_surface_destroy(surface: *mut CTSurface) {
+pub extern "C" fn at_surface_destroy(surface: *mut ATSurface) {
     if !surface.is_null() {
         unsafe {
             drop(Box::from_raw(surface));
@@ -39,8 +39,8 @@ pub extern "C" fn ct_surface_destroy(surface: *mut CTSurface) {
 
 /// Spawn a shell process. Returns 0 on success, -1 on failure.
 #[no_mangle]
-pub extern "C" fn ct_surface_spawn_shell(
-    surface: *mut CTSurface,
+pub extern "C" fn at_surface_spawn_shell(
+    surface: *mut ATSurface,
     shell: *const libc::c_char,
 ) -> i32 {
     let surface = unsafe { &mut *surface };
@@ -62,16 +62,51 @@ pub extern "C" fn ct_surface_spawn_shell(
     }
 }
 
+/// Spawn a shell running a specific command. Returns 0 on success, -1 on failure.
+/// The shell is invoked as a login shell with `-c command`.
+#[no_mangle]
+pub extern "C" fn at_surface_spawn_command(
+    surface: *mut ATSurface,
+    shell: *const libc::c_char,
+    command: *const libc::c_char,
+) -> i32 {
+    let surface = unsafe { &mut *surface };
+    let shell_str = if shell.is_null() {
+        "/bin/zsh"
+    } else {
+        unsafe { std::ffi::CStr::from_ptr(shell).to_str().unwrap_or("/bin/zsh") }
+    };
+    let cmd_str = unsafe { std::ffi::CStr::from_ptr(command).to_str().unwrap_or("") };
+
+    match Pty::spawn_with_command(shell_str, surface.screen.cols as u16, surface.screen.rows as u16, &[], cmd_str) {
+        Ok(pty) => {
+            surface.pty = Some(pty);
+            0
+        }
+        Err(e) => {
+            eprintln!("Failed to spawn command: {}", e);
+            -1
+        }
+    }
+}
+
 /// Get the PTY master file descriptor (for polling).
 #[no_mangle]
-pub extern "C" fn ct_surface_get_fd(surface: *const CTSurface) -> RawFd {
+pub extern "C" fn at_surface_get_fd(surface: *const ATSurface) -> RawFd {
     let surface = unsafe { &*surface };
     surface.pty.as_ref().map_or(-1, |pty| pty.master_fd())
 }
 
+/// Get the child shell PID.
+#[no_mangle]
+pub extern "C" fn at_surface_get_child_pid(surface: *const ATSurface) -> i32 {
+    let surface = unsafe { &*surface };
+    surface.pty.as_ref().map_or(-1, |pty| pty.child_pid.as_raw())
+}
+
 /// Read from the PTY and process VT sequences. Returns number of bytes read, 0 if nothing available, -1 on error.
 #[no_mangle]
-pub extern "C" fn ct_surface_process_pty(surface: *mut CTSurface) -> i32 {
+pub extern "C" fn at_surface_process_pty(surface: *mut ATSurface) -> i32 {
     let surface = unsafe { &mut *surface };
     let pty = match &surface.pty {
         Some(p) => p,
@@ -81,7 +116,13 @@ pub extern "C" fn ct_surface_process_pty(surface: *mut CTSurface) -> i32 {
     match pty.read(&mut surface.read_buf) {
         Ok(n) if n > 0 => {
             let bytes = surface.read_buf[..n].to_vec();
-            surface.parser.process(&bytes, &mut surface.screen);
+            let responses = surface.parser.process(&bytes, &mut surface.screen);
+            // Write any terminal responses (DSR, DA1, etc.) back to the PTY
+            if let Some(pty) = &surface.pty {
+                for response in responses {
+                    let _ = pty.write(&response);
+                }
+            }
             n as i32
         }
         Ok(_) => 0,
@@ -92,8 +133,8 @@ pub extern "C" fn ct_surface_process_pty(surface: *mut CTSurface) -> i32 {
 
 /// Send a key event (raw bytes) to the PTY.
 #[no_mangle]
-pub extern "C" fn ct_surface_key_event(
-    surface: *mut CTSurface,
+pub extern "C" fn at_surface_key_event(
+    surface: *mut ATSurface,
     data: *const u8,
     len: u32,
 ) -> i32 {
@@ -112,8 +153,8 @@ pub extern "C" fn ct_surface_key_event(
 
 /// Get the screen dimensions.
 #[no_mangle]
-pub extern "C" fn ct_surface_get_size(
-    surface: *const CTSurface,
+pub extern "C" fn at_surface_get_size(
+    surface: *const ATSurface,
     cols: *mut u32,
     rows: *mut u32,
 ) {
@@ -126,7 +167,7 @@ pub extern "C" fn ct_surface_get_size(
 
 /// Resize the terminal surface.
 #[no_mangle]
-pub extern "C" fn ct_surface_resize(surface: *mut CTSurface, cols: u32, rows: u32) {
+pub extern "C" fn at_surface_resize(surface: *mut ATSurface, cols: u32, rows: u32) {
     let surface = unsafe { &mut *surface };
     surface.screen.resize(cols as usize, rows as usize);
     if let Some(pty) = &surface.pty {
@@ -138,8 +179,8 @@ pub extern "C" fn ct_surface_resize(surface: *mut CTSurface, cols: u32, rows: u3
 /// Buffer must have space for (cols * rows) CCells.
 /// Returns the number of cells written.
 #[no_mangle]
-pub extern "C" fn ct_surface_read_cells(
-    surface: *const CTSurface,
+pub extern "C" fn at_surface_read_cells(
+    surface: *const ATSurface,
     out: *mut CCell,
     max_cells: u32,
 ) -> u32 {
@@ -185,8 +226,8 @@ pub extern "C" fn ct_surface_read_cells(
 
 /// Get cursor position.
 #[no_mangle]
-pub extern "C" fn ct_surface_get_cursor(
-    surface: *const CTSurface,
+pub extern "C" fn at_surface_get_cursor(
+    surface: *const ATSurface,
     row: *mut u32,
     col: *mut u32,
     visible: *mut bool,
@@ -201,15 +242,28 @@ pub extern "C" fn ct_surface_get_cursor(
 
 /// Check if screen content has changed since last check. Resets the dirty flag.
 #[no_mangle]
-pub extern "C" fn ct_surface_is_dirty(surface: *mut CTSurface) -> bool {
+pub extern "C" fn at_surface_is_dirty(surface: *mut ATSurface) -> bool {
     let surface = unsafe { &mut *surface };
     let dirty = surface.screen.dirty;
     surface.screen.dirty = false;
     dirty
 }
 
+/// Feed raw bytes directly into the VT parser (no PTY needed).
+/// Used for rendering TUI menus before a shell is spawned.
+#[no_mangle]
+pub extern "C" fn at_surface_feed_bytes(
+    surface: *mut ATSurface,
+    data: *const u8,
+    len: u32,
+) {
+    let surface = unsafe { &mut *surface };
+    let bytes = unsafe { slice::from_raw_parts(data, len as usize) };
+    let _ = surface.parser.process(bytes, &mut surface.screen);
+}
+
 /// Initialize logging (call once at startup).
 #[no_mangle]
-pub extern "C" fn ct_init_logging() {
+pub extern "C" fn at_init_logging() {
     let _ = env_logger::try_init();
 }

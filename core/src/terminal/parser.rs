@@ -14,14 +14,20 @@ impl Parser {
     }
 
     /// Feed bytes from PTY output into the parser, applying escape sequences to the screen.
-    pub fn process(&mut self, bytes: &[u8], screen: &mut Screen) {
-        let mut performer = ScreenPerformer { screen };
+    /// Returns any response bytes that should be written back to the PTY (e.g. DSR replies).
+    pub fn process(&mut self, bytes: &[u8], screen: &mut Screen) -> Vec<Vec<u8>> {
+        let mut performer = ScreenPerformer {
+            screen,
+            responses: Vec::new(),
+        };
         self.vt.advance(&mut performer, bytes);
+        performer.responses
     }
 }
 
 struct ScreenPerformer<'a> {
     screen: &'a mut Screen,
+    responses: Vec<Vec<u8>>,
 }
 
 impl<'a> vte::Perform for ScreenPerformer<'a> {
@@ -179,6 +185,31 @@ impl<'a> vte::Perform for ScreenPerformer<'a> {
             '@' => {
                 let n = params.first().copied().unwrap_or(1).max(1) as usize;
                 self.screen.insert_blanks(n);
+            }
+            'n' => {
+                // DSR — Device Status Report
+                let param = params.first().copied().unwrap_or(0);
+                match param {
+                    5 => {
+                        // Device status — report OK
+                        self.responses.push(b"\x1b[0n".to_vec());
+                    }
+                    6 => {
+                        // Cursor position report (1-indexed)
+                        let r = self.screen.cursor.row + 1;
+                        let c = self.screen.cursor.col + 1;
+                        self.responses
+                            .push(format!("\x1b[{};{}R", r, c).into_bytes());
+                    }
+                    _ => {}
+                }
+            }
+            'c' => {
+                if !private {
+                    // DA1 — Primary Device Attributes
+                    // Report as VT220 with ANSI color
+                    self.responses.push(b"\x1b[?62;22c".to_vec());
+                }
             }
             _ => {}
         }

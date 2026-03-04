@@ -38,6 +38,8 @@ bitflags::bitflags! {
         const INVERSE    = 0b0010_0000;
         const HIDDEN     = 0b0100_0000;
         const STRIKETHROUGH = 0b1000_0000;
+        const WIDE          = 0b1_0000_0000;
+        const WIDE_SPACER   = 0b10_0000_0000;
     }
 }
 
