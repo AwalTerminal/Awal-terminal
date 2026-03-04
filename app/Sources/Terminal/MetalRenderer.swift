@@ -339,7 +339,11 @@ final class MetalRenderer {
         viewportSize: CGSize,
         scale: CGFloat
     ) {
-        frameSemaphore.wait()
+        // Non-blocking wait to avoid freezing the main thread
+        let result = frameSemaphore.wait(timeout: .now() + .milliseconds(16))
+        if result == .timedOut {
+            return
+        }
 
         // cellSize is in points; viewport is in pixels. Scale cellSize to match.
         let scaledCellW = Float(cellWidth * scale)

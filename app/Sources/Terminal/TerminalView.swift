@@ -650,10 +650,12 @@ class TerminalView: NSView {
         guard let s = surface else { return }
 
         var totalRead: Int32 = 0
-        while true {
+        var iterations = 0
+        while iterations < 64 {
             let n = at_surface_process_pty(s)
             if n <= 0 { break }
             totalRead += n
+            iterations += 1
         }
 
         if totalRead > 0 {
