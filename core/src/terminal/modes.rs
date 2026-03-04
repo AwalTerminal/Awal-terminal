@@ -13,6 +13,8 @@ pub struct TerminalModes {
     pub bracketed_paste: bool,
     /// Mouse tracking modes
     pub mouse_tracking: MouseMode,
+    /// SGR mouse encoding (mode 1006)
+    pub sgr_mouse: bool,
     /// Origin mode (DECOM)
     pub origin_mode: bool,
     /// Insert mode (IRM)
@@ -30,6 +32,7 @@ impl Default for TerminalModes {
             alternate_screen: false,
             bracketed_paste: false,
             mouse_tracking: MouseMode::None,
+            sgr_mouse: false,
             origin_mode: false,
             insert_mode: false,
             linefeed_mode: false,
