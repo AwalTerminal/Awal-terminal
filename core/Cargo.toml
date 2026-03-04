@@ -1,0 +1,22 @@
+[package]
+name = "awalterminal"
+version = "0.1.0"
+edition = "2021"
+description = "LLM-native terminal emulator core library"
+
+[lib]
+name = "awalterminal"
+crate-type = ["staticlib", "lib"]
+
+[dependencies]
+vte = "0.15"
+libc = "0.2"
+log = "0.4"
+env_logger = "0.11"
+nix = { version = "0.31", features = ["term", "signal", "process", "fs"] }
+signal-hook = "0.3"
+bitflags = "2"
+unicode-width = "0.2"
+
+[build-dependencies]
+cbindgen = "0.29"

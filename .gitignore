@@ -1,0 +1,24 @@
+# Rust
+core/target/
+core/Cargo.lock
+
+# Swift
+app/.build/
+app/.swiftpm/
+app/Package.resolved
+
+# macOS
+.DS_Store
+*.xcodeproj
+*.xcworkspace
+xcuserdata/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Generated (tracked in repo for convenience, but can be regenerated)
+# core/include/awalterminal.h

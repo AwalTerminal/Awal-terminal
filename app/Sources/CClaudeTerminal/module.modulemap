@@ -1,0 +1,5 @@
+module CClaudeTerminal {
+    header "../../../core/include/claudeterminal.h"
+    link "claudeterminal"
+    export *
+}

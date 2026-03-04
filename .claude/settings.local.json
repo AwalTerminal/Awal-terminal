@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(sw_vers && sysctl -n machdep.cpu.brand_string && system_profiler SPDisplaysDataType 2>/dev/null | head -20)",
+      "Bash(which swift && swift --version 2>/dev/null; which swiftc && swiftc --version 2>/dev/null; xcodebuild -version 2>/dev/null)",
+      "Bash(which zig 2>/dev/null; zig version 2>/dev/null; which rustc 2>/dev/null; rustc --version 2>/dev/null; which cargo 2>/dev/null; cargo --version 2>/dev/null)",
+      "Bash(pkg-config --list-all 2>/dev/null | grep -i -E \"vterm|whisper|metal\" || echo \"No relevant pkg-config packages found\")",
+      "WebFetch(domain:deepwiki.com)",
+      "WebFetch(domain:github.com)",
+      "Bash(which rustc && rustc --version && which cargo && cargo --version 2>/dev/null; which swift && swift --version 2>/dev/null | head -3; which just 2>/dev/null; which cbindgen 2>/dev/null)",
+      "Bash(cargo install just 2>&1 | tail -5)",
+      "Bash(cargo install cbindgen 2>&1 | tail -5)",
+      "Bash(cargo build 2>&1)",
+      "Bash(cargo info nix 2>&1 | grep -i \"feature\")",
+      "WebFetch(domain:docs.rs)"
+    ]
+  }
+}
