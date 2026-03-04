@@ -44,12 +44,25 @@ struct GlyphInstance {
     var a: UInt8
 }
 
+struct LineInstance {
+    // packed_float4 rect (x, y, w, h in pixels) + packed_uchar4 color = 20 bytes
+    var x: Float
+    var y: Float
+    var w: Float
+    var h: Float
+    var r: UInt8
+    var g: UInt8
+    var b: UInt8
+    var a: UInt8
+}
+
 final class MetalRenderer {
 
     let device: MTLDevice
     private let commandQueue: MTLCommandQueue
     private let bgPipeline: MTLRenderPipelineState
     private let glyphPipeline: MTLRenderPipelineState
+    private let linePipeline: MTLRenderPipelineState
     let atlas: GlyphAtlas
 
     // Triple buffering
@@ -61,6 +74,8 @@ final class MetalRenderer {
     private var bgBufferCapacity: Int = 0
     private var glyphBuffer: MTLBuffer?
     private var glyphBufferCapacity: Int = 0
+    private var lineBuffer: MTLBuffer?
+    private var lineBufferCapacity: Int = 0
     private var uniformBuffer: MTLBuffer
 
     private let cellWidth: CGFloat
@@ -180,6 +195,50 @@ final class MetalRenderer {
         float alpha = atlas.sample(s, in.texCoord).r;
         return float4(in.color.rgb, in.color.a * alpha);
     }
+
+    // --- Line decorations (underline, strikethrough) ---
+
+    struct LineInstance {
+        packed_float4 rect;  // x, y, w, h in pixels
+        packed_uchar4 color;
+    };
+
+    struct LineVertexOut {
+        float4 position [[position]];
+        float4 color;
+    };
+
+    vertex LineVertexOut line_vertex(
+        uint vertexID [[vertex_id]],
+        uint instanceID [[instance_id]],
+        const device LineInstance* instances [[buffer(0)]],
+        constant Uniforms& uniforms [[buffer(1)]]
+    ) {
+        float2 corners[] = {
+            float2(0, 0), float2(1, 0), float2(0, 1),
+            float2(0, 1), float2(1, 0), float2(1, 1)
+        };
+        float2 corner = corners[vertexID];
+        LineInstance inst = instances[instanceID];
+        float4 rect = float4(inst.rect[0], inst.rect[1], inst.rect[2], inst.rect[3]);
+        float2 pixelPos = float2(rect.x + corner.x * rect.z, rect.y + corner.y * rect.w);
+        float2 ndc;
+        ndc.x = (pixelPos.x / uniforms.viewportSize.x) * 2.0 - 1.0;
+        ndc.y = 1.0 - (pixelPos.y / uniforms.viewportSize.y) * 2.0;
+        LineVertexOut out;
+        out.position = float4(ndc, 0.0, 1.0);
+        out.color = float4(
+            float(inst.color[0]) / 255.0,
+            float(inst.color[1]) / 255.0,
+            float(inst.color[2]) / 255.0,
+            float(inst.color[3]) / 255.0
+        );
+        return out;
+    }
+
+    fragment float4 line_fragment(LineVertexOut in [[stage_in]]) {
+        return in.color;
+    }
     """
 
     deinit {
@@ -241,6 +300,23 @@ final class MetalRenderer {
             fatalError("Failed to create glyph pipeline: \(error)")
         }
 
+        // Line decoration pipeline (alpha-blended)
+        let lineDesc = MTLRenderPipelineDescriptor()
+        lineDesc.vertexFunction = library.makeFunction(name: "line_vertex")
+        lineDesc.fragmentFunction = library.makeFunction(name: "line_fragment")
+        lineDesc.colorAttachments[0].pixelFormat = .bgra8Unorm
+        lineDesc.colorAttachments[0].isBlendingEnabled = true
+        lineDesc.colorAttachments[0].sourceRGBBlendFactor = .sourceAlpha
+        lineDesc.colorAttachments[0].destinationRGBBlendFactor = .oneMinusSourceAlpha
+        lineDesc.colorAttachments[0].sourceAlphaBlendFactor = .one
+        lineDesc.colorAttachments[0].destinationAlphaBlendFactor = .oneMinusSourceAlpha
+
+        do {
+            linePipeline = try device.makeRenderPipelineState(descriptor: lineDesc)
+        } catch {
+            fatalError("Failed to create line pipeline: \(error)")
+        }
+
         // Atlas — rasterize glyphs at native pixel resolution
         self.atlas = GlyphAtlas(device: device, font: font, boldFont: boldFont, scale: scale)
 
@@ -289,6 +365,7 @@ final class MetalRenderer {
         bgInstances.reserveCapacity(totalCells)
         var glyphInstances: [GlyphInstance] = []
         glyphInstances.reserveCapacity(totalCells)
+        var lineInstances: [LineInstance] = []
 
         for row in 0..<gridRows {
             for col in 0..<gridCols {
@@ -305,13 +382,40 @@ final class MetalRenderer {
                     ))
                 }
 
+                // Underline decoration (attr bit 3 = 0x08)
+                let hasUnderline = (cell.attrs & 0x08) != 0
+                if hasUnderline {
+                    let lineY = Float(row + 1) * scaledCellH - 1.0 * Float(scale)
+                    lineInstances.append(LineInstance(
+                        x: Float(col) * scaledCellW,
+                        y: lineY,
+                        w: scaledCellW,
+                        h: max(1.0, Float(scale)),
+                        r: cell.fg_r, g: cell.fg_g, b: cell.fg_b, a: cell.fg_a
+                    ))
+                }
+
+                // Strikethrough decoration (attr bit 7 = 0x80)
+                let hasStrikethrough = (cell.attrs & 0x80) != 0
+                if hasStrikethrough {
+                    let lineY = (Float(row) + 0.5) * scaledCellH
+                    lineInstances.append(LineInstance(
+                        x: Float(col) * scaledCellW,
+                        y: lineY,
+                        w: scaledCellW,
+                        h: max(1.0, Float(scale)),
+                        r: cell.fg_r, g: cell.fg_g, b: cell.fg_b, a: cell.fg_a
+                    ))
+                }
+
                 // Glyph: skip spaces, control chars, and wide spacers
                 if isWideSpacer { continue }
                 let codepoint = cell.codepoint
                 guard codepoint > 32 else { continue }
 
                 let isBold = (cell.attrs & 0x01) != 0
-                guard let info = atlas.lookup(codepoint: codepoint, bold: isBold, device: device) else {
+                let isItalic = (cell.attrs & 0x04) != 0
+                guard let info = atlas.lookup(codepoint: codepoint, bold: isBold, italic: isItalic, device: device) else {
                     continue
                 }
 
@@ -338,6 +442,7 @@ final class MetalRenderer {
         // Ensure GPU buffers are large enough
         ensureBgBuffer(count: bgInstances.count)
         ensureGlyphBuffer(count: glyphInstances.count)
+        ensureLineBuffer(count: lineInstances.count)
 
         // Copy instance data to GPU buffers
         if !bgInstances.isEmpty, let buf = bgBuffer {
@@ -347,6 +452,11 @@ final class MetalRenderer {
         }
         if !glyphInstances.isEmpty, let buf = glyphBuffer {
             _ = glyphInstances.withUnsafeBytes { ptr in
+                memcpy(buf.contents(), ptr.baseAddress!, ptr.count)
+            }
+        }
+        if !lineInstances.isEmpty, let buf = lineBuffer {
+            _ = lineInstances.withUnsafeBytes { ptr in
                 memcpy(buf.contents(), ptr.baseAddress!, ptr.count)
             }
         }
@@ -390,6 +500,15 @@ final class MetalRenderer {
                                    instanceCount: glyphInstances.count)
         }
 
+        // Draw line decorations (underline, strikethrough)
+        if !lineInstances.isEmpty, let buf = lineBuffer {
+            encoder.setRenderPipelineState(linePipeline)
+            encoder.setVertexBuffer(buf, offset: 0, index: 0)
+            encoder.setVertexBuffer(uniformBuffer, offset: 0, index: 1)
+            encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6,
+                                   instanceCount: lineInstances.count)
+        }
+
         encoder.endEncoding()
 
         commandBuffer.present(drawable)
@@ -418,6 +537,16 @@ final class MetalRenderer {
             let newCap = max(needed, glyphBufferCapacity * 2, 4096)
             glyphBuffer = device.makeBuffer(length: newCap, options: .storageModeShared)
             glyphBufferCapacity = newCap
+        }
+    }
+
+    private func ensureLineBuffer(count: Int) {
+        guard count > 0 else { return }
+        let needed = count * MemoryLayout<LineInstance>.stride
+        if lineBufferCapacity < needed {
+            let newCap = max(needed, lineBufferCapacity * 2, 4096)
+            lineBuffer = device.makeBuffer(length: newCap, options: .storageModeShared)
+            lineBufferCapacity = newCap
         }
     }
 }
