@@ -16,6 +16,7 @@ let package = Package(
             dependencies: ["CAwalTerminal"],
             path: "Sources",
             exclude: ["CAwalTerminal"],
+            resources: [.copy("App/Resources")],
             linkerSettings: [
                 .unsafeFlags([
                     "-L", "../core/target/debug",

@@ -54,3 +54,7 @@ fmt:
 # Lint
 lint:
     cd {{core_dir}} && cargo clippy -- -W warnings
+
+# Generate app icon from source PNG
+generate-icon:
+    scripts/generate-icon.sh
