@@ -107,6 +107,8 @@ class TerminalView: NSView {
             self?.cursorBlinkOn.toggle()
             self?.needsRender = true
         }
+
+        setupDragAndDrop()
     }
 
     required init?(coder: NSCoder) {
@@ -185,12 +187,6 @@ class TerminalView: NSView {
 
     override var acceptsFirstResponder: Bool { true }
     override var canBecomeKeyView: Bool { true }
-
-    override func mouseDown(with event: NSEvent) {
-        window?.makeFirstResponder(self)
-        onFocused?(self)
-        super.mouseDown(with: event)
-    }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
@@ -661,6 +657,11 @@ class TerminalView: NSView {
         }
 
         if totalRead > 0 {
+            // Auto-snap to bottom when new output arrives
+            let offset = at_surface_get_viewport_offset(s)
+            if offset > 0 {
+                at_surface_scroll_viewport(s, -offset)
+            }
             updateCellBuffer()
             needsRender = true
         }
@@ -877,4 +878,318 @@ class TerminalView: NSView {
     }
 
     override func flagsChanged(with event: NSEvent) {}
+
+    // MARK: - Scroll Wheel (Scrollback)
+
+    override func scrollWheel(with event: NSEvent) {
+        guard let s = surface, appState == .terminal else { return }
+
+        let mouseMode = at_surface_get_mouse_mode(s)
+        if mouseMode > 0 {
+            // Mouse reporting enabled — send scroll as mouse button 4/5 (up/down)
+            let location = convert(event.locationInWindow, from: nil)
+            let col = Int(location.x / cellWidth) + 1
+            let row = Int(location.y / cellHeight) + 1  // Will be flipped below
+            let flippedRow = Int(termRows) - row + 1
+
+            let sgrMode = at_surface_get_sgr_mouse(s)
+            let lines = max(1, Int(abs(event.scrollingDeltaY) / 3.0 + 0.5))
+            for _ in 0..<lines {
+                let button = event.scrollingDeltaY > 0 ? 64 : 65 // scroll up : scroll down
+                let seq: [UInt8]
+                if sgrMode {
+                    let str = "\u{1b}[\(button);\(col);\(flippedRow)M"
+                    seq = Array(str.utf8)
+                } else {
+                    // X10 encoding
+                    seq = [0x1b, 0x5b, 0x4d,
+                           UInt8(32 + button),
+                           UInt8(32 + col),
+                           UInt8(32 + flippedRow)]
+                }
+                seq.withUnsafeBufferPointer { ptr in
+                    _ = at_surface_key_event(s, ptr.baseAddress!, UInt32(ptr.count))
+                }
+            }
+            return
+        }
+
+        // Normal scrollback
+        let delta = event.scrollingDeltaY
+        let lines = Int(delta / 3.0)
+        if lines != 0 {
+            at_surface_scroll_viewport(s, Int32(lines))
+            updateCellBuffer()
+            needsRender = true
+        }
+    }
+
+    // MARK: - Mouse Events (Selection + Mouse Reporting)
+
+    private func gridPosition(for event: NSEvent) -> (col: Int, row: Int) {
+        let location = convert(event.locationInWindow, from: nil)
+        // NSView coordinates: origin at bottom-left, we need top-left
+        let col = max(0, min(Int(termCols) - 1, Int(location.x / cellWidth)))
+        let row = max(0, min(Int(termRows) - 1, Int(termRows) - 1 - Int(location.y / cellHeight)))
+        return (col, row)
+    }
+
+    /// Convert grid row to absolute row (accounting for scrollback viewport).
+    private func absoluteRow(gridRow: Int) -> Int32 {
+        guard let s = surface else { return Int32(gridRow) }
+        let offset = at_surface_get_viewport_offset(s)
+        let sbLen = at_surface_get_scrollback_len(s)
+        if offset == 0 {
+            return Int32(gridRow)
+        }
+        let viewportStart = Int(sbLen) - Int(offset)
+        let absRow = viewportStart + gridRow
+        return Int32(absRow - Int(sbLen))
+    }
+
+    private func sendMouseEvent(button: Int, col: Int, row: Int, release: Bool) {
+        guard let s = surface else { return }
+        let sgrMode = at_surface_get_sgr_mouse(s)
+        let c = col + 1  // 1-indexed
+        let r = row + 1
+
+        if sgrMode {
+            let suffix = release ? "m" : "M"
+            let str = "\u{1b}[<\(button);\(c);\(r)\(suffix)"
+            let bytes = Array(str.utf8)
+            bytes.withUnsafeBufferPointer { ptr in
+                _ = at_surface_key_event(s, ptr.baseAddress!, UInt32(ptr.count))
+            }
+        } else {
+            if release { return } // X10 doesn't report releases
+            let bytes: [UInt8] = [0x1b, 0x5b, 0x4d,
+                                   UInt8(32 + button),
+                                   UInt8(32 + min(col + 1, 223)),
+                                   UInt8(32 + min(row + 1, 223))]
+            bytes.withUnsafeBufferPointer { ptr in
+                _ = at_surface_key_event(s, ptr.baseAddress!, UInt32(ptr.count))
+            }
+        }
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        window?.makeFirstResponder(self)
+        onFocused?(self)
+
+        guard appState == .terminal, let s = surface else {
+            super.mouseDown(with: event)
+            return
+        }
+
+        let (col, row) = gridPosition(for: event)
+        let mouseMode = at_surface_get_mouse_mode(s)
+
+        if mouseMode > 0 {
+            sendMouseEvent(button: 0, col: col, row: row, release: false)
+            return
+        }
+
+        // Start selection
+        let absRow = absoluteRow(gridRow: row)
+
+        if event.clickCount == 2 {
+            // Double-click: select word
+            selectWord(at: col, row: absRow)
+        } else if event.clickCount == 3 {
+            // Triple-click: select line
+            at_surface_start_selection(s, UInt32(0), absRow)
+            at_surface_update_selection(s, UInt32(termCols - 1), absRow)
+        } else {
+            at_surface_start_selection(s, UInt32(col), absRow)
+        }
+        updateCellBuffer()
+        needsRender = true
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard appState == .terminal, let s = surface else { return }
+
+        let (col, row) = gridPosition(for: event)
+        let mouseMode = at_surface_get_mouse_mode(s)
+
+        if mouseMode >= 2 {
+            // Button/drag mouse reporting
+            sendMouseEvent(button: 32, col: col, row: row, release: false)
+            return
+        }
+
+        if mouseMode == 0 {
+            let absRow = absoluteRow(gridRow: row)
+            at_surface_update_selection(s, UInt32(col), absRow)
+            updateCellBuffer()
+            needsRender = true
+        }
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard appState == .terminal, let s = surface else { return }
+
+        let (col, row) = gridPosition(for: event)
+        let mouseMode = at_surface_get_mouse_mode(s)
+
+        if mouseMode > 0 {
+            sendMouseEvent(button: 0, col: col, row: row, release: true)
+            return
+        }
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        guard appState == .terminal, let s = surface else {
+            super.rightMouseDown(with: event)
+            return
+        }
+        let mouseMode = at_surface_get_mouse_mode(s)
+        if mouseMode > 0 {
+            let (col, row) = gridPosition(for: event)
+            sendMouseEvent(button: 2, col: col, row: row, release: false)
+        } else {
+            super.rightMouseDown(with: event)
+        }
+    }
+
+    override func rightMouseUp(with event: NSEvent) {
+        guard appState == .terminal, let s = surface else {
+            super.rightMouseUp(with: event)
+            return
+        }
+        let mouseMode = at_surface_get_mouse_mode(s)
+        if mouseMode > 0 {
+            let (col, row) = gridPosition(for: event)
+            sendMouseEvent(button: 2, col: col, row: row, release: true)
+        }
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        guard appState == .terminal, let s = surface else { return }
+        let mouseMode = at_surface_get_mouse_mode(s)
+        if mouseMode == 3 {
+            let (col, row) = gridPosition(for: event)
+            sendMouseEvent(button: 35, col: col, row: row, release: false)
+        }
+    }
+
+    private func selectWord(at col: Int, row: Int32) {
+        guard let s = surface else { return }
+        // Simple word selection: expand from position until whitespace
+        let cols = Int(termCols)
+        var startCol = col
+        var endCol = col
+
+        // Read cell buffer to find word boundaries
+        let idx = Int(row) * cols // Approximate — works when not scrolled
+        while startCol > 0 {
+            let cellIdx = idx + startCol - 1
+            if cellIdx >= 0 && cellIdx < cellBuffer.count {
+                let cp = cellBuffer[cellIdx].codepoint
+                if cp <= 32 { break }
+            } else { break }
+            startCol -= 1
+        }
+        while endCol < cols - 1 {
+            let cellIdx = idx + endCol + 1
+            if cellIdx >= 0 && cellIdx < cellBuffer.count {
+                let cp = cellBuffer[cellIdx].codepoint
+                if cp <= 32 { break }
+            } else { break }
+            endCol += 1
+        }
+
+        at_surface_start_selection(s, UInt32(startCol), row)
+        at_surface_update_selection(s, UInt32(endCol), row)
+    }
+
+    // MARK: - Copy/Paste (Cmd+C, Cmd+V)
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        guard appState == .terminal else { return super.performKeyEquivalent(with: event) }
+        guard event.modifierFlags.contains(.command) else { return super.performKeyEquivalent(with: event) }
+
+        switch event.charactersIgnoringModifiers {
+        case "c":
+            return copySelection()
+        case "v":
+            pasteFromClipboard()
+            return true
+        default:
+            return super.performKeyEquivalent(with: event)
+        }
+    }
+
+    private func copySelection() -> Bool {
+        guard let s = surface else { return false }
+        guard let cStr = at_surface_get_selected_text(s) else { return false }
+        let text = String(cString: cStr)
+        at_free_string(cStr)
+
+        if text.isEmpty { return false }
+
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(text, forType: .string)
+
+        // Clear selection after copy
+        at_surface_clear_selection(s)
+        updateCellBuffer()
+        needsRender = true
+        return true
+    }
+
+    private func pasteFromClipboard() {
+        guard let s = surface else { return }
+        guard let text = NSPasteboard.general.string(forType: .string) else { return }
+
+        let bracketedPaste = at_surface_get_bracketed_paste(s)
+        var pasteData = text
+        if bracketedPaste {
+            pasteData = "\u{1b}[200~" + text + "\u{1b}[201~"
+        }
+
+        let bytes = Array(pasteData.utf8)
+        bytes.withUnsafeBufferPointer { ptr in
+            _ = at_surface_key_event(s, ptr.baseAddress!, UInt32(ptr.count))
+        }
+    }
+
+    // MARK: - Drag and Drop
+
+    func setupDragAndDrop() {
+        registerForDraggedTypes([.fileURL])
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        guard appState == .terminal else { return [] }
+        if sender.draggingPasteboard.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) {
+            return .copy
+        }
+        return []
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        guard appState == .terminal, let s = surface else { return false }
+        guard let urls = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self],
+                                                                options: [.urlReadingFileURLsOnly: true]) as? [URL] else {
+            return false
+        }
+
+        let paths = urls.map { url -> String in
+            shellEscape(url.path)
+        }
+        let joined = paths.joined(separator: " ")
+        let bytes = Array(joined.utf8)
+        bytes.withUnsafeBufferPointer { ptr in
+            _ = at_surface_key_event(s, ptr.baseAddress!, UInt32(ptr.count))
+        }
+        return true
+    }
+
+    private func shellEscape(_ path: String) -> String {
+        // Wrap in single quotes, escaping any internal single quotes
+        let escaped = path.replacingOccurrences(of: "'", with: "'\\''")
+        return "'\(escaped)'"
+    }
 }
