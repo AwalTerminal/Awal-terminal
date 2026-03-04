@@ -54,13 +54,14 @@ impl Grid {
         }
     }
 
-    pub fn scroll_up(&mut self, top: usize, bottom: usize) {
+    pub fn scroll_up(&mut self, top: usize, bottom: usize) -> Option<Vec<Cell>> {
         if top + 1 >= bottom || bottom > self.rows {
-            return;
+            return None;
         }
-        self.cells.remove(top);
+        let removed = self.cells.remove(top);
         let blank = (0..self.cols).map(|_| Cell::default()).collect();
         self.cells.insert(bottom - 1, blank);
+        Some(removed)
     }
 
     pub fn scroll_down(&mut self, top: usize, bottom: usize) {
@@ -86,6 +87,59 @@ impl Grid {
     }
 }
 
+/// Selection anchor points (in grid coordinates).
+#[derive(Clone, Debug)]
+pub struct Selection {
+    pub start_col: usize,
+    pub start_row: i64, // negative = scrollback
+    pub end_col: usize,
+    pub end_row: i64,
+    pub active: bool,
+}
+
+impl Selection {
+    pub fn new() -> Self {
+        Self {
+            start_col: 0,
+            start_row: 0,
+            end_col: 0,
+            end_row: 0,
+            active: false,
+        }
+    }
+
+    /// Return (start, end) with start <= end in reading order.
+    pub fn ordered(&self) -> ((usize, i64), (usize, i64)) {
+        if self.start_row < self.end_row
+            || (self.start_row == self.end_row && self.start_col <= self.end_col)
+        {
+            ((self.start_col, self.start_row), (self.end_col, self.end_row))
+        } else {
+            ((self.end_col, self.end_row), (self.start_col, self.start_row))
+        }
+    }
+
+    pub fn contains(&self, col: usize, row: i64) -> bool {
+        if !self.active {
+            return false;
+        }
+        let ((sc, sr), (ec, er)) = self.ordered();
+        if row < sr || row > er {
+            return false;
+        }
+        if row == sr && row == er {
+            return col >= sc && col <= ec;
+        }
+        if row == sr {
+            return col >= sc;
+        }
+        if row == er {
+            return col <= ec;
+        }
+        true
+    }
+}
+
 pub struct Screen {
     pub primary: Grid,
     pub alternate: Grid,
@@ -98,6 +152,12 @@ pub struct Screen {
     pub rows: usize,
     pub dirty: bool,
     pub tab_stops: Vec<bool>,
+    pub scrollback: Vec<Vec<Cell>>,
+    pub scrollback_limit: usize,
+    pub viewport_offset: usize,
+    pub selection: Selection,
+    pub title: String,
+    pub working_directory: String,
 }
 
 impl Screen {
@@ -118,6 +178,12 @@ impl Screen {
             rows,
             dirty: true,
             tab_stops,
+            scrollback: Vec::new(),
+            scrollback_limit: 10_000,
+            viewport_offset: 0,
+            selection: Selection::new(),
+            title: String::new(),
+            working_directory: String::new(),
         }
     }
 
@@ -158,9 +224,7 @@ impl Screen {
                 self.cursor.row += 1;
                 if self.cursor.row >= self.scroll_bottom {
                     self.cursor.row = self.scroll_bottom - 1;
-                    let top = self.scroll_top;
-                    let bottom = self.scroll_bottom;
-                    self.active_grid_mut().scroll_up(top, bottom);
+                    self.do_scroll_up();
                 }
             } else {
                 self.cursor.col = self.cols - 1;
@@ -202,9 +266,7 @@ impl Screen {
         self.cursor.row += 1;
         if self.cursor.row >= self.scroll_bottom {
             self.cursor.row = self.scroll_bottom - 1;
-            let top = self.scroll_top;
-            let bottom = self.scroll_bottom;
-            self.active_grid_mut().scroll_up(top, bottom);
+            self.do_scroll_up();
         }
         if self.modes.linefeed_mode {
             self.cursor.col = 0;
@@ -414,6 +476,146 @@ impl Screen {
         if self.modes.alternate_screen {
             self.modes.alternate_screen = false;
             self.restore_cursor();
+        }
+    }
+
+    /// Scroll the active grid up and capture scrollback (only for primary screen, full-width scroll region).
+    pub fn do_scroll_up(&mut self) {
+        let top = self.scroll_top;
+        let bottom = self.scroll_bottom;
+        let is_primary = !self.modes.alternate_screen;
+        let full_region = top == 0 && bottom == self.rows;
+
+        if let Some(removed) = self.active_grid_mut().scroll_up(top, bottom) {
+            if is_primary && full_region {
+                self.scrollback.push(removed);
+                if self.scrollback.len() > self.scrollback_limit {
+                    self.scrollback.remove(0);
+                }
+                // If user is scrolled up, keep their viewport stable
+                if self.viewport_offset > 0 {
+                    self.viewport_offset += 1;
+                    // Clamp
+                    if self.viewport_offset > self.scrollback.len() {
+                        self.viewport_offset = self.scrollback.len();
+                    }
+                }
+            }
+        }
+    }
+
+    /// Get a cell from the viewport (scrollback-aware). Row 0 = top of viewport.
+    pub fn viewport_cell(&self, row: usize, col: usize) -> &Cell {
+        if self.viewport_offset == 0 || self.modes.alternate_screen {
+            return self.active_grid().cell(row, col);
+        }
+        let scrollback_len = self.scrollback.len();
+        let viewport_start = scrollback_len.saturating_sub(self.viewport_offset);
+        let abs_row = viewport_start + row;
+        if abs_row < scrollback_len {
+            // Reading from scrollback
+            let line = &self.scrollback[abs_row];
+            if col < line.len() {
+                &line[col]
+            } else {
+                // Out of bounds in scrollback line (different width), return default
+                static DEFAULT_CELL: Cell = Cell {
+                    ch: ' ',
+                    fg: Color::Default,
+                    bg: Color::Default,
+                    attrs: CellAttrs::empty(),
+                };
+                &DEFAULT_CELL
+            }
+        } else {
+            // Reading from active grid
+            let grid_row = abs_row - scrollback_len;
+            if grid_row < self.active_grid().rows {
+                self.active_grid().cell(grid_row, col)
+            } else {
+                static DEFAULT_CELL: Cell = Cell {
+                    ch: ' ',
+                    fg: Color::Default,
+                    bg: Color::Default,
+                    attrs: CellAttrs::empty(),
+                };
+                &DEFAULT_CELL
+            }
+        }
+    }
+
+    pub fn scroll_viewport(&mut self, delta: i32) {
+        let max_offset = self.scrollback.len();
+        if delta > 0 {
+            // Scroll up (into history)
+            self.viewport_offset = (self.viewport_offset + delta as usize).min(max_offset);
+        } else {
+            // Scroll down (toward live)
+            let abs_delta = (-delta) as usize;
+            self.viewport_offset = self.viewport_offset.saturating_sub(abs_delta);
+        }
+        self.dirty = true;
+    }
+
+    /// Get selected text from the screen (scrollback-aware).
+    pub fn get_selected_text(&self) -> String {
+        if !self.selection.active {
+            return String::new();
+        }
+        let ((sc, sr), (ec, er)) = self.selection.ordered();
+        let mut result = String::new();
+
+        for row in sr..=er {
+            let row_start = if row == sr { sc } else { 0 };
+            let row_end = if row == er { ec } else { self.cols.saturating_sub(1) };
+
+            for col in row_start..=row_end {
+                let cell = self.get_cell_at_absolute(col, row);
+                if cell.attrs.contains(CellAttrs::WIDE_SPACER) {
+                    continue;
+                }
+                result.push(cell.ch);
+            }
+
+            // Trim trailing spaces on each line
+            if row < er {
+                let trimmed = result.trim_end_matches(' ');
+                result = trimmed.to_string();
+                result.push('\n');
+            }
+        }
+        // Trim trailing spaces on last line
+        while result.ends_with(' ') {
+            result.pop();
+        }
+        result
+    }
+
+    /// Get a cell at an absolute row position (negative = scrollback).
+    fn get_cell_at_absolute(&self, col: usize, abs_row: i64) -> &Cell {
+        static DEFAULT_CELL: Cell = Cell {
+            ch: ' ',
+            fg: Color::Default,
+            bg: Color::Default,
+            attrs: CellAttrs::empty(),
+        };
+        let scrollback_len = self.scrollback.len() as i64;
+        if abs_row < 0 {
+            // In scrollback
+            let sb_idx = (scrollback_len + abs_row) as usize;
+            if sb_idx < self.scrollback.len() {
+                let line = &self.scrollback[sb_idx];
+                if col < line.len() {
+                    return &line[col];
+                }
+            }
+            return &DEFAULT_CELL;
+        }
+        let grid_row = abs_row as usize;
+        if grid_row < self.active_grid().rows && col < self.active_grid().cols {
+            self.active_grid().cell(grid_row, col)
+        } else {
+            &DEFAULT_CELL
         }
     }
 
