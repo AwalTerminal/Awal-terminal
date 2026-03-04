@@ -51,8 +51,55 @@ impl<'a> vte::Perform for ScreenPerformer<'a> {
     fn put(&mut self, _byte: u8) {}
     fn unhook(&mut self) {}
 
-    fn osc_dispatch(&mut self, _params: &[&[u8]], _bell_terminated: bool) {
-        // TODO: handle OSC sequences (window title, etc.)
+    fn osc_dispatch(&mut self, params: &[&[u8]], _bell_terminated: bool) {
+        if params.is_empty() {
+            return;
+        }
+        let cmd = std::str::from_utf8(params[0]).unwrap_or("");
+        match cmd {
+            "0" | "2" => {
+                // Set window title
+                if params.len() > 1 {
+                    if let Ok(title) = std::str::from_utf8(params[1]) {
+                        self.screen.title = title.to_string();
+                        self.screen.dirty = true;
+                    }
+                }
+            }
+            "1" => {
+                // Set icon name (treat as title)
+                if params.len() > 1 {
+                    if let Ok(title) = std::str::from_utf8(params[1]) {
+                        self.screen.title = title.to_string();
+                        self.screen.dirty = true;
+                    }
+                }
+            }
+            "7" => {
+                // Current working directory
+                if params.len() > 1 {
+                    if let Ok(uri) = std::str::from_utf8(params[1]) {
+                        // OSC 7 sends file://hostname/path
+                        let path = if let Some(stripped) = uri.strip_prefix("file://") {
+                            // Remove hostname part
+                            if let Some(slash_pos) = stripped.find('/') {
+                                &stripped[slash_pos..]
+                            } else {
+                                stripped
+                            }
+                        } else {
+                            uri
+                        };
+                        self.screen.working_directory = path.to_string();
+                    }
+                }
+            }
+            "52" => {
+                // Clipboard — we'll store but not act on it from Rust side
+                // The Swift side should handle clipboard via pasteboard
+            }
+            _ => {}
+        }
     }
 
     fn csi_dispatch(
@@ -131,10 +178,8 @@ impl<'a> vte::Perform for ScreenPerformer<'a> {
             }
             'S' => {
                 let n = params.first().copied().unwrap_or(1).max(1) as usize;
-                let top = self.screen.scroll_top;
-                let bottom = self.screen.scroll_bottom;
                 for _ in 0..n {
-                    self.screen.active_grid_mut().scroll_up(top, bottom);
+                    self.screen.do_scroll_up();
                 }
                 self.screen.dirty = true;
             }
@@ -338,6 +383,7 @@ impl<'a> ScreenPerformer<'a> {
     }
 
     fn handle_dec_set(&mut self, params: &[u16]) {
+        use crate::terminal::modes::MouseMode;
         for &p in params {
             match p {
                 1 => self.screen.modes.cursor_keys_application = true,
@@ -349,6 +395,11 @@ impl<'a> ScreenPerformer<'a> {
                     self.screen.save_cursor();
                     self.screen.enter_alternate_screen();
                 }
+                9 => self.screen.modes.mouse_tracking = MouseMode::X10,
+                1000 => self.screen.modes.mouse_tracking = MouseMode::Normal,
+                1002 => self.screen.modes.mouse_tracking = MouseMode::Button,
+                1003 => self.screen.modes.mouse_tracking = MouseMode::Any,
+                1006 => self.screen.modes.sgr_mouse = true,
                 2004 => self.screen.modes.bracketed_paste = true,
                 _ => {}
             }
@@ -356,6 +407,7 @@ impl<'a> ScreenPerformer<'a> {
     }
 
     fn handle_dec_reset(&mut self, params: &[u16]) {
+        use crate::terminal::modes::MouseMode;
         for &p in params {
             match p {
                 1 => self.screen.modes.cursor_keys_application = false,
@@ -367,6 +419,8 @@ impl<'a> ScreenPerformer<'a> {
                     self.screen.exit_alternate_screen();
                     self.screen.restore_cursor();
                 }
+                9 | 1000 | 1002 | 1003 => self.screen.modes.mouse_tracking = MouseMode::None,
+                1006 => self.screen.modes.sgr_mouse = false,
                 2004 => self.screen.modes.bracketed_paste = false,
                 _ => {}
             }
