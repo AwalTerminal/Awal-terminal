@@ -1,0 +1,5 @@
+module CAwalTerminal {
+    header "../../../core/include/awalterminal.h"
+    link "awalterminal"
+    export *
+}
