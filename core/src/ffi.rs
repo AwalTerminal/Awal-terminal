@@ -1,8 +1,10 @@
 use crate::io::pty::Pty;
-use crate::terminal::cell::{CCell, Color, default_palette};
+use crate::terminal::cell::{CCell, CellAttrs, Color, default_palette};
 use crate::terminal::parser::Parser;
 use crate::terminal::screen::Screen;
+use std::ffi::CString;
 use std::os::fd::RawFd;
+use std::os::raw::c_char;
 use std::slice;
 
 /// Opaque handle to a terminal surface.
@@ -175,7 +177,7 @@ pub extern "C" fn at_surface_resize(surface: *mut ATSurface, cols: u32, rows: u3
     }
 }
 
-/// Read cells from the screen into the provided buffer.
+/// Read cells from the screen into the provided buffer (viewport-aware).
 /// Buffer must have space for (cols * rows) CCells.
 /// Returns the number of cells written.
 #[no_mangle]
@@ -185,33 +187,74 @@ pub extern "C" fn at_surface_read_cells(
     max_cells: u32,
 ) -> u32 {
     let surface = unsafe { &*surface };
-    let grid = surface.screen.active_grid();
-    let total = grid.rows * grid.cols;
+    let screen = &surface.screen;
+    let rows = screen.rows;
+    let cols = screen.cols;
+    let total = rows * cols;
     let count = total.min(max_cells as usize);
 
     let out_slice = unsafe { slice::from_raw_parts_mut(out, count) };
     let palette = &surface.palette;
 
     let mut idx = 0;
-    for row in 0..grid.rows {
-        for col in 0..grid.cols {
+    for row in 0..rows {
+        for col in 0..cols {
             if idx >= count {
                 return idx as u32;
             }
-            let cell = grid.cell(row, col);
-            let (fg_r, fg_g, fg_b) = cell.fg.to_rgb(palette);
-            let (bg_r, bg_g, bg_b) = if cell.bg == Color::Default {
+            let cell = screen.viewport_cell(row, col);
+
+            // Handle inverse attribute
+            let has_inverse = cell.attrs.contains(CellAttrs::INVERSE);
+            let has_hidden = cell.attrs.contains(CellAttrs::HIDDEN);
+
+            let (mut fg_r, mut fg_g, mut fg_b) = cell.fg.to_rgb(palette);
+            let (mut bg_r, mut bg_g, mut bg_b) = if cell.bg == Color::Default {
                 Color::default_bg_rgb()
             } else {
                 cell.bg.to_rgb(palette)
             };
+
+            if has_inverse {
+                std::mem::swap(&mut fg_r, &mut bg_r);
+                std::mem::swap(&mut fg_g, &mut bg_g);
+                std::mem::swap(&mut fg_b, &mut bg_b);
+            }
+
+            if has_hidden {
+                fg_r = bg_r;
+                fg_g = bg_g;
+                fg_b = bg_b;
+            }
+
+            let fg_a: u8 = if cell.attrs.contains(CellAttrs::DIM) { 128 } else { 255 };
+
+            // Selection highlight: compute absolute row for selection check
+            let abs_row = if screen.viewport_offset == 0 || screen.modes.alternate_screen {
+                row as i64
+            } else {
+                let scrollback_len = screen.scrollback.len();
+                let viewport_start = scrollback_len.saturating_sub(screen.viewport_offset);
+                (viewport_start + row) as i64 - scrollback_len as i64
+            };
+
+            let selected = screen.selection.contains(col, abs_row);
+            if selected {
+                // Invert colors for selection
+                fg_r = 255 - fg_r;
+                fg_g = 255 - fg_g;
+                fg_b = 255 - fg_b;
+                bg_r = 79;
+                bg_g = 70;
+                bg_b = 229;
+            }
 
             out_slice[idx] = CCell {
                 codepoint: cell.ch as u32,
                 fg_r,
                 fg_g,
                 fg_b,
-                fg_a: 255,
+                fg_a,
                 bg_r,
                 bg_g,
                 bg_b,
@@ -266,4 +309,135 @@ pub extern "C" fn at_surface_feed_bytes(
 #[no_mangle]
 pub extern "C" fn at_init_logging() {
     let _ = env_logger::try_init();
+}
+
+// --- Scrollback ---
+
+/// Scroll the viewport by delta lines. Positive = scroll up (into history).
+#[no_mangle]
+pub extern "C" fn at_surface_scroll_viewport(surface: *mut ATSurface, delta: i32) {
+    let surface = unsafe { &mut *surface };
+    surface.screen.scroll_viewport(delta);
+}
+
+/// Get current viewport offset (0 = live, >0 = scrolled into history).
+#[no_mangle]
+pub extern "C" fn at_surface_get_viewport_offset(surface: *const ATSurface) -> i32 {
+    let surface = unsafe { &*surface };
+    surface.screen.viewport_offset as i32
+}
+
+/// Get scrollback buffer length.
+#[no_mangle]
+pub extern "C" fn at_surface_get_scrollback_len(surface: *const ATSurface) -> i32 {
+    let surface = unsafe { &*surface };
+    surface.screen.scrollback.len() as i32
+}
+
+// --- Selection ---
+
+/// Start a selection at grid position.
+#[no_mangle]
+pub extern "C" fn at_surface_start_selection(surface: *mut ATSurface, col: u32, row: i32) {
+    let surface = unsafe { &mut *surface };
+    let sel = &mut surface.screen.selection;
+    sel.start_col = col as usize;
+    sel.start_row = row as i64;
+    sel.end_col = col as usize;
+    sel.end_row = row as i64;
+    sel.active = true;
+    surface.screen.dirty = true;
+}
+
+/// Update selection endpoint.
+#[no_mangle]
+pub extern "C" fn at_surface_update_selection(surface: *mut ATSurface, col: u32, row: i32) {
+    let surface = unsafe { &mut *surface };
+    let sel = &mut surface.screen.selection;
+    sel.end_col = col as usize;
+    sel.end_row = row as i64;
+    surface.screen.dirty = true;
+}
+
+/// Clear the selection.
+#[no_mangle]
+pub extern "C" fn at_surface_clear_selection(surface: *mut ATSurface) {
+    let surface = unsafe { &mut *surface };
+    surface.screen.selection.active = false;
+    surface.screen.dirty = true;
+}
+
+/// Get selected text. Returns a C string that must be freed with `at_free_string`.
+#[no_mangle]
+pub extern "C" fn at_surface_get_selected_text(surface: *const ATSurface) -> *mut c_char {
+    let surface = unsafe { &*surface };
+    let text = surface.screen.get_selected_text();
+    match CString::new(text) {
+        Ok(cs) => cs.into_raw(),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+/// Free a string returned by FFI functions.
+#[no_mangle]
+pub extern "C" fn at_free_string(s: *mut c_char) {
+    if !s.is_null() {
+        unsafe {
+            drop(CString::from_raw(s));
+        }
+    }
+}
+
+// --- Mouse Mode ---
+
+/// Get the current mouse tracking mode (0=none, 1=click, 2=button/drag, 3=any).
+#[no_mangle]
+pub extern "C" fn at_surface_get_mouse_mode(surface: *const ATSurface) -> i32 {
+    let surface = unsafe { &*surface };
+    use crate::terminal::modes::MouseMode;
+    match surface.screen.modes.mouse_tracking {
+        MouseMode::None => 0,
+        MouseMode::X10 => 1,
+        MouseMode::Normal => 1,
+        MouseMode::Button => 2,
+        MouseMode::Any => 3,
+    }
+}
+
+/// Check if SGR mouse mode (1006) is enabled.
+#[no_mangle]
+pub extern "C" fn at_surface_get_sgr_mouse(surface: *const ATSurface) -> bool {
+    let surface = unsafe { &*surface };
+    surface.screen.modes.sgr_mouse
+}
+
+// --- Bracketed Paste ---
+
+/// Check if bracketed paste mode is enabled.
+#[no_mangle]
+pub extern "C" fn at_surface_get_bracketed_paste(surface: *const ATSurface) -> bool {
+    let surface = unsafe { &*surface };
+    surface.screen.modes.bracketed_paste
+}
+
+// --- Title ---
+
+/// Get the terminal title. Returns a C string that must be freed with `at_free_string`.
+#[no_mangle]
+pub extern "C" fn at_surface_get_title(surface: *const ATSurface) -> *mut c_char {
+    let surface = unsafe { &*surface };
+    match CString::new(surface.screen.title.clone()) {
+        Ok(cs) => cs.into_raw(),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+/// Get the working directory (from OSC 7). Returns a C string that must be freed with `at_free_string`.
+#[no_mangle]
+pub extern "C" fn at_surface_get_working_directory(surface: *const ATSurface) -> *mut c_char {
+    let surface = unsafe { &*surface };
+    match CString::new(surface.screen.working_directory.clone()) {
+        Ok(cs) => cs.into_raw(),
+        Err(_) => std::ptr::null_mut(),
+    }
 }

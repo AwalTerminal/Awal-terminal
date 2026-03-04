@@ -93,7 +93,7 @@ void at_surface_resize(struct ATSurface *surface,
                        uint32_t rows);
 
 /**
- * Read cells from the screen into the provided buffer.
+ * Read cells from the screen into the provided buffer (viewport-aware).
  * Buffer must have space for (cols * rows) CCells.
  * Returns the number of cells written.
  */
@@ -126,5 +126,75 @@ void at_surface_feed_bytes(struct ATSurface *surface,
  * Initialize logging (call once at startup).
  */
 void at_init_logging(void);
+
+/**
+ * Scroll the viewport by delta lines. Positive = scroll up (into history).
+ */
+void at_surface_scroll_viewport(struct ATSurface *surface,
+                                int32_t delta);
+
+/**
+ * Get current viewport offset (0 = live, >0 = scrolled into history).
+ */
+int32_t at_surface_get_viewport_offset(const struct ATSurface *surface);
+
+/**
+ * Get scrollback buffer length.
+ */
+int32_t at_surface_get_scrollback_len(const struct ATSurface *surface);
+
+/**
+ * Start a selection at grid position.
+ */
+void at_surface_start_selection(struct ATSurface *surface,
+                                uint32_t col,
+                                int32_t row);
+
+/**
+ * Update selection endpoint.
+ */
+void at_surface_update_selection(struct ATSurface *surface,
+                                 uint32_t col,
+                                 int32_t row);
+
+/**
+ * Clear the selection.
+ */
+void at_surface_clear_selection(struct ATSurface *surface);
+
+/**
+ * Get selected text. Returns a C string that must be freed with `at_free_string`.
+ */
+char *at_surface_get_selected_text(const struct ATSurface *surface);
+
+/**
+ * Free a string returned by FFI functions.
+ */
+void at_free_string(char *s);
+
+/**
+ * Get the current mouse tracking mode (0=none, 1=click, 2=button/drag, 3=any).
+ */
+int32_t at_surface_get_mouse_mode(const struct ATSurface *surface);
+
+/**
+ * Check if SGR mouse mode (1006) is enabled.
+ */
+bool at_surface_get_sgr_mouse(const struct ATSurface *surface);
+
+/**
+ * Check if bracketed paste mode is enabled.
+ */
+bool at_surface_get_bracketed_paste(const struct ATSurface *surface);
+
+/**
+ * Get the terminal title. Returns a C string that must be freed with `at_free_string`.
+ */
+char *at_surface_get_title(const struct ATSurface *surface);
+
+/**
+ * Get the working directory (from OSC 7). Returns a C string that must be freed with `at_free_string`.
+ */
+char *at_surface_get_working_directory(const struct ATSurface *surface);
 
 #endif  /* AWALTERMINAL_H */
