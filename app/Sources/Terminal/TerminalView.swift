@@ -1,17 +1,63 @@
 import AppKit
-import CClaudeTerminal
+import Metal
+import QuartzCore
+import CAwalTerminal
 
 class TerminalView: NSView {
 
-    // MARK: - Properties
+    // MARK: - Menu State
+
+    private enum AppState {
+        case menu
+        case terminal
+    }
+
+    typealias MenuItem = LLMModel
+
+    private enum MenuEntry {
+        case sectionHeader(String)
+        case separator
+        case recentWorkspace(Workspace)
+        case modelItem(MenuItem)
+        case openFolder
+    }
+
+    private enum MenuPhase {
+        case main
+        case pickModel(String) // folder path selected via Open Folder
+    }
+
+    private var appState: AppState = .menu
+    private var menuPhase: MenuPhase = .main
+    private var menuSelection: Int = 0
+    private var menuRendered: Bool = false
+    private var menuEntries: [MenuEntry] = []
+
+    private(set) var activeModelName: String = ""
+    private(set) var activeProvider: String = ""
+
+    // Callbacks for status bar updates
+    var onSessionChanged: ((_ model: String, _ provider: String, _ cols: Int, _ rows: Int) -> Void)?
+    var onShellSpawned: ((_ pid: pid_t) -> Void)?
+    var onFocused: ((_ terminal: TerminalView) -> Void)?
+
+    // Deferred launch for new panes (set before adding to window)
+    var pendingLaunchModel: MenuItem?
+    var pendingLaunchDir: String?
+
+    var modelItems: [LLMModel] { ModelCatalog.all }
+
+    // MARK: - Terminal Properties
 
     private var surface: OpaquePointer?
     private var readSource: DispatchSourceRead?
     private var displayLink: CVDisplayLink?
 
-    private let cellWidth: CGFloat = 8.0
-    private let cellHeight: CGFloat = 16.0
+    private let cellWidth: CGFloat
+    private let cellHeight: CGFloat
     private let font: NSFont
+    private let boldFont: NSFont
+    private let baselineOffset: CGFloat
 
     private var termCols: UInt32 = 80
     private var termRows: UInt32 = 24
@@ -23,25 +69,43 @@ class TerminalView: NSView {
     private var cursorBlinkOn: Bool = true
     private var cursorBlinkTimer: Timer?
 
+    // MARK: - Metal Properties
+
+    private var metalLayer: CAMetalLayer!
+    private var renderer: MetalRenderer!
+    private var needsRender: Bool = true
+
     // MARK: - Init
 
     override init(frame: NSRect) {
-        self.font = NSFont.monospacedSystemFont(ofSize: 13.0, weight: .regular)
+        let fontSize: CGFloat = 13.0
+        self.font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
+        self.boldFont = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .bold)
 
-        // Calculate cell size from font metrics
+        // Cell size from CTFont: advance width + ascent/descent/leading
+        let ctFont = self.font as CTFont
+        let ascent = CTFontGetAscent(ctFont)
+        let descent = CTFontGetDescent(ctFont)
+        let leading = CTFontGetLeading(ctFont)
+        var glyph: CGGlyph = 0
+        var advance = CGSize.zero
+        let mChar: UniChar = 0x4D // 'M'
+        CTFontGetGlyphsForCharacters(ctFont, [mChar], &glyph, 1)
+        CTFontGetAdvancesForGlyphs(ctFont, .horizontal, [glyph], &advance, 1)
+        self.cellWidth = ceil(advance.width)
+        self.cellHeight = ceil(ascent + descent + leading)
+        self.baselineOffset = descent
+
         super.init(frame: frame)
 
         wantsLayer = true
-        layer?.backgroundColor = NSColor(red: 30.0/255.0, green: 30.0/255.0, blue: 30.0/255.0, alpha: 1.0).cgColor
 
-        // Create the terminal surface
-        surface = ct_surface_new(termCols, termRows)
+        surface = at_surface_new(termCols, termRows)
         cellBuffer = [CCell](repeating: CCell(), count: Int(termCols * termRows))
 
-        // Set up cursor blink timer
         cursorBlinkTimer = Timer.scheduledTimer(withTimeInterval: 0.6, repeats: true) { [weak self] _ in
             self?.cursorBlinkOn.toggle()
-            self?.setNeedsDisplay(self?.bounds ?? .zero)
+            self?.needsRender = true
         }
     }
 
@@ -56,8 +120,65 @@ class TerminalView: NSView {
             source.cancel()
         }
         if let s = surface {
-            ct_surface_destroy(s)
+            at_surface_destroy(s)
         }
+    }
+
+    // MARK: - Layer Setup (Metal)
+
+    override func makeBackingLayer() -> CALayer {
+        guard let device = MTLCreateSystemDefaultDevice() else {
+            fatalError("Metal is not supported on this device")
+        }
+
+        let layer = CAMetalLayer()
+        layer.device = device
+        layer.pixelFormat = .bgra8Unorm
+        layer.framebufferOnly = true
+        layer.contentsScale = NSScreen.main?.backingScaleFactor ?? 2.0
+        layer.backgroundColor = NSColor(red: 30.0/255.0, green: 30.0/255.0, blue: 30.0/255.0, alpha: 1.0).cgColor
+
+        self.metalLayer = layer
+        let scale = NSScreen.main?.backingScaleFactor ?? 2.0
+        self.renderer = MetalRenderer(
+            device: device,
+            font: font,
+            boldFont: boldFont,
+            cellWidth: cellWidth,
+            cellHeight: cellHeight,
+            scale: scale
+        )
+
+        return layer
+    }
+
+    // MARK: - Factory
+
+    static func createTerminalPane(model: MenuItem, workingDir: String?) -> TerminalView {
+        let view = TerminalView(frame: .zero)
+        view.pendingLaunchModel = model
+        view.pendingLaunchDir = workingDir
+        view.appState = .terminal
+        return view
+    }
+
+    // MARK: - Focus
+
+    func setFocused(_ focused: Bool) {
+        guard let layer = layer else { return }
+        if focused {
+            layer.borderWidth = 1.0
+            layer.borderColor = NSColor(red: 79.0/255.0, green: 70.0/255.0, blue: 229.0/255.0, alpha: 1.0).cgColor
+        } else {
+            layer.borderWidth = 0.0
+            layer.borderColor = nil
+        }
+    }
+
+    var surfacePointer: OpaquePointer? { surface }
+
+    var currentModel: LLMModel? {
+        ModelCatalog.find(activeModelName)
     }
 
     // MARK: - View Lifecycle
@@ -65,14 +186,427 @@ class TerminalView: NSView {
     override var acceptsFirstResponder: Bool { true }
     override var canBecomeKeyView: Bool { true }
 
+    override func mouseDown(with event: NSEvent) {
+        window?.makeFirstResponder(self)
+        onFocused?(self)
+        super.mouseDown(with: event)
+    }
+
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        updateBackingScale()
         recalculateGridSize()
+        if appState == .menu && !menuRendered {
+            buildMenuEntries()
+            moveToFirstSelectable()
+            renderMenu()
+        }
+        // Deferred launch happens in setFrameSize once we have real dimensions
+        if window != nil {
+            startDisplayLink()
+        } else {
+            stopDisplayLink()
+        }
+    }
+
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        updateBackingScale()
     }
 
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
+        updateMetalLayerSize()
         recalculateGridSize()
+        if appState == .menu {
+            renderMenu()
+        }
+        // Deferred launch: wait until we have real dimensions so the PTY gets the correct size.
+        // Post to next run loop iteration to ensure layout is fully complete.
+        if appState == .terminal, pendingLaunchModel != nil, newSize.width > 0 && newSize.height > 0 {
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self, let model = self.pendingLaunchModel else { return }
+                self.pendingLaunchModel = nil
+                let dir = self.pendingLaunchDir
+                self.pendingLaunchDir = nil
+                self.recalculateGridSize()
+                self.launchSession(model: model, workingDir: dir)
+            }
+        }
+    }
+
+    private func updateBackingScale() {
+        let scale = window?.backingScaleFactor ?? 2.0
+        metalLayer?.contentsScale = scale
+        updateMetalLayerSize()
+    }
+
+    private func updateMetalLayerSize() {
+        guard let layer = metalLayer else { return }
+        let size = bounds.size
+        guard size.width > 0 && size.height > 0 else { return }
+        let scale = window?.backingScaleFactor ?? layer.contentsScale
+        layer.drawableSize = CGSize(width: size.width * scale, height: size.height * scale)
+        needsRender = true
+    }
+
+    // MARK: - Menu Entry Building
+
+    private func buildMenuEntries() {
+        menuEntries = []
+
+        switch menuPhase {
+        case .main:
+            let recents = WorkspaceStore.shared.recents()
+            if !recents.isEmpty {
+                menuEntries.append(.sectionHeader("Recent Workspaces"))
+                for ws in recents {
+                    menuEntries.append(.recentWorkspace(ws))
+                }
+                menuEntries.append(.separator)
+            }
+
+            menuEntries.append(.sectionHeader("New Session"))
+            for item in modelItems {
+                menuEntries.append(.modelItem(item))
+            }
+            menuEntries.append(.separator)
+            menuEntries.append(.openFolder)
+
+        case .pickModel:
+            for item in modelItems {
+                menuEntries.append(.modelItem(item))
+            }
+        }
+    }
+
+    private func isSelectable(_ entry: MenuEntry) -> Bool {
+        switch entry {
+        case .sectionHeader, .separator:
+            return false
+        default:
+            return true
+        }
+    }
+
+    private func moveSelection(by delta: Int) {
+        let count = menuEntries.count
+        guard count > 0 else { return }
+
+        var next = menuSelection
+        for _ in 0..<count {
+            next = (next + delta + count) % count
+            if isSelectable(menuEntries[next]) {
+                menuSelection = next
+                return
+            }
+        }
+    }
+
+    private func moveToFirstSelectable() {
+        for (i, entry) in menuEntries.enumerated() {
+            if isSelectable(entry) {
+                menuSelection = i
+                return
+            }
+        }
+    }
+
+    // MARK: - TUI Menu
+
+    private func renderMenu() {
+        guard let s = surface else { return }
+
+        let cols = Int(termCols)
+        let rows = Int(termRows)
+
+        var out = ""
+        out += "\u{1b}[2J"     // clear screen
+        out += "\u{1b}[?25l"   // hide cursor
+        out += "\u{1b}[H"      // home
+
+        // Calculate total visible lines
+        let titleLines = 3 // title + subtitle + blank
+        let entryLines = menuEntries.count
+        let hintLines = 2  // blank + hint
+        let totalLines = titleLines + entryLines + hintLines
+        let startRow = max(1, (rows - totalLines) / 2)
+
+        // Title
+        let title = "Awal Terminal"
+        let titlePad = max(0, (cols - title.count) / 2)
+        out += "\u{1b}[\(startRow);1H"
+        out += "\u{1b}[1;37m"
+        out += String(repeating: " ", count: titlePad) + title
+        out += "\u{1b}[0m"
+
+        // Subtitle
+        let subtitle: String
+        switch menuPhase {
+        case .main:
+            subtitle = "Select a workspace"
+        case .pickModel(let path):
+            subtitle = "Select a model for \(shortenPath(path))"
+        }
+        let subPad = max(0, (cols - subtitle.count) / 2)
+        out += "\u{1b}[\(startRow + 1);1H"
+        out += "\u{1b}[90m"
+        out += String(repeating: " ", count: subPad) + subtitle
+        out += "\u{1b}[0m"
+
+        // Menu entries
+        let itemWidth = 44
+        let itemStart = max(0, (cols - itemWidth) / 2)
+        let itemPadStr = String(repeating: " ", count: itemStart)
+
+        for (i, entry) in menuEntries.enumerated() {
+            let row = startRow + titleLines + i
+            out += "\u{1b}[\(row);1H"
+
+            switch entry {
+            case .sectionHeader(let text):
+                out += itemPadStr
+                out += "\u{1b}[1;90m"
+                out += " \(text)"
+                out += "\u{1b}[0m"
+
+            case .separator:
+                let sep = String(repeating: "─", count: itemWidth)
+                out += "\u{1b}[90m"
+                out += itemPadStr + sep
+                out += "\u{1b}[0m"
+
+            case .recentWorkspace(let ws):
+                let isSelected = i == menuSelection
+                let arrow = isSelected ? "▸" : " "
+                let pathStr = shortenPath(ws.path)
+                let modelStr = ws.lastModel
+                let maxPathLen = itemWidth - 6 - modelStr.count
+                let truncPath = pathStr.count > maxPathLen
+                    ? String(pathStr.prefix(maxPathLen - 1)) + "…"
+                    : pathStr
+                let nameField = truncPath.padding(toLength: max(maxPathLen, 1), withPad: " ", startingAt: 0)
+
+                if isSelected {
+                    out += itemPadStr
+                    out += "\u{1b}[48;2;79;70;229m"
+                    out += "\u{1b}[1;37m"
+                    out += " \(arrow) \(nameField)"
+                    out += "\u{1b}[0;37m"
+                    out += "\u{1b}[48;2;79;70;229m"
+                    out += " \(modelStr) "
+                    out += "\u{1b}[0m"
+                } else {
+                    out += itemPadStr
+                    out += "\u{1b}[37m"
+                    out += " \(arrow) \(nameField)"
+                    out += "\u{1b}[90m"
+                    out += " \(modelStr) "
+                    out += "\u{1b}[0m"
+                }
+
+            case .modelItem(let item):
+                let isSelected = i == menuSelection
+                let arrow = isSelected ? "▸" : " "
+                let nameField = item.name.padding(toLength: 14, withPad: " ", startingAt: 0)
+                let providerField = item.provider
+
+                if isSelected {
+                    out += itemPadStr
+                    out += "\u{1b}[48;2;79;70;229m"
+                    out += "\u{1b}[1;37m"
+                    out += " \(arrow) \(nameField)"
+                    out += "\u{1b}[0;37m"
+                    out += "\u{1b}[48;2;79;70;229m"
+                    let provPad = itemWidth - 4 - nameField.count - providerField.count
+                    out += String(repeating: " ", count: max(1, provPad))
+                    out += providerField + " "
+                    out += "\u{1b}[0m"
+                } else {
+                    out += itemPadStr
+                    out += "\u{1b}[37m"
+                    out += " \(arrow) \(nameField)"
+                    out += "\u{1b}[90m"
+                    let provPad = itemWidth - 4 - nameField.count - providerField.count
+                    out += String(repeating: " ", count: max(1, provPad))
+                    out += providerField + " "
+                    out += "\u{1b}[0m"
+                }
+
+            case .openFolder:
+                let isSelected = i == menuSelection
+                let arrow = isSelected ? "▸" : " "
+                let text = "Open Folder..."
+
+                if isSelected {
+                    out += itemPadStr
+                    out += "\u{1b}[48;2;79;70;229m"
+                    out += "\u{1b}[1;37m"
+                    out += " \(arrow) \(text)"
+                    let pad = itemWidth - 4 - text.count
+                    out += String(repeating: " ", count: max(1, pad))
+                    out += " "
+                    out += "\u{1b}[0m"
+                } else {
+                    out += itemPadStr
+                    out += "\u{1b}[37m"
+                    out += " \(arrow) \(text)"
+                    out += "\u{1b}[0m"
+                }
+            }
+        }
+
+        // Footer hint
+        let hint: String
+        switch menuPhase {
+        case .main:
+            hint = "↑↓/jk Navigate  ⏎ Select  o Open Folder  Esc Shell"
+        case .pickModel:
+            hint = "↑↓/jk Navigate  ⏎ Select  Esc Back"
+        }
+        let hintPad = max(0, (cols - hint.count) / 2)
+        let hintRow = startRow + titleLines + menuEntries.count + 1
+        out += "\u{1b}[\(hintRow);1H"
+        out += "\u{1b}[90m"
+        out += String(repeating: " ", count: hintPad) + hint
+        out += "\u{1b}[0m"
+
+        // Feed to parser
+        let bytes = Array(out.utf8)
+        bytes.withUnsafeBufferPointer { ptr in
+            at_surface_feed_bytes(s, ptr.baseAddress!, UInt32(ptr.count))
+        }
+
+        menuRendered = true
+        updateCellBuffer()
+        needsRender = true
+    }
+
+    private func handleSelection() {
+        guard menuSelection < menuEntries.count else { return }
+
+        let entry = menuEntries[menuSelection]
+        switch entry {
+        case .recentWorkspace(let ws):
+            let model = modelItems.first { $0.name == ws.lastModel } ?? modelItems[0]
+            launchSession(model: model, workingDir: ws.path)
+
+        case .modelItem(let item):
+            switch menuPhase {
+            case .main:
+                launchSession(model: item, workingDir: nil)
+            case .pickModel(let folder):
+                launchSession(model: item, workingDir: folder)
+            }
+
+        case .openFolder:
+            showFolderPicker()
+
+        default:
+            break
+        }
+    }
+
+    private func launchSession(model: MenuItem, workingDir: String?) {
+        guard let s = surface else { return }
+
+        activeModelName = model.name
+        activeProvider = model.provider
+        appState = .terminal
+
+        // Clear screen, show cursor, reset
+        let reset = "\u{1b}[2J\u{1b}[H\u{1b}[?25h\u{1b}[0m"
+        let resetBytes = Array(reset.utf8)
+        resetBytes.withUnsafeBufferPointer { ptr in
+            at_surface_feed_bytes(s, ptr.baseAddress!, UInt32(ptr.count))
+        }
+
+        recalculateGridSize()
+
+        // Save workspace
+        if let dir = workingDir {
+            WorkspaceStore.shared.save(path: dir, model: model.name)
+        }
+
+        // Build the full command to execute
+        var modelCmd = model.command
+        if !modelCmd.isEmpty, let bin = model.binaryName, let install = model.installCommand {
+            modelCmd = "command -v \(bin) >/dev/null 2>&1 || { echo \"Installing \(model.name)...\"; \(install); } && \(model.command)"
+        }
+
+        let hasCommand = !modelCmd.isEmpty
+
+        if hasCommand {
+            // Spawn shell with -c to run the command directly (no interactive prompt)
+            var parts: [String] = []
+            if let dir = workingDir {
+                parts.append("cd \"\(dir)\"")
+            }
+            parts.append(modelCmd)
+            let fullCmd = parts.joined(separator: " && ")
+
+            let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
+            let result = shell.withCString { shellPtr in
+                fullCmd.withCString { cmdPtr in
+                    at_surface_spawn_command(s, shellPtr, cmdPtr)
+                }
+            }
+            if result != 0 {
+                NSLog("Failed to spawn command, falling back to shell")
+                spawnShell()
+            }
+        } else {
+            // Plain shell (no model command)
+            spawnShell()
+            if let dir = workingDir {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                    guard let s = self?.surface else { return }
+                    let cmd = "cd \"\(dir)\" && clear\n"
+                    let cmdBytes = Array(cmd.utf8)
+                    cmdBytes.withUnsafeBufferPointer { ptr in
+                        _ = at_surface_key_event(s, ptr.baseAddress!, UInt32(ptr.count))
+                    }
+                }
+            }
+        }
+
+        setupPtyReader()
+        onSessionChanged?(model.name, model.provider, Int(termCols), Int(termRows))
+    }
+
+    private func showFolderPicker() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Open"
+        panel.message = "Select a workspace folder"
+
+        guard let window = self.window else { return }
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let url = panel.url else { return }
+            self?.menuPhase = .pickModel(url.path)
+            self?.buildMenuEntries()
+            self?.moveToFirstSelectable()
+            self?.renderMenu()
+        }
+    }
+
+    func changeDirectory(_ path: String) {
+        guard let s = surface, appState == .terminal else { return }
+        let cmd = "cd \"\(path)\" && clear\n"
+        let cmdBytes = Array(cmd.utf8)
+        cmdBytes.withUnsafeBufferPointer { ptr in
+            _ = at_surface_key_event(s, ptr.baseAddress!, UInt32(ptr.count))
+        }
+    }
+
+    private func shortenPath(_ path: String) -> String {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        if path.hasPrefix(home) {
+            return "~" + path.dropFirst(home.count)
+        }
+        return path
     }
 
     // MARK: - Shell & PTY
@@ -82,7 +616,7 @@ class TerminalView: NSView {
 
         let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
         let result = shell.withCString { cstr in
-            ct_surface_spawn_shell(s, cstr)
+            at_surface_spawn_shell(s, cstr)
         }
 
         if result != 0 {
@@ -90,13 +624,18 @@ class TerminalView: NSView {
             return
         }
 
-        let fd = ct_surface_get_fd(s)
+        setupPtyReader()
+    }
+
+    private func setupPtyReader() {
+        guard let s = surface else { return }
+
+        let fd = at_surface_get_fd(s)
         if fd < 0 {
             NSLog("Invalid PTY fd")
             return
         }
 
-        // Set up GCD source to read from PTY
         let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: .main)
         source.setEventHandler { [weak self] in
             self?.readPTY()
@@ -104,22 +643,26 @@ class TerminalView: NSView {
         source.setCancelHandler { }
         source.resume()
         self.readSource = source
+
+        let childPid = at_surface_get_child_pid(s)
+        if childPid > 0 {
+            onShellSpawned?(pid_t(childPid))
+        }
     }
 
     private func readPTY() {
         guard let s = surface else { return }
 
         var totalRead: Int32 = 0
-        // Read in a loop to drain the buffer
         while true {
-            let n = ct_surface_process_pty(s)
+            let n = at_surface_process_pty(s)
             if n <= 0 { break }
             totalRead += n
         }
 
         if totalRead > 0 {
             updateCellBuffer()
-            setNeedsDisplay(bounds)
+            needsRender = true
         }
     }
 
@@ -134,10 +677,13 @@ class TerminalView: NSView {
         if newCols != termCols || newRows != termRows {
             termCols = newCols
             termRows = newRows
-            ct_surface_resize(s, termCols, termRows)
+            at_surface_resize(s, termCols, termRows)
             cellBuffer = [CCell](repeating: CCell(), count: Int(termCols * termRows))
             updateCellBuffer()
-            setNeedsDisplay(bounds)
+            needsRender = true
+            if appState == .terminal {
+                onSessionChanged?(activeModelName, activeProvider, Int(termCols), Int(termRows))
+            }
         }
     }
 
@@ -150,151 +696,161 @@ class TerminalView: NSView {
         }
 
         cellBuffer.withUnsafeMutableBufferPointer { ptr in
-            _ = ct_surface_read_cells(s, ptr.baseAddress!, UInt32(needed))
+            _ = at_surface_read_cells(s, ptr.baseAddress!, UInt32(needed))
         }
 
         var row: UInt32 = 0
         var col: UInt32 = 0
         var visible: Bool = true
-        ct_surface_get_cursor(s, &row, &col, &visible)
+        at_surface_get_cursor(s, &row, &col, &visible)
         cursorRow = row
         cursorCol = col
         cursorVisible = visible
     }
 
-    // MARK: - Drawing
+    // MARK: - Metal Rendering (Display Link)
 
-    override func draw(_ dirtyRect: NSRect) {
-        guard let ctx = NSGraphicsContext.current?.cgContext else { return }
+    private func renderFrame() {
+        guard needsRender else { return }
+        guard let layer = metalLayer else { return }
+        let drawableSize = layer.drawableSize
+        guard drawableSize.width > 0 && drawableSize.height > 0 else { return }
+        guard let drawable = layer.nextDrawable() else { return }
 
-        let bgColor = CGColor(red: 30.0/255.0, green: 30.0/255.0, blue: 30.0/255.0, alpha: 1.0)
-        ctx.setFillColor(bgColor)
-        ctx.fill(bounds)
+        needsRender = false
 
-        let totalCells = Int(termCols * termRows)
-        guard cellBuffer.count >= totalCells else { return }
+        let viewportSize = layer.drawableSize
 
-        // Draw cells
-        for row in 0..<Int(termRows) {
-            for col in 0..<Int(termCols) {
-                let idx = row * Int(termCols) + col
-                let cell = cellBuffer[idx]
+        cellBuffer.withUnsafeBufferPointer { ptr in
+            guard let baseAddress = ptr.baseAddress else { return }
+            renderer.render(
+                cells: baseAddress,
+                cellCount: cellBuffer.count,
+                gridCols: Int(termCols),
+                gridRows: Int(termRows),
+                cursorRow: Int(cursorRow),
+                cursorCol: Int(cursorCol),
+                cursorVisible: cursorVisible,
+                cursorBlinkOn: cursorBlinkOn,
+                drawable: drawable,
+                viewportSize: CGSize(width: viewportSize.width, height: viewportSize.height),
+                scale: layer.contentsScale
+            )
+        }
+    }
 
-                // Cell rect (origin at top-left, but NSView is flipped=false so bottom-left)
-                let x = CGFloat(col) * cellWidth
-                let y = bounds.height - CGFloat(row + 1) * cellHeight
+    private func startDisplayLink() {
+        guard displayLink == nil else { return }
 
-                // Draw background
-                let bgR = CGFloat(cell.bg_r) / 255.0
-                let bgG = CGFloat(cell.bg_g) / 255.0
-                let bgB = CGFloat(cell.bg_b) / 255.0
-                let cellBg = CGColor(red: bgR, green: bgG, blue: bgB, alpha: 1.0)
+        var link: CVDisplayLink?
+        CVDisplayLinkCreateWithActiveCGDisplays(&link)
+        guard let dl = link else { return }
 
-                // Only draw non-default backgrounds
-                if cell.bg_r != 30 || cell.bg_g != 30 || cell.bg_b != 30 {
-                    ctx.setFillColor(cellBg)
-                    ctx.fill(CGRect(x: x, y: y, width: cellWidth, height: cellHeight))
-                }
-
-                // Draw character
-                let codepoint = cell.codepoint
-                guard codepoint > 32, let scalar = Unicode.Scalar(codepoint) else { continue }
-
-                let ch = String(Character(scalar))
-                let fgR = CGFloat(cell.fg_r) / 255.0
-                let fgG = CGFloat(cell.fg_g) / 255.0
-                let fgB = CGFloat(cell.fg_b) / 255.0
-
-                let isBold = (cell.attrs & 0x01) != 0
-                let drawFont = isBold
-                    ? NSFont.monospacedSystemFont(ofSize: 13.0, weight: .bold)
-                    : font
-
-                let attrs: [NSAttributedString.Key: Any] = [
-                    .font: drawFont,
-                    .foregroundColor: NSColor(red: fgR, green: fgG, blue: fgB, alpha: 1.0),
-                ]
-
-                let str = NSAttributedString(string: ch, attributes: attrs)
-                str.draw(at: NSPoint(x: x, y: y))
+        let callback: CVDisplayLinkOutputCallback = { _, _, _, _, _, userInfo -> CVReturn in
+            let view = Unmanaged<TerminalView>.fromOpaque(userInfo!).takeUnretainedValue()
+            DispatchQueue.main.async {
+                view.renderFrame()
             }
+            return kCVReturnSuccess
         }
 
-        // Draw cursor
-        if cursorVisible && cursorBlinkOn {
-            let cx = CGFloat(cursorCol) * cellWidth
-            let cy = bounds.height - CGFloat(cursorRow + 1) * cellHeight
-            let cursorRect = CGRect(x: cx, y: cy, width: cellWidth, height: cellHeight)
+        CVDisplayLinkSetOutputCallback(dl, callback, Unmanaged.passUnretained(self).toOpaque())
+        CVDisplayLinkStart(dl)
+        self.displayLink = dl
 
-            ctx.setFillColor(CGColor(red: 0.8, green: 0.8, blue: 0.8, alpha: 0.7))
-            ctx.fill(cursorRect)
+        // Render the first frame immediately
+        needsRender = true
+        renderFrame()
+    }
 
-            // Redraw the character under cursor with inverted color
-            let idx = Int(cursorRow) * Int(termCols) + Int(cursorCol)
-            if idx < cellBuffer.count {
-                let cell = cellBuffer[idx]
-                let codepoint = cell.codepoint
-                if codepoint > 32, let scalar = Unicode.Scalar(codepoint) {
-                    let ch = String(Character(scalar))
-                    let attrs: [NSAttributedString.Key: Any] = [
-                        .font: font,
-                        .foregroundColor: NSColor(red: 30.0/255.0, green: 30.0/255.0, blue: 30.0/255.0, alpha: 1.0),
-                    ]
-                    let str = NSAttributedString(string: ch, attributes: attrs)
-                    str.draw(at: NSPoint(x: cx, y: cy))
-                }
-            }
+    private func stopDisplayLink() {
+        if let dl = displayLink {
+            CVDisplayLinkStop(dl)
+            displayLink = nil
         }
     }
 
     // MARK: - Keyboard Input
 
     override func keyDown(with event: NSEvent) {
-        guard let s = surface else { return }
+        switch appState {
+        case .menu:
+            handleMenuKey(event)
+        case .terminal:
+            handleTerminalKey(event)
+        }
+    }
 
-        // Reset cursor blink on keypress
-        cursorBlinkOn = true
+    private func handleMenuKey(_ event: NSEvent) {
+        switch event.keyCode {
+        case 126: // Up arrow
+            moveSelection(by: -1)
+            renderMenu()
+        case 125: // Down arrow
+            moveSelection(by: 1)
+            renderMenu()
+        case 36: // Return
+            handleSelection()
+        case 53: // Escape
+            switch menuPhase {
+            case .main:
+                // Launch Shell directly
+                let shellItem = modelItems.last!
+                launchSession(model: shellItem, workingDir: nil)
+            case .pickModel:
+                // Go back to main menu
+                menuPhase = .main
+                buildMenuEntries()
+                moveToFirstSelectable()
+                renderMenu()
+            }
+        default:
+            if let chars = event.characters {
+                switch chars {
+                case "j":
+                    moveSelection(by: 1)
+                    renderMenu()
+                case "k":
+                    moveSelection(by: -1)
+                    renderMenu()
+                case "o":
+                    if case .main = menuPhase {
+                        showFolderPicker()
+                    }
+                default:
+                    break
+                }
+            }
+        }
+    }
+
+    private func handleTerminalKey(_ event: NSEvent) {
+        guard let s = surface else { return }
 
         let bytes: [UInt8]
 
         if let chars = event.characters, !chars.isEmpty {
             let modFlags = event.modifierFlags
 
-            // Handle special keys
             switch event.keyCode {
-            case 36: // Return
-                bytes = [0x0D]
-            case 48: // Tab
-                bytes = [0x09]
-            case 51: // Backspace
-                bytes = [0x7F]
-            case 53: // Escape
-                bytes = [0x1B]
-            case 123: // Left arrow
-                bytes = [0x1B, 0x5B, 0x44]
-            case 124: // Right arrow
-                bytes = [0x1B, 0x5B, 0x43]
-            case 125: // Down arrow
-                bytes = [0x1B, 0x5B, 0x42]
-            case 126: // Up arrow
-                bytes = [0x1B, 0x5B, 0x41]
-            case 115: // Home
-                bytes = [0x1B, 0x5B, 0x48]
-            case 119: // End
-                bytes = [0x1B, 0x5B, 0x46]
-            case 116: // Page Up
-                bytes = [0x1B, 0x5B, 0x35, 0x7E]
-            case 121: // Page Down
-                bytes = [0x1B, 0x5B, 0x36, 0x7E]
-            case 117: // Delete (forward)
-                bytes = [0x1B, 0x5B, 0x33, 0x7E]
+            case 36: bytes = [0x0D]
+            case 48: bytes = [0x09]
+            case 51: bytes = [0x7F]
+            case 53: bytes = [0x1B]
+            case 123: bytes = [0x1B, 0x5B, 0x44]
+            case 124: bytes = [0x1B, 0x5B, 0x43]
+            case 125: bytes = [0x1B, 0x5B, 0x42]
+            case 126: bytes = [0x1B, 0x5B, 0x41]
+            case 115: bytes = [0x1B, 0x5B, 0x48]
+            case 119: bytes = [0x1B, 0x5B, 0x46]
+            case 116: bytes = [0x1B, 0x5B, 0x35, 0x7E]
+            case 121: bytes = [0x1B, 0x5B, 0x36, 0x7E]
+            case 117: bytes = [0x1B, 0x5B, 0x33, 0x7E]
             default:
                 if modFlags.contains(.control) {
-                    // Control key combinations
                     if let firstChar = chars.unicodeScalars.first {
                         let value = firstChar.value
                         if value >= 0x61 && value <= 0x7A {
-                            // Ctrl+a through Ctrl+z
                             bytes = [UInt8(value - 0x60)]
                         } else if value >= 0x41 && value <= 0x5A {
                             bytes = [UInt8(value - 0x40)]
@@ -305,7 +861,6 @@ class TerminalView: NSView {
                         return
                     }
                 } else if modFlags.contains(.option) {
-                    // Alt/Option key — send ESC prefix
                     let charBytes = Array(chars.utf8)
                     bytes = [0x1B] + charBytes
                 } else {
@@ -317,21 +872,9 @@ class TerminalView: NSView {
         }
 
         bytes.withUnsafeBufferPointer { ptr in
-            _ = ct_surface_key_event(s, ptr.baseAddress!, UInt32(ptr.count))
+            _ = at_surface_key_event(s, ptr.baseAddress!, UInt32(ptr.count))
         }
     }
 
-    override func flagsChanged(with event: NSEvent) {
-        // No-op — modifier-only changes don't send bytes
-    }
-
-    // MARK: - Display Link (unused for now, ready for Metal)
-
-    private func startDisplayLink() {
-        // Will be used for Metal rendering in Phase 1
-    }
-
-    private func stopDisplayLink() {
-        // Will be used for Metal rendering in Phase 1
-    }
+    override func flagsChanged(with event: NSEvent) {}
 }
