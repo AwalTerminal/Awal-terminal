@@ -21,7 +21,21 @@
       "Bash(grep -r \"claude-terminal\\\\|ClaudeTerminal\\\\|claude_terminal\" /Users/brahim/Projects/Workspace/Code/claude-terminal --include=\"*.md\" 2>/dev/null | head -20)",
       "Bash(cd /Users/brahim/Projects/Workspace/Code/claude-terminal/app && swift build 2>&1)",
       "Bash(cd /Users/brahim/Projects/Workspace/Code/claude-terminal/core && cargo build 2>&1)",
-      "Bash(swift build --package-path app 2>&1 | tail -3)"
+      "Bash(swift build --package-path app 2>&1 | tail -3)",
+      "Bash(find /Users/brahim/Projects/Workspace/Code/claude-terminal/app/.build -name \"*.png\" -o -name \"*.icns\" -o -name \"*.ico\" 2>/dev/null | head -20)",
+      "Bash(find /Users/brahim/Projects/Workspace/Code/claude-terminal -path \"*/.build\" -prune -o -type d -name \"Assets\" -o -type d -name \"Resources\" 2>/dev/null | grep -v \".build\")",
+      "Bash(find /Users/brahim/Projects/Workspace/Code/claude-terminal -type f \\\\\\( -name \"*.icns\" -o -name \"*.png\" -o -name \"*.svg\" -o -name \"*.pdf\" \\\\\\) 2>/dev/null | head -30)",
+      "WebFetch(domain:samasaur1.github.io)",
+      "Bash(python3 -c \"import cairosvg; print\\('cairosvg available'\\)\" 2>&1 || echo \"cairosvg not available\")",
+      "Bash(brew list librsvg 2>&1 | head -5; echo \"---\"; brew list cairo 2>&1 | head -5)",
+      "Bash(python3 -c \"import PIL; print\\('Pillow available, version:', PIL.__version__\\)\" 2>&1 || echo \"Pillow not available\")",
+      "Bash(/usr/bin/qlmanage -h 2>&1 | head -3)",
+      "Bash(python3 -c \"import subprocess; print\\('subprocess OK'\\)\" 2>&1)",
+      "Bash(/usr/bin/qlmanage -t -s 1024 -o /dev/null /dev/null 2>&1 | head -5)",
+      "Bash(chmod +x /Users/brahim/Projects/Workspace/Code/claude-terminal/scripts/generate-icon.sh && /Users/brahim/Projects/Workspace/Code/claude-terminal/scripts/generate-icon.sh)",
+      "Bash(git commit -m \"$\\(cat <<'EOF'\nAdd app icon with Tifinagh lettermark\n\nAdd the ⴰⵡⴰⵍ Tifinagh icon as the app icon, replacing the default\nmacOS executable icon. Includes a generation script that uses sips and\niconutil to produce the .icns from a 1024x1024 source PNG.\nEOF\n\\)\")",
+      "Bash(sips -s format png \"/Users/brahim/Downloads/Assets.xcassets/AppIcon.appiconset/1024-mac.png\" --out /Users/brahim/Projects/Workspace/Code/claude-terminal/app/Sources/App/Resources/AppIcon-source.png 2>&1)",
+      "Bash(git add app/Sources/App/Resources/AppIcon-source.png app/Sources/App/Resources/AppIcon.icns scripts/generate-icon.sh && git commit --amend --no-edit)"
     ]
   }
 }
