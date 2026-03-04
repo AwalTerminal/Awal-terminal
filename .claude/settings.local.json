@@ -13,7 +13,15 @@
       "Bash(cargo install cbindgen 2>&1 | tail -5)",
       "Bash(cargo build 2>&1)",
       "Bash(cargo info nix 2>&1 | grep -i \"feature\")",
-      "WebFetch(domain:docs.rs)"
+      "WebFetch(domain:docs.rs)",
+      "WebFetch(domain:friendsofmorocco.org)",
+      "Bash(find /Users/brahim/Projects/Workspace/Code/claude-terminal -type f \\\\\\( -name \"README*\" -o -name \"*.md\" \\\\\\) 2>/dev/null | head -20)",
+      "Bash(find /Users/brahim/Projects/Workspace/Code/claude-terminal -type f -name \"justfile\" -o -name \"*.toml\" 2>/dev/null | grep -v target)",
+      "Bash(find /Users/brahim/Projects/Workspace/Code/claude-terminal -type f -name \".*\" -not -path \"*/.*/*\" 2>/dev/null | head -30)",
+      "Bash(grep -r \"claude-terminal\\\\|ClaudeTerminal\\\\|claude_terminal\" /Users/brahim/Projects/Workspace/Code/claude-terminal --include=\"*.md\" 2>/dev/null | head -20)",
+      "Bash(cd /Users/brahim/Projects/Workspace/Code/claude-terminal/app && swift build 2>&1)",
+      "Bash(cd /Users/brahim/Projects/Workspace/Code/claude-terminal/core && cargo build 2>&1)",
+      "Bash(swift build --package-path app 2>&1 | tail -3)"
     ]
   }
 }

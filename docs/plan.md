@@ -1,4 +1,4 @@
-# claude-terminal — LLM-Native Terminal Emulator
+# awal-terminal — LLM-Native Terminal Emulator
 
 ## Context
 
@@ -22,10 +22,10 @@ Current terminal emulators (iTerm2, Ghostty, Alacritty) are general-purpose tool
 ## Project Structure
 
 ```
-claude-terminal/
+awal-terminal/
   justfile                          # Build orchestration
 
-  core/                             # Rust library (libclaudeterminal)
+  core/                             # Rust library (libawalterminal)
     Cargo.toml
     build.rs                        # Compile Metal shaders, generate C header
     src/
@@ -81,13 +81,13 @@ claude-terminal/
       cursor.metal                  # Cursor overlay
       image.metal                   # Image rendering (Kitty protocol)
     include/
-      claudeterminal.h              # Generated C header for Swift
+      awalterminal.h              # Generated C header for Swift
 
   app/                              # Swift macOS application
     Package.swift
     Sources/
       App/
-        ClaudeTerminalApp.swift     # @main, NSApplicationDelegate
+        AwalTerminalApp.swift     # @main, NSApplicationDelegate
       Window/
         TerminalWindowController.swift
         QuickTerminal.swift         # Dropdown terminal (global hotkey)
@@ -123,14 +123,16 @@ Communication via lock-free MPSC channels; shared mutex on terminal state (locke
 ## Phased Development
 
 ### Phase 0: Foundation (MVP — working terminal)
-- [ ] Set up project structure (Cargo.toml, Package.swift, justfile, cbindgen)
-- [ ] PTY creation + process spawning in Rust (`io/pty.rs`)
-- [ ] Integrate `vte` crate for escape sequence parsing
-- [ ] Basic screen buffer (primary + alternate)
-- [ ] C FFI surface: `ct_surface_new()`, `ct_surface_key_event()`, `ct_surface_read_cells()`
-- [ ] AppKit window with NSView rendering text via CoreGraphics (pre-Metal proof of concept)
-- [ ] Wire keyboard input: Swift → FFI → Rust → PTY write
-- **Result**: Window running `/bin/zsh` with basic text I/O
+- [x] Set up project structure (Cargo.toml, Package.swift, justfile, cbindgen)
+- [x] PTY creation + process spawning in Rust (`io/pty.rs`)
+- [x] Integrate `vte` crate for escape sequence parsing
+- [x] Basic screen buffer (primary + alternate)
+- [x] C FFI surface: `at_surface_new()`, `at_surface_key_event()`, `at_surface_read_cells()`
+- [x] AppKit window with NSView rendering text via CoreGraphics (pre-Metal proof of concept)
+- [x] Wire keyboard input: Swift → FFI → Rust → PTY write
+- [x] LLM launcher menu: TUI-rendered model selector (Claude, ChatGPT, Gemini, Grok, Codex, Copilot, Llama, DeepSeek) with ↑↓/jk navigation, rendered via `at_surface_feed_bytes()` directly into the VT parser
+- [x] Clean inherited environment (CLAUDECODE, CLAUDE_CODE_ENTRYPOINT) so LLM CLIs can launch without nesting errors
+- **Result**: Window with LLM launcher menu → select model → terminal running chosen CLI
 
 ### Phase 1: GPU Rendering
 - [ ] Replace CoreGraphics with Metal pipeline (`CAMetalLayer` in TerminalView)
@@ -153,7 +155,7 @@ Communication via lock-free MPSC channels; shared mutex on terminal state (locke
 - **Result**: Full terminal emulator, works with vim/tmux/htop
 
 ### Phase 3: Native macOS Polish
-- [ ] Tab bar, split panes, multiple windows
+- [x] Tab bar, split panes, multiple windows
 - [ ] Quick terminal (dropdown from menu bar via global hotkey)
 - [ ] Font ligature + Nerd Font support
 - [ ] TOML theme system with light/dark mode switching
@@ -196,7 +198,7 @@ Communication via lock-free MPSC channels; shared mutex on terminal state (locke
 ## Key Technical Challenges
 
 ### 1. Rust ↔ Swift FFI
-Stable C API via `cbindgen`. Opaque pointer handles (`ct_surface_t*`). Shared memory buffers for screen state (Rust writes, Swift reads — zero-copy per frame). Metal resources created in Swift, raw pointers passed to Rust.
+Stable C API via `cbindgen`. Opaque pointer handles (`at_surface_t*`). Shared memory buffers for screen state (Rust writes, Swift reads — zero-copy per frame). Metal resources created in Swift, raw pointers passed to Rust.
 
 ### 2. AI Output Detection (without modifying Claude Code)
 Pattern-based detection on the parsed terminal stream: Claude Code uses consistent ANSI-colored markers. Also monitor `~/.claude/projects/*/` JSONL files for structured data. Heuristic confidence scoring — only high-confidence detections trigger UI changes.
