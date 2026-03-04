@@ -6,6 +6,7 @@ import CoreGraphics
 struct GlyphKey: Hashable {
     let codepoint: UInt32
     let bold: Bool
+    let italic: Bool
 }
 
 struct GlyphInfo {
@@ -29,12 +30,20 @@ final class GlyphAtlas {
 
     private let font: CTFont
     private let boldFont: CTFont
+    private let italicFont: CTFont
+    private let boldItalicFont: CTFont
     private let scale: CGFloat
 
     init(device: MTLDevice, font: NSFont, boldFont: NSFont, scale: CGFloat) {
         self.font = font as CTFont
         self.boldFont = boldFont as CTFont
         self.scale = scale
+
+        // Create italic variants
+        let italicDesc = font.fontDescriptor.withSymbolicTraits(.italic)
+        self.italicFont = NSFont(descriptor: italicDesc, size: font.pointSize) as CTFont? ?? font as CTFont
+        let boldItalicDesc = boldFont.fontDescriptor.withSymbolicTraits([.bold, .italic])
+        self.boldItalicFont = NSFont(descriptor: boldItalicDesc, size: boldFont.pointSize) as CTFont? ?? boldFont as CTFont
 
         let desc = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: .r8Unorm,
@@ -58,8 +67,8 @@ final class GlyphAtlas {
         }
     }
 
-    func lookup(codepoint: UInt32, bold: Bool, device: MTLDevice) -> GlyphInfo? {
-        let key = GlyphKey(codepoint: codepoint, bold: bold)
+    func lookup(codepoint: UInt32, bold: Bool, italic: Bool = false, device: MTLDevice) -> GlyphInfo? {
+        let key = GlyphKey(codepoint: codepoint, bold: bold, italic: italic)
         if let info = cache[key] {
             return info
         }
@@ -69,7 +78,16 @@ final class GlyphAtlas {
     private func rasterize(key: GlyphKey) -> GlyphInfo? {
         guard let scalar = Unicode.Scalar(key.codepoint) else { return nil }
 
-        let ctFont = key.bold ? boldFont : font
+        let ctFont: CTFont
+        if key.bold && key.italic {
+            ctFont = boldItalicFont
+        } else if key.bold {
+            ctFont = boldFont
+        } else if key.italic {
+            ctFont = italicFont
+        } else {
+            ctFont = font
+        }
         let ch = String(Character(scalar))
         let attrStr = NSAttributedString(string: ch, attributes: [
             .font: ctFont as NSFont
