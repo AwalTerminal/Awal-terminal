@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use crate::terminal::cell::{Cell, CellAttrs, Color};
 use crate::terminal::modes::TerminalModes;
 use unicode_width::UnicodeWidthChar;
@@ -152,7 +154,7 @@ pub struct Screen {
     pub rows: usize,
     pub dirty: bool,
     pub tab_stops: Vec<bool>,
-    pub scrollback: Vec<Vec<Cell>>,
+    pub scrollback: VecDeque<Vec<Cell>>,
     pub scrollback_limit: usize,
     pub viewport_offset: usize,
     pub selection: Selection,
@@ -179,7 +181,7 @@ impl Screen {
             rows,
             dirty: true,
             tab_stops,
-            scrollback: Vec::new(),
+            scrollback: VecDeque::new(),
             scrollback_limit: 10_000,
             viewport_offset: 0,
             selection: Selection::new(),
@@ -444,6 +446,7 @@ impl Screen {
         self.alternate.resize(cols, rows);
         self.cols = cols;
         self.rows = rows;
+        self.scroll_top = 0;
         self.scroll_bottom = rows;
         if self.cursor.row >= rows {
             self.cursor.row = rows - 1;
@@ -492,9 +495,9 @@ impl Screen {
 
         if let Some(removed) = self.active_grid_mut().scroll_up(top, bottom) {
             if is_primary && full_region {
-                self.scrollback.push(removed);
+                self.scrollback.push_back(removed);
                 if self.scrollback.len() > self.scrollback_limit {
-                    self.scrollback.remove(0);
+                    self.scrollback.pop_front();
                 }
                 // If user is scrolled up, keep their viewport stable
                 if self.viewport_offset > 0 {
@@ -557,7 +560,7 @@ impl Screen {
             self.viewport_offset = (self.viewport_offset + delta as usize).min(max_offset);
         } else {
             // Scroll down (toward live)
-            let abs_delta = (-delta) as usize;
+            let abs_delta = delta.unsigned_abs() as usize;
             self.viewport_offset = self.viewport_offset.saturating_sub(abs_delta);
         }
         self.dirty = true;
@@ -632,33 +635,42 @@ impl Screen {
         if query.is_empty() {
             return Vec::new();
         }
-        let query_lower = query.to_lowercase();
+        let query_chars: Vec<char> = query.chars().flat_map(|c| c.to_lowercase()).collect();
         let mut results = Vec::new();
 
         // Search scrollback
         for (sb_idx, line) in self.scrollback.iter().enumerate() {
-            let text: String = line.iter().map(|c| c.ch).collect();
-            let text_lower = text.to_lowercase();
+            let line_chars: Vec<char> = line.iter().map(|c| c.ch).collect();
             let abs_row = sb_idx as i64 - self.scrollback.len() as i64;
-            for (byte_pos, _) in text_lower.match_indices(&query_lower) {
-                // Convert byte position to char position
-                let col = text[..byte_pos].chars().count();
-                results.push((col, abs_row));
-            }
+            Self::find_char_matches(&line_chars, &query_chars, abs_row, &mut results);
         }
 
         // Search active grid
         let grid = self.active_grid();
         for row in 0..grid.rows {
-            let text: String = grid.cells[row].iter().map(|c| c.ch).collect();
-            let text_lower = text.to_lowercase();
-            for (byte_pos, _) in text_lower.match_indices(&query_lower) {
-                let col = text[..byte_pos].chars().count();
-                results.push((col, row as i64));
-            }
+            let line_chars: Vec<char> = grid.cells[row].iter().map(|c| c.ch).collect();
+            Self::find_char_matches(&line_chars, &query_chars, row as i64, &mut results);
         }
 
         results
+    }
+
+    /// Find all occurrences of query_chars in line_chars (case-insensitive, char-based).
+    fn find_char_matches(
+        line_chars: &[char],
+        query_chars: &[char],
+        abs_row: i64,
+        results: &mut Vec<(usize, i64)>,
+    ) {
+        if query_chars.is_empty() || line_chars.len() < query_chars.len() {
+            return;
+        }
+        let lower_line: Vec<char> = line_chars.iter().flat_map(|c| c.to_lowercase()).collect();
+        for col in 0..=lower_line.len() - query_chars.len() {
+            if lower_line[col..col + query_chars.len()] == *query_chars {
+                results.push((col, abs_row));
+            }
+        }
     }
 
     pub fn set_scroll_region(&mut self, top: usize, bottom: usize) {
