@@ -81,6 +81,10 @@ final class MetalRenderer {
     private let cellWidth: CGFloat
     private let cellHeight: CGFloat
 
+    // Theme colors
+    let clearColor: MTLClearColor
+    let cursorColor: (UInt8, UInt8, UInt8, UInt8)
+
     // Shader source embedded inline for reliable runtime compilation
     private static let shaderSource: String = """
     #include <metal_stdlib>
@@ -251,10 +255,28 @@ final class MetalRenderer {
         }
     }
 
-    init(device: MTLDevice, font: NSFont, boldFont: NSFont, cellWidth: CGFloat, cellHeight: CGFloat, scale: CGFloat) {
+    init(device: MTLDevice, font: NSFont, boldFont: NSFont, cellWidth: CGFloat, cellHeight: CGFloat, scale: CGFloat, bgColor: NSColor? = nil, cursorColor cursorNSColor: NSColor? = nil) {
         self.device = device
         self.cellWidth = cellWidth
         self.cellHeight = cellHeight
+
+        // Theme colors — convert to sRGB to safely access r/g/b components
+        let bg = (bgColor ?? AppConfig.shared.themeBg).usingColorSpace(.sRGB)
+            ?? NSColor(red: 30/255, green: 30/255, blue: 30/255, alpha: 1)
+        self.clearColor = MTLClearColor(
+            red: Double(bg.redComponent),
+            green: Double(bg.greenComponent),
+            blue: Double(bg.blueComponent),
+            alpha: 1.0
+        )
+        let cc = (cursorNSColor ?? AppConfig.shared.themeCursor).usingColorSpace(.sRGB)
+            ?? NSColor(red: 0.8, green: 0.8, blue: 0.8, alpha: 0.7)
+        self.cursorColor = (
+            UInt8(cc.redComponent * 255),
+            UInt8(cc.greenComponent * 255),
+            UInt8(cc.blueComponent * 255),
+            UInt8(cc.alphaComponent * 255)
+        )
         self.commandQueue = device.makeCommandQueue()!
         self.frameSemaphore = DispatchSemaphore(value: maxInflightFrames)
 
@@ -378,8 +400,11 @@ final class MetalRenderer {
 
                 let isWideSpacer = (cell.attrs & 0x0200) != 0
 
-                // Background: skip default bg (30, 30, 30) — matches clear color
-                if cell.bg_r != 30 || cell.bg_g != 30 || cell.bg_b != 30 {
+                // Background: skip cells matching clear color
+                let clearR = UInt8(clearColor.red * 255)
+                let clearG = UInt8(clearColor.green * 255)
+                let clearB = UInt8(clearColor.blue * 255)
+                if cell.bg_r != clearR || cell.bg_g != clearG || cell.bg_b != clearB {
                     bgInstances.append(BgInstance(
                         posX: Float(col), posY: Float(row),
                         r: cell.bg_r, g: cell.bg_g, b: cell.bg_b, a: cell.bg_a
@@ -439,7 +464,7 @@ final class MetalRenderer {
         if cursorVisible && cursorBlinkOn {
             bgInstances.append(BgInstance(
                 posX: Float(cursorCol), posY: Float(cursorRow),
-                r: 204, g: 204, b: 204, a: 178
+                r: cursorColor.0, g: cursorColor.1, b: cursorColor.2, a: cursorColor.3
             ))
         }
 
@@ -476,9 +501,7 @@ final class MetalRenderer {
         passDesc.colorAttachments[0].texture = drawable.texture
         passDesc.colorAttachments[0].loadAction = .clear
         passDesc.colorAttachments[0].storeAction = .store
-        passDesc.colorAttachments[0].clearColor = MTLClearColor(
-            red: 30.0/255.0, green: 30.0/255.0, blue: 30.0/255.0, alpha: 1.0
-        )
+        passDesc.colorAttachments[0].clearColor = clearColor
 
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: passDesc) else {
             frameSemaphore.signal()

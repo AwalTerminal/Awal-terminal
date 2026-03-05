@@ -5,6 +5,7 @@ pub struct Cell {
     pub fg: Color,
     pub bg: Color,
     pub attrs: CellAttrs,
+    pub hyperlink: Option<String>,
 }
 
 impl Default for Cell {
@@ -14,6 +15,7 @@ impl Default for Cell {
             fg: Color::Default,
             bg: Color::Default,
             attrs: CellAttrs::empty(),
+            hyperlink: None,
         }
     }
 }
@@ -24,6 +26,7 @@ impl Cell {
         self.fg = Color::Default;
         self.bg = Color::Default;
         self.attrs = CellAttrs::empty();
+        self.hyperlink = None;
     }
 }
 

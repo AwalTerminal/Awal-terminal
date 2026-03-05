@@ -81,6 +81,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         shellMenu.addItem(NSMenuItem.separator())
 
+        let findItem = NSMenuItem(title: "Find…", action: #selector(TerminalWindowController.findInTerminal(_:)), keyEquivalent: "f")
+        shellMenu.addItem(findItem)
+
+        shellMenu.addItem(NSMenuItem.separator())
+
         let splitRightItem = NSMenuItem(title: "Split Right", action: #selector(TerminalWindowController.splitRight(_:)), keyEquivalent: "d")
         shellMenu.addItem(splitRightItem)
 

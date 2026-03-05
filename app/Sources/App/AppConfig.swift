@@ -1,0 +1,181 @@
+import AppKit
+
+/// Application configuration loaded from ~/.config/awal/config.toml
+struct AppConfig {
+
+    // Font
+    var fontFamily: String = ""
+    var fontSize: CGFloat = 13.0
+
+    // Theme colors
+    var themeBg: NSColor = NSColor(red: 30/255, green: 30/255, blue: 30/255, alpha: 1)
+    var themeFg: NSColor = NSColor(white: 0.85, alpha: 1)
+    var themeCursor: NSColor = NSColor(red: 0.8, green: 0.8, blue: 0.8, alpha: 0.7)
+    var themeSelection: NSColor = NSColor(red: 99/255, green: 102/255, blue: 241/255, alpha: 0.3)
+    var themeAccent: NSColor = NSColor(red: 99/255, green: 102/255, blue: 241/255, alpha: 1)
+    var themeTabBarBg: NSColor = NSColor(red: 22/255, green: 22/255, blue: 22/255, alpha: 1)
+    var themeTabActiveBg: NSColor = NSColor(red: 35/255, green: 35/255, blue: 35/255, alpha: 1)
+    var themeStatusBarBg: NSColor = NSColor(red: 22/255, green: 22/255, blue: 22/255, alpha: 1)
+
+    // ANSI colors (0-15)
+    var ansiColors: [NSColor] = defaultAnsiColors
+
+    // Keybindings: action -> key combo string
+    var keybindings: [String: String] = [:]
+
+    static let shared = load()
+
+    private static let configDir = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent(".config/awal")
+    private static let configFile = configDir.appendingPathComponent("config.toml")
+
+    static func load() -> AppConfig {
+        var config = AppConfig()
+
+        guard let contents = try? String(contentsOf: configFile, encoding: .utf8) else {
+            return config
+        }
+
+        let parsed = parseToml(contents)
+
+        // Font
+        if let family = parsed["font.family"] {
+            config.fontFamily = family
+        }
+        if let sizeStr = parsed["font.size"], let size = Double(sizeStr) {
+            config.fontSize = CGFloat(size)
+        }
+
+        // Theme colors
+        if let v = parsed["theme.bg"] { config.themeBg = parseColor(v) ?? config.themeBg }
+        if let v = parsed["theme.fg"] { config.themeFg = parseColor(v) ?? config.themeFg }
+        if let v = parsed["theme.cursor"] { config.themeCursor = parseColor(v) ?? config.themeCursor }
+        if let v = parsed["theme.selection"] { config.themeSelection = parseColor(v) ?? config.themeSelection }
+        if let v = parsed["theme.accent"] { config.themeAccent = parseColor(v) ?? config.themeAccent }
+        if let v = parsed["theme.tab_bar_bg"] { config.themeTabBarBg = parseColor(v) ?? config.themeTabBarBg }
+        if let v = parsed["theme.tab_active_bg"] { config.themeTabActiveBg = parseColor(v) ?? config.themeTabActiveBg }
+        if let v = parsed["theme.status_bar_bg"] { config.themeStatusBarBg = parseColor(v) ?? config.themeStatusBarBg }
+
+        // ANSI colors
+        for i in 0..<16 {
+            if let v = parsed["colors.\(i)"], let c = parseColor(v) {
+                config.ansiColors[i] = c
+            }
+        }
+
+        // Keybindings
+        for (key, value) in parsed where key.hasPrefix("keybindings.") {
+            let action = String(key.dropFirst("keybindings.".count))
+            config.keybindings[action] = value
+        }
+
+        return config
+    }
+
+    // MARK: - Font Resolution
+
+    var resolvedFont: NSFont {
+        if fontFamily.isEmpty {
+            return NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
+        }
+        if let font = NSFont(name: fontFamily, size: fontSize) {
+            return font
+        }
+        // Try matching by family name
+        if let font = NSFont(descriptor: NSFontDescriptor(fontAttributes: [
+            .family: fontFamily
+        ]), size: fontSize) {
+            return font
+        }
+        return NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
+    }
+
+    var resolvedBoldFont: NSFont {
+        if fontFamily.isEmpty {
+            return NSFont.monospacedSystemFont(ofSize: fontSize, weight: .bold)
+        }
+        let regular = resolvedFont
+        let boldDesc = regular.fontDescriptor.withSymbolicTraits(.bold)
+        return NSFont(descriptor: boldDesc, size: fontSize) ?? NSFont.monospacedSystemFont(ofSize: fontSize, weight: .bold)
+    }
+
+    // MARK: - Minimal TOML Parser
+
+    /// Parse a TOML file into flat key-value pairs with dotted keys (e.g. "font.family" -> "JetBrains Mono")
+    private static func parseToml(_ text: String) -> [String: String] {
+        var result: [String: String] = [:]
+        var currentSection = ""
+
+        for rawLine in text.split(separator: "\n", omittingEmptySubsequences: false) {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+
+            // Skip comments and empty lines
+            if line.isEmpty || line.hasPrefix("#") { continue }
+
+            // Section header
+            if line.hasPrefix("[") && line.hasSuffix("]") {
+                currentSection = String(line.dropFirst().dropLast()).trimmingCharacters(in: .whitespaces)
+                continue
+            }
+
+            // Key = value
+            guard let eqIdx = line.firstIndex(of: "=") else { continue }
+            let key = line[line.startIndex..<eqIdx].trimmingCharacters(in: .whitespaces)
+            var value = line[line.index(after: eqIdx)...].trimmingCharacters(in: .whitespaces)
+
+            // Strip quotes
+            if (value.hasPrefix("\"") && value.hasSuffix("\"")) ||
+               (value.hasPrefix("'") && value.hasSuffix("'")) {
+                value = String(value.dropFirst().dropLast())
+            }
+
+            // Strip inline comments
+            if let hashIdx = value.firstIndex(of: "#") {
+                // Only if preceded by whitespace (not inside value)
+                let before = value[value.startIndex..<hashIdx]
+                if before.last == " " || before.last == "\t" {
+                    value = before.trimmingCharacters(in: .whitespaces)
+                }
+            }
+
+            let fullKey = currentSection.isEmpty ? key : "\(currentSection).\(key)"
+            result[fullKey] = value
+        }
+
+        return result
+    }
+
+    /// Parse a hex color string like "#1e1e1e" or "1e1e1e" into NSColor
+    private static func parseColor(_ hex: String) -> NSColor? {
+        var h = hex.trimmingCharacters(in: .whitespaces)
+        if h.hasPrefix("#") { h = String(h.dropFirst()) }
+        guard h.count == 6, let val = UInt32(h, radix: 16) else { return nil }
+        let r = CGFloat((val >> 16) & 0xFF) / 255.0
+        let g = CGFloat((val >> 8) & 0xFF) / 255.0
+        let b = CGFloat(val & 0xFF) / 255.0
+        return NSColor(red: r, green: g, blue: b, alpha: 1.0)
+    }
+
+    // MARK: - Default ANSI Colors
+
+    private static let defaultAnsiColors: [NSColor] = [
+        // Standard 0-7
+        NSColor(red: 0x1e/255, green: 0x1e/255, blue: 0x1e/255, alpha: 1), // 0 black
+        NSColor(red: 0xf7/255, green: 0x76/255, blue: 0x8e/255, alpha: 1), // 1 red
+        NSColor(red: 0xa6/255, green: 0xe2/255, blue: 0x2e/255, alpha: 1), // 2 green
+        NSColor(red: 0xe6/255, green: 0xdb/255, blue: 0x74/255, alpha: 1), // 3 yellow
+        NSColor(red: 0x66/255, green: 0xd9/255, blue: 0xef/255, alpha: 1), // 4 blue
+        NSColor(red: 0xae/255, green: 0x81/255, blue: 0xff/255, alpha: 1), // 5 magenta
+        NSColor(red: 0xa1/255, green: 0xef/255, blue: 0xe4/255, alpha: 1), // 6 cyan
+        NSColor(red: 0xf8/255, green: 0xf8/255, blue: 0xf2/255, alpha: 1), // 7 white
+        // Bright 8-15
+        NSColor(red: 0x75/255, green: 0x71/255, blue: 0x5e/255, alpha: 1), // 8 bright black
+        NSColor(red: 0xf7/255, green: 0x76/255, blue: 0x8e/255, alpha: 1), // 9 bright red
+        NSColor(red: 0xa6/255, green: 0xe2/255, blue: 0x2e/255, alpha: 1), // 10 bright green
+        NSColor(red: 0xe6/255, green: 0xdb/255, blue: 0x74/255, alpha: 1), // 11 bright yellow
+        NSColor(red: 0x66/255, green: 0xd9/255, blue: 0xef/255, alpha: 1), // 12 bright blue
+        NSColor(red: 0xae/255, green: 0x81/255, blue: 0xff/255, alpha: 1), // 13 bright magenta
+        NSColor(red: 0xa1/255, green: 0xef/255, blue: 0xe4/255, alpha: 1), // 14 bright cyan
+        NSColor(red: 0xf9/255, green: 0xf8/255, blue: 0xf5/255, alpha: 1), // 15 bright white
+    ]
+}

@@ -80,12 +80,18 @@ class TerminalView: NSView {
     private var needsRender: Bool = true
     private var currentScale: CGFloat = NSScreen.main?.backingScaleFactor ?? 2.0
 
+    // MARK: - Search State
+
+    private var searchBar: SearchBarView?
+    private var searchResults: [(col: Int, row: Int32)] = []
+    private var currentSearchIndex: Int = 0
+
     // MARK: - Init
 
     override init(frame: NSRect) {
-        let fontSize: CGFloat = 13.0
-        self.font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
-        self.boldFont = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .bold)
+        let config = AppConfig.shared
+        self.font = config.resolvedFont
+        self.boldFont = config.resolvedBoldFont
 
         // Cell size from CTFont: advance width + ascent/descent/leading
         let ctFont = self.font as CTFont
@@ -144,7 +150,7 @@ class TerminalView: NSView {
         layer.pixelFormat = .bgra8Unorm
         layer.framebufferOnly = true
         layer.contentsScale = NSScreen.main?.backingScaleFactor ?? 2.0
-        layer.backgroundColor = NSColor(red: 30.0/255.0, green: 30.0/255.0, blue: 30.0/255.0, alpha: 1.0).cgColor
+        layer.backgroundColor = AppConfig.shared.themeBg.cgColor
 
         self.metalLayer = layer
         let scale = NSScreen.main?.backingScaleFactor ?? 2.0
@@ -1090,6 +1096,19 @@ class TerminalView: NSView {
         }
 
         let (col, row) = gridPosition(for: event)
+
+        // Cmd+click: open hyperlink
+        if event.modifierFlags.contains(.command) {
+            let urlPtr = at_surface_get_hyperlink(s, UInt32(col), UInt32(row))
+            if let urlPtr, let urlStr = String(cString: urlPtr, encoding: .utf8) {
+                at_free_string(urlPtr)
+                if let url = URL(string: urlStr) {
+                    NSWorkspace.shared.open(url)
+                    return
+                }
+            }
+        }
+
         let mouseMode = at_surface_get_mouse_mode(s)
 
         if mouseMode > 0 {
@@ -1299,5 +1318,128 @@ class TerminalView: NSView {
         // Wrap in single quotes, escaping any internal single quotes
         let escaped = path.replacingOccurrences(of: "'", with: "'\\''")
         return "'\(escaped)'"
+    }
+
+    // MARK: - Search
+
+    func toggleSearch() {
+        if searchBar != nil {
+            closeSearch()
+        } else {
+            openSearch()
+        }
+    }
+
+    private func openSearch() {
+        guard searchBar == nil else { return }
+
+        let bar = SearchBarView()
+        bar.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(bar)
+
+        NSLayoutConstraint.activate([
+            bar.topAnchor.constraint(equalTo: topAnchor, constant: 8),
+            bar.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+        ])
+
+        bar.onClose = { [weak self] in
+            self?.closeSearch()
+        }
+        bar.onSearchChanged = { [weak self] query in
+            self?.performSearch(query)
+        }
+        bar.onNextMatch = { [weak self] in
+            self?.navigateSearch(forward: true)
+        }
+        bar.onPrevMatch = { [weak self] in
+            self?.navigateSearch(forward: false)
+        }
+
+        searchBar = bar
+        bar.activate()
+    }
+
+    private func closeSearch() {
+        searchBar?.removeFromSuperview()
+        searchBar = nil
+        searchResults = []
+        currentSearchIndex = 0
+        window?.makeFirstResponder(self)
+        needsRender = true
+    }
+
+    private func performSearch(_ query: String) {
+        guard let s = surface else { return }
+        searchResults = []
+        currentSearchIndex = 0
+
+        if query.isEmpty {
+            searchBar?.updateMatchCount(current: 0, total: 0)
+            return
+        }
+
+        var results = [ATSearchResult](repeating: ATSearchResult(col: 0, row: 0), count: 1000)
+        let count = query.withCString { cQuery in
+            results.withUnsafeMutableBufferPointer { buf in
+                at_surface_search(s, cQuery, buf.baseAddress!, UInt32(buf.count))
+            }
+        }
+
+        searchResults = (0..<Int(count)).map { i in
+            (col: Int(results[i].col), row: results[i].row)
+        }
+
+        if !searchResults.isEmpty {
+            // Find the closest result to current viewport
+            let viewportOffset = at_surface_get_viewport_offset(s)
+            let scrollbackLen = at_surface_get_scrollback_len(s)
+            let viewportTopRow = Int32(-scrollbackLen + (scrollbackLen - viewportOffset))
+            var closest = 0
+            var closestDist = Int32.max
+            for (i, result) in searchResults.enumerated() {
+                let dist = abs(result.row - viewportTopRow)
+                if dist < closestDist {
+                    closestDist = dist
+                    closest = i
+                }
+            }
+            currentSearchIndex = closest
+        }
+
+        searchBar?.updateMatchCount(current: searchResults.isEmpty ? 0 : currentSearchIndex + 1,
+                                     total: searchResults.count)
+        scrollToCurrentMatch()
+    }
+
+    private func navigateSearch(forward: Bool) {
+        guard !searchResults.isEmpty else { return }
+        if forward {
+            currentSearchIndex = (currentSearchIndex + 1) % searchResults.count
+        } else {
+            currentSearchIndex = (currentSearchIndex - 1 + searchResults.count) % searchResults.count
+        }
+        searchBar?.updateMatchCount(current: currentSearchIndex + 1, total: searchResults.count)
+        scrollToCurrentMatch()
+    }
+
+    private func scrollToCurrentMatch() {
+        guard let s = surface, !searchResults.isEmpty else { return }
+
+        let match = searchResults[currentSearchIndex]
+        let scrollbackLen = at_surface_get_scrollback_len(s)
+
+        if match.row < 0 {
+            // Match is in scrollback — scroll viewport to show it
+            let sbIndex = Int(scrollbackLen) + Int(match.row)
+            let offset = Int(scrollbackLen) - sbIndex
+            // Reset viewport then set
+            at_surface_scroll_viewport(s, Int32(-10000)) // go to bottom
+            at_surface_scroll_viewport(s, Int32(offset))  // scroll up
+        } else {
+            // Match is on screen — just go to live view
+            at_surface_scroll_viewport(s, Int32(-10000))
+        }
+
+        needsRender = true
     }
 }

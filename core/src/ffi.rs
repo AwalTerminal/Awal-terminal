@@ -441,3 +441,59 @@ pub extern "C" fn at_surface_get_working_directory(surface: *const ATSurface) ->
         Err(_) => std::ptr::null_mut(),
     }
 }
+
+// --- Hyperlinks ---
+
+/// Get the hyperlink URL for a cell at the given viewport position.
+/// Returns null if no hyperlink. Caller must free with `at_free_string`.
+#[no_mangle]
+pub extern "C" fn at_surface_get_hyperlink(
+    surface: *const ATSurface,
+    col: u32,
+    row: u32,
+) -> *mut c_char {
+    let surface = unsafe { &*surface };
+    let cell = surface.screen.viewport_cell(row as usize, col as usize);
+    match &cell.hyperlink {
+        Some(url) => match CString::new(url.as_str()) {
+            Ok(cs) => cs.into_raw(),
+            Err(_) => std::ptr::null_mut(),
+        },
+        None => std::ptr::null_mut(),
+    }
+}
+
+// --- Search ---
+
+/// Search result entry.
+#[repr(C)]
+pub struct ATSearchResult {
+    pub col: u32,
+    pub row: i32, // negative = scrollback
+}
+
+/// Search scrollback + screen for a query string.
+/// Writes results into `out`, returns the number of results written (up to max_results).
+#[no_mangle]
+pub extern "C" fn at_surface_search(
+    surface: *const ATSurface,
+    query: *const c_char,
+    out: *mut ATSearchResult,
+    max_results: u32,
+) -> u32 {
+    let surface = unsafe { &*surface };
+    if query.is_null() || out.is_null() {
+        return 0;
+    }
+    let query_str = unsafe { std::ffi::CStr::from_ptr(query).to_str().unwrap_or("") };
+    let results = surface.screen.search(query_str);
+    let count = results.len().min(max_results as usize);
+    let out_slice = unsafe { slice::from_raw_parts_mut(out, count) };
+    for (i, (col, row)) in results.iter().take(count).enumerate() {
+        out_slice[i] = ATSearchResult {
+            col: *col as u32,
+            row: *row as i32,
+        };
+    }
+    count as u32
+}

@@ -158,6 +158,7 @@ pub struct Screen {
     pub selection: Selection,
     pub title: String,
     pub working_directory: String,
+    pub current_hyperlink: Option<String>,
 }
 
 impl Screen {
@@ -184,6 +185,7 @@ impl Screen {
             selection: Selection::new(),
             title: String::new(),
             working_directory: String::new(),
+            current_hyperlink: None,
         }
     }
 
@@ -241,11 +243,13 @@ impl Screen {
             attrs.insert(CellAttrs::WIDE);
         }
 
+        let hyperlink = self.current_hyperlink.clone();
         let cell = self.active_grid_mut().cell_mut(row, col);
         cell.ch = ch;
         cell.fg = fg;
         cell.bg = bg;
         cell.attrs = attrs;
+        cell.hyperlink = hyperlink;
         self.cursor.col += 1;
 
         // For wide characters, place a spacer in the next cell
@@ -524,6 +528,7 @@ impl Screen {
                     fg: Color::Default,
                     bg: Color::Default,
                     attrs: CellAttrs::empty(),
+                    hyperlink: None,
                 };
                 &DEFAULT_CELL
             }
@@ -538,6 +543,7 @@ impl Screen {
                     fg: Color::Default,
                     bg: Color::Default,
                     attrs: CellAttrs::empty(),
+                    hyperlink: None,
                 };
                 &DEFAULT_CELL
             }
@@ -598,6 +604,7 @@ impl Screen {
             fg: Color::Default,
             bg: Color::Default,
             attrs: CellAttrs::empty(),
+            hyperlink: None,
         };
         let scrollback_len = self.scrollback.len() as i64;
         if abs_row < 0 {
@@ -617,6 +624,41 @@ impl Screen {
         } else {
             &DEFAULT_CELL
         }
+    }
+
+    /// Search scrollback + screen for a query string. Returns (col, absolute_row) pairs.
+    /// Absolute row: negative = scrollback, 0+ = screen row.
+    pub fn search(&self, query: &str) -> Vec<(usize, i64)> {
+        if query.is_empty() {
+            return Vec::new();
+        }
+        let query_lower = query.to_lowercase();
+        let mut results = Vec::new();
+
+        // Search scrollback
+        for (sb_idx, line) in self.scrollback.iter().enumerate() {
+            let text: String = line.iter().map(|c| c.ch).collect();
+            let text_lower = text.to_lowercase();
+            let abs_row = sb_idx as i64 - self.scrollback.len() as i64;
+            for (byte_pos, _) in text_lower.match_indices(&query_lower) {
+                // Convert byte position to char position
+                let col = text[..byte_pos].chars().count();
+                results.push((col, abs_row));
+            }
+        }
+
+        // Search active grid
+        let grid = self.active_grid();
+        for row in 0..grid.rows {
+            let text: String = grid.cells[row].iter().map(|c| c.ch).collect();
+            let text_lower = text.to_lowercase();
+            for (byte_pos, _) in text_lower.match_indices(&query_lower) {
+                let col = text[..byte_pos].chars().count();
+                results.push((col, row as i64));
+            }
+        }
+
+        results
     }
 
     pub fn set_scroll_region(&mut self, top: usize, bottom: usize) {

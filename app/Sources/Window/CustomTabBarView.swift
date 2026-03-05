@@ -6,9 +6,10 @@ protocol CustomTabBarDelegate: AnyObject {
     func tabBarDidRequestNewTab(_ tabBar: CustomTabBarView)
     func tabBar(_ tabBar: CustomTabBarView, didDoubleClickTabAt index: Int)
     func tabBar(_ tabBar: CustomTabBarView, didRightClickTabAt index: Int, location: NSPoint)
+    func tabBar(_ tabBar: CustomTabBarView, didReorderTabFrom fromIndex: Int, to toIndex: Int)
 }
 
-class CustomTabBarView: NSView {
+final class CustomTabBarView: NSView {
 
     static let barHeight: CGFloat = 30.0
 
@@ -26,9 +27,14 @@ class CustomTabBarView: NSView {
         return btn
     }()
 
-    private let bgColor = NSColor(red: 22.0/255.0, green: 22.0/255.0, blue: 22.0/255.0, alpha: 1.0)
-    private let selectedBgColor = NSColor(red: 35.0/255.0, green: 35.0/255.0, blue: 35.0/255.0, alpha: 1.0)
-    private let accentColor = NSColor(red: 99.0/255.0, green: 102.0/255.0, blue: 241.0/255.0, alpha: 1.0)
+    private let bgColor = AppConfig.shared.themeTabBarBg
+    private let selectedBgColor = AppConfig.shared.themeTabActiveBg
+    private let accentColor = AppConfig.shared.themeAccent
+
+    // Drag-to-reorder state
+    private var draggedTabIndex: Int?
+    private var dragOrigin: NSPoint = .zero
+    private let dragThreshold: CGFloat = 5.0
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -121,6 +127,15 @@ class CustomTabBarView: NSView {
                 let windowLocation = tabItem.convert(location, to: self)
                 self.delegate?.tabBar(self, didRightClickTabAt: idx, location: windowLocation)
             }
+            tabItem.onDragBegan = { [weak self] idx, point in
+                self?.beginDrag(fromIndex: idx, point: point)
+            }
+            tabItem.onDragMoved = { [weak self] point in
+                self?.updateDrag(point: point)
+            }
+            tabItem.onDragEnded = { [weak self] in
+                self?.endDrag()
+            }
             stackView.addArrangedSubview(tabItem)
             tabViews.append(tabItem)
         }
@@ -129,6 +144,32 @@ class CustomTabBarView: NSView {
     func updateTitle(at index: Int, title: String) {
         guard index >= 0 && index < tabViews.count else { return }
         tabViews[index].updateTitle(title)
+    }
+
+    // MARK: - Drag-to-Reorder
+
+    private func beginDrag(fromIndex: Int, point: NSPoint) {
+        draggedTabIndex = fromIndex
+        dragOrigin = point
+    }
+
+    private func updateDrag(point: NSPoint) {
+        guard let fromIndex = draggedTabIndex, tabViews.count > 1 else { return }
+
+        // Find which tab the cursor is over
+        let localPoint = convert(point, from: nil)
+        for (i, tv) in tabViews.enumerated() {
+            let tvFrame = tv.convert(tv.bounds, to: self)
+            if tvFrame.contains(localPoint) && i != fromIndex {
+                delegate?.tabBar(self, didReorderTabFrom: fromIndex, to: i)
+                draggedTabIndex = i
+                break
+            }
+        }
+    }
+
+    private func endDrag() {
+        draggedTabIndex = nil
     }
 }
 
@@ -141,6 +182,9 @@ private class TabItemView: NSView {
     var onClose: ((Int) -> Void)?
     var onDoubleClick: ((Int) -> Void)?
     var onRightClick: ((Int, NSPoint) -> Void)?
+    var onDragBegan: ((Int, NSPoint) -> Void)?
+    var onDragMoved: ((NSPoint) -> Void)?
+    var onDragEnded: (() -> Void)?
 
     private let titleLabel = NSTextField(labelWithString: "")
     private let closeButton: NSButton = {
@@ -156,6 +200,10 @@ private class TabItemView: NSView {
     private let selectedBgColor: NSColor
     private let accentColor: NSColor
     private let bgColor: NSColor
+
+    private var isDragging = false
+    private var dragStartPoint: NSPoint = .zero
+    private let dragThreshold: CGFloat = 5.0
 
     init(title: String, isSelected: Bool, selectedBgColor: NSColor, accentColor: NSColor, bgColor: NSColor) {
         self.isSelected = isSelected
@@ -235,10 +283,31 @@ private class TabItemView: NSView {
     // MARK: - Mouse Events
 
     override func mouseDown(with event: NSEvent) {
+        dragStartPoint = event.locationInWindow
+        isDragging = false
         if event.clickCount == 2 {
             onDoubleClick?(index)
         } else {
             onSelect?(index)
+        }
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        let current = event.locationInWindow
+        let dx = abs(current.x - dragStartPoint.x)
+        if !isDragging && dx > dragThreshold {
+            isDragging = true
+            onDragBegan?(index, event.locationInWindow)
+        }
+        if isDragging {
+            onDragMoved?(event.locationInWindow)
+        }
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        if isDragging {
+            onDragEnded?()
+            isDragging = false
         }
     }
 

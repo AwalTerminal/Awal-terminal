@@ -54,11 +54,11 @@ class StatusBarView: NSView {
 
     private func setup() {
         wantsLayer = true
-        layer?.backgroundColor = NSColor(red: 22.0/255.0, green: 22.0/255.0, blue: 22.0/255.0, alpha: 1.0).cgColor
+        layer?.backgroundColor = AppConfig.shared.themeStatusBarBg.cgColor
 
         let monoFont = NSFont.monospacedSystemFont(ofSize: 11.0, weight: .regular)
         let dimColor = NSColor(white: 0.45, alpha: 1.0)
-        let accentColor = NSColor(red: 99.0/255.0, green: 102.0/255.0, blue: 241.0/255.0, alpha: 1.0)
+        let accentColor = AppConfig.shared.themeAccent
         let pathColor = NSColor(white: 0.55, alpha: 1.0)
         let branchColor = NSColor(red: 180.0/255.0, green: 142.0/255.0, blue: 255.0/255.0, alpha: 1.0)
 
@@ -376,9 +376,9 @@ class StatusBarView: NSView {
             let changes = statusStr.split(separator: "\n").count
 
             if changes > 0 {
-                return " \(branch) *\(changes)"
+                return "\(branch) *\(changes)"
             } else {
-                return " \(branch)"
+                return "\(branch)"
             }
         } catch {}
         return ""

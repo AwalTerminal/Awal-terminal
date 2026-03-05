@@ -32,6 +32,14 @@ typedef struct CCell {
 } CCell;
 
 /**
+ * Search result entry.
+ */
+typedef struct ATSearchResult {
+    uint32_t col;
+    int32_t row;
+} ATSearchResult;
+
+/**
  * Create a new terminal surface with the given dimensions.
  */
 struct ATSurface *at_surface_new(uint32_t cols,
@@ -196,5 +204,22 @@ char *at_surface_get_title(const struct ATSurface *surface);
  * Get the working directory (from OSC 7). Returns a C string that must be freed with `at_free_string`.
  */
 char *at_surface_get_working_directory(const struct ATSurface *surface);
+
+/**
+ * Get the hyperlink URL for a cell at the given viewport position.
+ * Returns null if no hyperlink. Caller must free with `at_free_string`.
+ */
+char *at_surface_get_hyperlink(const struct ATSurface *surface,
+                               uint32_t col,
+                               uint32_t row);
+
+/**
+ * Search scrollback + screen for a query string.
+ * Writes results into `out`, returns the number of results written (up to max_results).
+ */
+uint32_t at_surface_search(const struct ATSurface *surface,
+                           const char *query,
+                           struct ATSearchResult *out,
+                           uint32_t max_results);
 
 #endif  /* AWALTERMINAL_H */

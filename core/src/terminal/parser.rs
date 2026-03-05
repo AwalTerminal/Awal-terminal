@@ -94,6 +94,23 @@ impl<'a> vte::Perform for ScreenPerformer<'a> {
                     }
                 }
             }
+            "8" => {
+                // OSC 8: Hyperlinks — ESC ] 8 ; params ; URI ST
+                // params[1] = params (id=xxx etc), params[2] = URI
+                // Empty URI closes the hyperlink
+                if params.len() >= 3 {
+                    if let Ok(uri) = std::str::from_utf8(params[2]) {
+                        if uri.is_empty() {
+                            self.screen.current_hyperlink = None;
+                        } else {
+                            self.screen.current_hyperlink = Some(uri.to_string());
+                        }
+                    }
+                } else if params.len() == 2 {
+                    // Close hyperlink (no URI param means empty)
+                    self.screen.current_hyperlink = None;
+                }
+            }
             "52" => {
                 // Clipboard — we'll store but not act on it from Rust side
                 // The Swift side should handle clipboard via pasteboard

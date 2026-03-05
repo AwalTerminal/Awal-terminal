@@ -19,96 +19,63 @@ Current terminal emulators (iTerm2, Ghostty, Alacritty) are general-purpose tool
 | Config | **TOML** | Human-readable, matches Ghostty convention |
 | Build | **just** + Cargo + SPM | Each tool handles its domain |
 
-## Project Structure
+## Actual Project Structure
 
 ```
 awal-terminal/
   justfile                          # Build orchestration
+  docs/
+    plan.md                         # This file
 
   core/                             # Rust library (libawalterminal)
     Cargo.toml
-    build.rs                        # Compile Metal shaders, generate C header
+    build.rs                        # Generate C header via cbindgen
+    cbindgen.toml                   # cbindgen config
     src/
-      lib.rs                        # Crate root
-      ffi.rs                        # C API (extern "C" functions)
-      terminal/
-        parser.rs                   # VT parser (wraps vte crate)
-        screen.rs                   # Screen buffer (primary + alternate)
-        cell.rs                     # Cell struct (char, attrs, colors)
-        scrollback.rs               # Ring buffer scrollback
-        modes.rs                    # Terminal modes (DEC, ANSI)
-        selection.rs                # Text selection engine
+      lib.rs                        # Crate root (mod ffi, io, terminal)
+      ffi.rs                        # C API — ATSurface, 40+ exported functions
       io/
-        pty.rs                      # PTY creation, read/write, resize
-        process.rs                  # Child process management
-      renderer/
-        metal/
-          pipeline.rs               # Metal render pipeline states
-          atlas.rs                  # Glyph atlas (texture packing)
-          cell_renderer.rs          # Cell bg + text rendering
-          cursor_renderer.rs        # Cursor overlay
-      font/
-        discovery.rs                # CoreText font discovery
-        shaping.rs                  # Text shaping (harfbuzz/CoreText)
-        atlas.rs                    # Glyph → texture atlas management
-      ai/
-        output_analyzer.rs          # Detect Claude Code output patterns
-        semantic_parser.rs          # Parse command boundaries, code blocks
-        folding.rs                  # Collapsible region detection
-        diff_detector.rs            # Inline diff detection
-        session.rs                  # Conversation session tracking
-        token_counter.rs            # Token usage estimation
-      voice/
-        audio_capture.rs            # CoreAudio mic input
-        vad.rs                      # Voice Activity Detection
-        whisper.rs                  # whisper.cpp C FFI integration
-        commands.rs                 # Voice command grammar + dispatch
-      config/
-        parser.rs                   # TOML config parser
-        theme.rs                    # Theme/color scheme management
-        keybindings.rs              # Keybinding config
-      multiplexer/
-        layout.rs                   # Split/tab layout tree
-        pane.rs                     # Pane abstraction
-      plugin/
-        wasm_runtime.rs             # wasmtime integration
-        api.rs                      # Plugin API surface
-      remote/
-        websocket.rs                # WebSocket server (phone control)
-    shaders/
-      cell_bg.metal                 # Cell background pass
-      cell_text.metal               # Glyph rendering from atlas
-      cursor.metal                  # Cursor overlay
-      image.metal                   # Image rendering (Kitty protocol)
+        mod.rs
+        pty.rs                      # PTY creation, fork, spawn, read/write, resize
+      terminal/
+        mod.rs
+        parser.rs                   # VT parser (wraps vte crate), CSI/OSC handlers
+        screen.rs                   # Screen buffer (primary + alternate), scrollback, selection
+        cell.rs                     # Cell, CCell, Color, CellAttrs (bitflags)
+        modes.rs                    # TerminalModes, MouseMode
     include/
-      awalterminal.h              # Generated C header for Swift
+      awalterminal.h                # Generated C header for Swift
 
   app/                              # Swift macOS application
     Package.swift
     Sources/
+      CAwalTerminal/                # C FFI module map
+        module.modulemap
+        shim.h
       App/
-        AwalTerminalApp.swift     # @main, NSApplicationDelegate
-      Window/
-        TerminalWindowController.swift
-        QuickTerminal.swift         # Dropdown terminal (global hotkey)
+        ClaudeTerminalApp.swift     # @main, AppDelegate, main menu
+        ModelCatalog.swift           # LLM model definitions (Claude, Gemini, Codex, Shell)
+        WorkspaceStore.swift         # Recent workspace persistence
+        ProfileStore.swift           # Per-model profile management
+        TokenTracker.swift           # Token usage tracking for Claude sessions
+        NotificationManager.swift    # Idle notifications + dock bounce
       Terminal/
-        TerminalView.swift          # NSView + CAMetalLayer
-        TerminalSurface.swift       # Bridge to Rust surface
-        InputHandler.swift          # Keyboard/IME handling
-      Tabs/
-        TabBar.swift                # Native tab bar
+        TerminalView.swift           # NSView + CAMetalLayer, input handling, TUI menu
+        MetalRenderer.swift          # Metal pipeline, shaders, instanced rendering
+        GlyphAtlas.swift             # Glyph atlas (4096x4096), Nerd Font fallback
+      Window/
+        TerminalWindowController.swift  # Window + custom tab management
+        CustomTabBarView.swift       # Custom left-aligned fixed-width tab bar
+        TabState.swift               # Per-tab state (splitContainer, statusBar, title)
+        StatusBarView.swift          # Model, path, git, tokens, timer
+        ConfigEditorWindow.swift     # Settings editor (structured + raw modes)
+        LLMTabBar.swift              # Model selection segmented control
+        ProfileBar.swift             # Profile selector + CRUD actions
       Splits/
-        SplitView.swift             # NSSplitView-based splits
-      AI/
-        AIPanel.swift               # Side panel (context, tokens, session)
-        DiffViewer.swift            # Rich diff rendering
-        MarkdownView.swift          # Markdown rendering for AI output
-        CodeBlockView.swift         # Syntax-highlighted code blocks
-      Voice/
-        VoiceInputView.swift        # Waveform + transcription UI
-        VoiceManager.swift          # WhisperKit coordinator
-      Preferences/
-        PreferencesWindow.swift     # Settings GUI
+        SplitContainerView.swift     # NSSplitView-based split pane manager
+        SplitNode.swift              # Indirect enum tree (leaf | split)
+    Resources/
+      AppIcon.icns
 ```
 
 ## Threading Model (per terminal surface)
@@ -122,46 +89,64 @@ Communication via lock-free MPSC channels; shared mutex on terminal state (locke
 
 ## Phased Development
 
-### Phase 0: Foundation (MVP — working terminal)
+### Phase 0: Foundation (MVP — working terminal) ✅
+
 - [x] Set up project structure (Cargo.toml, Package.swift, justfile, cbindgen)
 - [x] PTY creation + process spawning in Rust (`io/pty.rs`)
 - [x] Integrate `vte` crate for escape sequence parsing
 - [x] Basic screen buffer (primary + alternate)
-- [x] C FFI surface: `at_surface_new()`, `at_surface_key_event()`, `at_surface_read_cells()`
+- [x] C FFI surface: `at_surface_new()`, `at_surface_key_event()`, `at_surface_read_cells()` + 40 more functions
 - [x] AppKit window with NSView rendering text via CoreGraphics (pre-Metal proof of concept)
 - [x] Wire keyboard input: Swift → FFI → Rust → PTY write
-- [x] LLM launcher menu: TUI-rendered model selector (Claude, ChatGPT, Gemini, Grok, Codex, Copilot, Llama, DeepSeek) with ↑↓/jk navigation, rendered via `at_surface_feed_bytes()` directly into the VT parser
+- [x] LLM launcher menu: TUI-rendered model selector (Claude, Gemini, Codex, Shell) with ↑↓/jk navigation, workspace history, ASCII art logo
 - [x] Clean inherited environment (CLAUDECODE, CLAUDE_CODE_ENTRYPOINT) so LLM CLIs can launch without nesting errors
 - **Result**: Window with LLM launcher menu → select model → terminal running chosen CLI
 
-### Phase 1: GPU Rendering
-- [ ] Replace CoreGraphics with Metal pipeline (`CAMetalLayer` in TerminalView)
-- [ ] Glyph atlas system (pack glyphs into Metal textures)
-- [ ] Metal shaders: background fill → cell backgrounds → text from atlas → cursor
-- [ ] Font discovery via CoreText, text shaping via harfbuzz
-- [ ] Render thread with vsync-driven draw loop
-- [ ] Double/triple buffering
+### Phase 1: GPU Rendering ✅
+
+- [x] Replace CoreGraphics with Metal pipeline (`CAMetalLayer` in TerminalView)
+- [x] Glyph atlas system — 4096x4096 R8Unorm texture, row-based packing, lazy rasterization
+- [x] Metal shaders: 3 passes (background fill, glyph rendering from atlas, line decorations)
+- [x] Font discovery via CoreText (monospace system font, bold/italic variants)
+- [x] Nerd Font detection via CoreText enumeration + PUA glyph fallback
+- [x] CVDisplayLink vsync-driven render loop dispatching to main thread
+- [x] Triple buffering with DispatchSemaphore (3-frame inflight, non-blocking 16ms wait)
 - **Result**: Smooth 120fps terminal rendering with colors
 
-### Phase 2: Terminal Completeness
-- [ ] Full SGR attributes (bold, italic, underline, 256-color, truecolor)
-- [ ] Cursor movement, save/restore, scroll regions, alternate screen
-- [ ] Scrollback buffer (ring buffer, page-based allocation)
-- [ ] Selection engine (mouse select, rectangular select)
-- [ ] Clipboard integration, search in scrollback
-- [ ] Mouse event reporting (all modes)
-- [ ] OSC sequences (window title, hyperlinks, clipboard)
+### Phase 2: Terminal Completeness ✅
+
+- [x] Full SGR attributes (bold, dim, italic, underline, strikethrough, inverse, hidden, blink, 8/256/truecolor)
+- [x] Cursor movement, save/restore, scroll regions, alternate screen
+- [x] Scrollback buffer — 10K line ring buffer, viewport offset tracking
+- [x] Selection engine (click, double-click word, triple-click line, drag)
+- [x] Clipboard integration (copy selected text)
+- [x] Mouse event reporting (X10, Normal, Button, Any modes + SGR encoding)
+- [x] OSC sequences: window title (0/1/2), working directory (7), clipboard stub (52)
+- [x] Bracketed paste mode
+- [ ] Search in scrollback
+- [ ] OSC 8 hyperlinks (clickable URLs in terminal output)
+- [ ] Rectangular (block) selection mode
 - [ ] Pass `vttest` conformance suite
 - **Result**: Full terminal emulator, works with vim/tmux/htop
 
-### Phase 3: Native macOS Polish
-- [x] Tab bar, split panes, multiple windows
+### Phase 3: Native macOS Polish — IN PROGRESS
+
+- [x] Custom tab bar (fixed-width, left-aligned, close-on-hover, accent underline, context menu)
+- [x] Split panes (horizontal/vertical, tree-based, focus navigation)
+- [x] Tab navigation shortcuts (Cmd+Shift+]/[) and split shortcuts (Cmd+D, Cmd+Shift+D)
+- [x] Drag-and-drop files → paste shell-escaped path
+- [x] Idle notifications with cooldown + dock bounce
+- [x] Token usage tracking for Claude sessions
+- [x] Per-model profile system (create, rename, delete, activate)
+- [x] Config editor window (structured tree + raw text, syntax coloring)
+- [x] Display scale change handling (recreate renderer)
+- [ ] Tab drag-to-reorder
 - [ ] Quick terminal (dropdown from menu bar via global hotkey)
-- [ ] Font ligature + Nerd Font support
+- [ ] Font ligature support (HarfBuzz or CoreText shaping)
+- [ ] Configurable font family + size
 - [ ] TOML theme system with light/dark mode switching
-- [ ] Keybinding configuration, preferences window
-- [ ] Drag-and-drop files → paste path
-- [ ] Notifications for long-running commands
+- [ ] User-configurable keybindings (TOML file)
+- [ ] Preferences window (GUI for theme, font, keybindings)
 - **Result**: Polished macOS terminal competitive with iTerm2/Ghostty
 
 ### Phase 4: AI Intelligence Layer (the differentiator)
@@ -195,6 +180,30 @@ Communication via lock-free MPSC channels; shared mutex on terminal state (locke
 - [ ] Remote control (WebSocket server, mDNS discovery, mobile web app)
 - [ ] File preview integration (Quick Look)
 
+## What to Build Next
+
+Phase 3 is nearly complete. The remaining items to finish before moving to Phase 4:
+
+### High priority (finish Phase 3)
+1. **Tab drag-to-reorder** — add drag gesture to CustomTabBarView, reorder `tabs` array
+2. **Configurable font family + size** — TOML config key `font.family` / `font.size`, apply in GlyphAtlas
+3. **TOML theme system** — `~/.config/awal/theme.toml` with color keys for bg, fg, cursor, selection, ANSI palette; parse in Rust or Swift
+4. **User keybindings** — `~/.config/awal/keybindings.toml` mapping key combos to actions
+
+### Medium priority (Phase 2 gaps)
+5. **Search in scrollback** — Cmd+F overlay, highlight matches, navigate with Enter/Shift+Enter
+6. **OSC 8 hyperlinks** — store URL per cell range, Cmd+click to open
+
+### Lower priority (defer)
+- Quick terminal dropdown (nice to have, not blocking Phase 4)
+- Font ligatures / HarfBuzz (complex, marginal benefit for LLM workflows)
+- Rectangular selection (rare use case)
+- vttest conformance (useful but not user-facing)
+- Preferences window (config files sufficient for now)
+
+### Then: Phase 4 (AI Intelligence Layer)
+This is the differentiator. Start with Output Analyzer + Smart Folding — these have the highest impact for Claude Code users.
+
 ## Key Technical Challenges
 
 ### 1. Rust ↔ Swift FFI
@@ -210,10 +219,10 @@ Streaming WhisperKit inference (chunks every 500ms). Tiny model for commands, la
 Pre-compiled Metal shaders (`.metallib` at build time). Dirty-region rendering (only re-render changed cells). Shared glyph atlas across surfaces. Lazy-load voice models and AI features. Target: <100ms startup, <4ms render frame, <50MB base memory.
 
 ## Verification Plan
-1. **Phase 0**: Launch app → zsh prompt appears → type commands → see output
-2. **Phase 1**: Run `cat large-file.txt` → smooth scrolling at 120fps, check with Metal System Trace
-3. **Phase 2**: Run `vttest` → pass all applicable tests; run vim, tmux, htop → correct rendering
-4. **Phase 3**: Create tabs/splits, use quick terminal, switch themes — all feel native
+1. **Phase 0**: Launch app → zsh prompt appears → type commands → see output ✅
+2. **Phase 1**: Run `cat large-file.txt` → smooth scrolling at 120fps, check with Metal System Trace ✅
+3. **Phase 2**: Run `vttest` → pass all applicable tests; run vim, tmux, htop → correct rendering ✅ (vim/tmux/htop work, vttest formal pass pending)
+4. **Phase 3**: Create tabs/splits, drag-drop files, switch themes — all feel native (tabs/splits done, themes pending)
 5. **Phase 4**: Run Claude Code → AI panel shows context, long outputs fold, diffs render inline
 6. **Phase 5**: Press push-to-talk → speak "list files" → `ls` appears in terminal
 7. **Performance**: Profile with Instruments throughout — startup <100ms, frame time <4ms

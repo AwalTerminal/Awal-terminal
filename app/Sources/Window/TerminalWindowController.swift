@@ -25,7 +25,7 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         )
         window.title = "Awal Terminal"
         window.center()
-        window.backgroundColor = NSColor(red: 22.0/255.0, green: 22.0/255.0, blue: 22.0/255.0, alpha: 1.0)
+        window.backgroundColor = AppConfig.shared.themeTabBarBg
         window.isOpaque = true
         window.minSize = NSSize(width: 800, height: 500)
 
@@ -241,6 +241,25 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         menu.popUp(positioning: nil, at: location, in: tabBar)
     }
 
+    func tabBar(_ tabBar: CustomTabBarView, didReorderTabFrom fromIndex: Int, to toIndex: Int) {
+        guard fromIndex != toIndex,
+              fromIndex >= 0 && fromIndex < tabs.count,
+              toIndex >= 0 && toIndex < tabs.count else { return }
+
+        let tab = tabs.remove(at: fromIndex)
+        tabs.insert(tab, at: toIndex)
+
+        // Update active index to follow the active tab
+        if activeTabIndex == fromIndex {
+            activeTabIndex = toIndex
+        } else if fromIndex < activeTabIndex && toIndex >= activeTabIndex {
+            activeTabIndex -= 1
+        } else if fromIndex > activeTabIndex && toIndex <= activeTabIndex {
+            activeTabIndex += 1
+        }
+        reloadTabBar()
+    }
+
     @objc private func contextRename(_ sender: NSMenuItem) {
         renameTab(at: sender.tag)
     }
@@ -401,6 +420,12 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
 
     @objc func focusPreviousPane(_ sender: Any?) {
         activeTab.splitContainer.focusPrevious()
+    }
+
+    // MARK: - Search
+
+    @objc func findInTerminal(_ sender: Any?) {
+        activeTab.splitContainer.focusedTerminal.toggleSearch()
     }
 
     // MARK: - Model Selection
