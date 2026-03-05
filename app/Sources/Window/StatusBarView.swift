@@ -27,6 +27,7 @@ class StatusBarView: NSView {
     }()
     private let gitLabel = NSTextField(labelWithString: "")
     private let dimsLabel = NSTextField(labelWithString: "")
+    private let tokensLabel = NSTextField(labelWithString: "")
     private let timeLabel = NSTextField(labelWithString: "")
 
     private(set) var currentPath: String?
@@ -58,7 +59,7 @@ class StatusBarView: NSView {
         let pathColor = NSColor(white: 0.55, alpha: 1.0)
         let branchColor = NSColor(red: 180.0/255.0, green: 142.0/255.0, blue: 255.0/255.0, alpha: 1.0)
 
-        let labels: [NSTextField] = [gitLabel, dimsLabel, timeLabel]
+        let labels: [NSTextField] = [gitLabel, dimsLabel, tokensLabel, timeLabel]
         for label in labels {
             label.font = monoFont
             label.textColor = dimColor
@@ -94,6 +95,7 @@ class StatusBarView: NSView {
         // Separators: thin dots between sections
         let sep1 = makeSeparator()
         let sep2 = makeSeparator()
+        let sep3 = makeSeparator()
 
         // Top border line
         let border = NSView()
@@ -129,8 +131,16 @@ class StatusBarView: NSView {
             timeLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
             timeLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
 
-            // Sep 2
-            sep2.trailingAnchor.constraint(equalTo: timeLabel.leadingAnchor, constant: -10),
+            // Sep 3 (before time)
+            sep3.trailingAnchor.constraint(equalTo: timeLabel.leadingAnchor, constant: -10),
+            sep3.centerYAnchor.constraint(equalTo: centerYAnchor),
+
+            // Tokens (before sep3)
+            tokensLabel.trailingAnchor.constraint(equalTo: sep3.leadingAnchor, constant: -10),
+            tokensLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+
+            // Sep 2 (before tokens)
+            sep2.trailingAnchor.constraint(equalTo: tokensLabel.leadingAnchor, constant: -10),
             sep2.centerYAnchor.constraint(equalTo: centerYAnchor),
 
             // Dims (before sep2)
@@ -237,16 +247,24 @@ class StatusBarView: NSView {
 
         // Get cwd of the shell process via /proc or lsof
         let pid = shellPid
+        let isClaudeSession = currentModelName == "Claude"
         DispatchQueue.global(qos: .utility).async { [weak self] in
             // Get cwd from procfs (macOS: use proc_pidinfo or lsof)
             let cwd = self?.getCwd(pid: pid) ?? ""
             let gitInfo = self?.getGitInfo(cwd: cwd) ?? ""
+
+            // Update token tracking for Claude sessions
+            if isClaudeSession {
+                TokenTracker.shared.update(projectPath: cwd.isEmpty ? nil : cwd)
+            }
+            let tokenDisplay = isClaudeSession ? TokenTracker.shared.displayString : ""
 
             DispatchQueue.main.async {
                 let oldPath = self?.currentPath
                 self?.currentPath = cwd.isEmpty ? nil : cwd
                 self?.pathButton.title = self?.shortenPath(cwd) ?? ""
                 self?.gitLabel.stringValue = gitInfo
+                self?.tokensLabel.stringValue = tokenDisplay
                 if self?.currentPath != oldPath {
                     self?.onPathChanged?()
                 }

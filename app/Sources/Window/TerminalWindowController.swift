@@ -77,6 +77,14 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate {
         super.init(window: window)
         window.delegate = self
 
+        // Show tab bar even with a single tab (no animation to avoid Metal layer artifacts)
+        if isInitialTab {
+            NSAnimationContext.beginGrouping()
+            NSAnimationContext.current.duration = 0
+            window.toggleTabBar(nil)
+            NSAnimationContext.endGrouping()
+        }
+
         // Wire terminal callbacks
         wireTerminalCallbacks(rootTerminal)
 
@@ -118,6 +126,10 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate {
         terminal.onFocused = { [weak self] tv in
             self?.splitContainer.setFocused(tv)
         }
+        terminal.onTerminalIdle = { [weak terminal] in
+            guard let terminal else { return }
+            NotificationManager.shared.notifyIdleIfNeeded(modelName: terminal.activeModelName)
+        }
     }
 
     private func updateTabTitle() {
@@ -151,6 +163,10 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate {
     }
 
     // MARK: - Tab Actions
+
+    override func newWindowForTab(_ sender: Any?) {
+        newTab(sender)
+    }
 
     @objc func newTab(_ sender: Any?) {
         let newController = TerminalWindowController(

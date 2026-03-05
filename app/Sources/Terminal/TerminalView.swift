@@ -40,6 +40,7 @@ class TerminalView: NSView {
     var onSessionChanged: ((_ model: String, _ provider: String, _ cols: Int, _ rows: Int) -> Void)?
     var onShellSpawned: ((_ pid: pid_t) -> Void)?
     var onFocused: ((_ terminal: TerminalView) -> Void)?
+    var onTerminalIdle: (() -> Void)?
 
     // Deferred launch for new panes (set before adding to window)
     var pendingLaunchModel: MenuItem?
@@ -68,6 +69,9 @@ class TerminalView: NSView {
     private var cursorVisible: Bool = true
     private var cursorBlinkOn: Bool = true
     private var cursorBlinkTimer: Timer?
+
+    private var idleTimer: Timer?
+    private var hadRecentOutput: Bool = false
 
     // MARK: - Metal Properties
 
@@ -118,6 +122,7 @@ class TerminalView: NSView {
 
     deinit {
         cursorBlinkTimer?.invalidate()
+        idleTimer?.invalidate()
         stopDisplayLink()
         if let source = readSource {
             source.cancel()
@@ -683,7 +688,22 @@ class TerminalView: NSView {
             }
             updateCellBuffer()
             needsRender = true
+            hadRecentOutput = true
+            resetIdleTimer()
         }
+    }
+
+    private func resetIdleTimer() {
+        idleTimer?.invalidate()
+        idleTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false) { [weak self] _ in
+            self?.handleIdleTimeout()
+        }
+    }
+
+    private func handleIdleTimeout() {
+        guard hadRecentOutput, !activeModelName.isEmpty else { return }
+        hadRecentOutput = false
+        onTerminalIdle?()
     }
 
     // MARK: - Grid Size

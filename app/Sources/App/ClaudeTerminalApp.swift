@@ -1,7 +1,7 @@
 import AppKit
 import CAwalTerminal
 
-class AppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         at_init_logging()
@@ -46,6 +46,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
+    @objc func toggleNotifications(_ sender: Any?) {
+        NotificationManager.shared.isEnabled.toggle()
+    }
+
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == #selector(toggleNotifications(_:)) {
+            menuItem.state = NotificationManager.shared.isEnabled ? .on : .off
+        }
+        return true
+    }
+
     // MARK: - Main Menu
 
     private func setupMainMenu() {
@@ -53,7 +64,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // App menu
         let appMenuItem = NSMenuItem()
-        let appMenu = NSMenu()
+        let appMenu = NSMenu(title: "Awal Terminal")
         appMenu.addItem(withTitle: "About Awal Terminal", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(NSMenuItem.separator())
         appMenu.addItem(withTitle: "Hide Awal Terminal", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
@@ -101,6 +112,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let prevPaneItem = NSMenuItem(title: "Previous Pane", action: #selector(TerminalWindowController.focusPreviousPane(_:)), keyEquivalent: "[")
         shellMenu.addItem(prevPaneItem)
+
+        shellMenu.addItem(NSMenuItem.separator())
+
+        let notifItem = NSMenuItem(title: "Notifications", action: #selector(toggleNotifications(_:)), keyEquivalent: "")
+        shellMenu.addItem(notifItem)
 
         shellMenuItem.submenu = shellMenu
         mainMenu.addItem(shellMenuItem)
