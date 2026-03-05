@@ -851,23 +851,56 @@ class TerminalView: NSView {
 
         if let chars = event.characters, !chars.isEmpty {
             let modFlags = event.modifierFlags
+            let hasShift = modFlags.contains(.shift)
+            let hasCtrl = modFlags.contains(.control)
+            let hasAlt = modFlags.contains(.option)
+
+            // xterm modifier parameter: 1=none, 2=Shift, 3=Alt, 5=Ctrl, etc.
+            var modParam = 1
+            if hasShift { modParam += 1 }
+            if hasAlt { modParam += 2 }
+            if hasCtrl { modParam += 4 }
+            let hasMod = modParam > 1
 
             switch event.keyCode {
-            case 36: bytes = [0x0D]
-            case 48: bytes = [0x09]
-            case 51: bytes = [0x7F]
-            case 53: bytes = [0x1B]
-            case 123: bytes = [0x1B, 0x5B, 0x44]
-            case 124: bytes = [0x1B, 0x5B, 0x43]
-            case 125: bytes = [0x1B, 0x5B, 0x42]
-            case 126: bytes = [0x1B, 0x5B, 0x41]
-            case 115: bytes = [0x1B, 0x5B, 0x48]
-            case 119: bytes = [0x1B, 0x5B, 0x46]
-            case 116: bytes = [0x1B, 0x5B, 0x35, 0x7E]
-            case 121: bytes = [0x1B, 0x5B, 0x36, 0x7E]
-            case 117: bytes = [0x1B, 0x5B, 0x33, 0x7E]
+            case 36: bytes = [0x0D] // Return
+            case 48: // Tab
+                bytes = hasShift ? [0x1B, 0x5B, 0x5A] : [0x09]
+            case 51: bytes = [0x7F] // Backspace
+            case 53: bytes = [0x1B] // Escape
+            case 123: // Left
+                bytes = hasMod ? Array("\u{1b}[1;\(modParam)D".utf8) : [0x1B, 0x5B, 0x44]
+            case 124: // Right
+                bytes = hasMod ? Array("\u{1b}[1;\(modParam)C".utf8) : [0x1B, 0x5B, 0x43]
+            case 125: // Down
+                bytes = hasMod ? Array("\u{1b}[1;\(modParam)B".utf8) : [0x1B, 0x5B, 0x42]
+            case 126: // Up
+                bytes = hasMod ? Array("\u{1b}[1;\(modParam)A".utf8) : [0x1B, 0x5B, 0x41]
+            case 115: // Home
+                bytes = hasMod ? Array("\u{1b}[1;\(modParam)H".utf8) : [0x1B, 0x5B, 0x48]
+            case 119: // End
+                bytes = hasMod ? Array("\u{1b}[1;\(modParam)F".utf8) : [0x1B, 0x5B, 0x46]
+            case 116: // PageUp
+                bytes = hasMod ? Array("\u{1b}[5;\(modParam)~".utf8) : [0x1B, 0x5B, 0x35, 0x7E]
+            case 121: // PageDown
+                bytes = hasMod ? Array("\u{1b}[6;\(modParam)~".utf8) : [0x1B, 0x5B, 0x36, 0x7E]
+            case 117: // Forward Delete
+                bytes = hasMod ? Array("\u{1b}[3;\(modParam)~".utf8) : [0x1B, 0x5B, 0x33, 0x7E]
+            // Function keys F1-F12
+            case 122: bytes = hasMod ? Array("\u{1b}[1;\(modParam)P".utf8) : [0x1B, 0x4F, 0x50]
+            case 120: bytes = hasMod ? Array("\u{1b}[1;\(modParam)Q".utf8) : [0x1B, 0x4F, 0x51]
+            case 99:  bytes = hasMod ? Array("\u{1b}[1;\(modParam)R".utf8) : [0x1B, 0x4F, 0x52]
+            case 118: bytes = hasMod ? Array("\u{1b}[1;\(modParam)S".utf8) : [0x1B, 0x4F, 0x53]
+            case 96:  bytes = Array("\u{1b}[15\(hasMod ? ";\(modParam)" : "")~".utf8)  // F5
+            case 97:  bytes = Array("\u{1b}[17\(hasMod ? ";\(modParam)" : "")~".utf8)  // F6
+            case 98:  bytes = Array("\u{1b}[18\(hasMod ? ";\(modParam)" : "")~".utf8)  // F7
+            case 100: bytes = Array("\u{1b}[19\(hasMod ? ";\(modParam)" : "")~".utf8)  // F8
+            case 101: bytes = Array("\u{1b}[20\(hasMod ? ";\(modParam)" : "")~".utf8)  // F9
+            case 109: bytes = Array("\u{1b}[21\(hasMod ? ";\(modParam)" : "")~".utf8)  // F10
+            case 103: bytes = Array("\u{1b}[23\(hasMod ? ";\(modParam)" : "")~".utf8)  // F11
+            case 111: bytes = Array("\u{1b}[24\(hasMod ? ";\(modParam)" : "")~".utf8)  // F12
             default:
-                if modFlags.contains(.control) {
+                if hasCtrl {
                     if let firstChar = chars.unicodeScalars.first {
                         let value = firstChar.value
                         if value >= 0x61 && value <= 0x7A {
@@ -880,7 +913,7 @@ class TerminalView: NSView {
                     } else {
                         return
                     }
-                } else if modFlags.contains(.option) {
+                } else if hasAlt {
                     let charBytes = Array(chars.utf8)
                     bytes = [0x1B] + charBytes
                 } else {
