@@ -85,6 +85,7 @@ class TerminalView: NSView {
     private var searchBar: SearchBarView?
     private var searchResults: [(col: Int, row: Int32)] = []
     private var currentSearchIndex: Int = 0
+    private var searchQueryLength: Int = 0
 
     // MARK: - Init
 
@@ -803,6 +804,9 @@ class TerminalView: NSView {
 
         let viewportSize = layer.drawableSize
 
+        // Compute visible search highlights
+        let highlights = computeVisibleSearchHighlights()
+
         cellBuffer.withUnsafeBufferPointer { ptr in
             guard let baseAddress = ptr.baseAddress else { return }
             renderer.render(
@@ -816,7 +820,9 @@ class TerminalView: NSView {
                 cursorBlinkOn: cursorBlinkOn,
                 drawable: drawable,
                 viewportSize: CGSize(width: viewportSize.width, height: viewportSize.height),
-                scale: layer.contentsScale
+                scale: layer.contentsScale,
+                searchHighlights: highlights.cells,
+                currentHighlight: highlights.currentIndex
             )
         }
     }
@@ -1372,9 +1378,11 @@ class TerminalView: NSView {
         guard let s = surface else { return }
         searchResults = []
         currentSearchIndex = 0
+        searchQueryLength = query.count
 
         if query.isEmpty {
             searchBar?.updateMatchCount(current: 0, total: 0)
+            needsRender = true
             return
         }
 
@@ -1426,20 +1434,65 @@ class TerminalView: NSView {
         guard let s = surface, !searchResults.isEmpty else { return }
 
         let match = searchResults[currentSearchIndex]
-        let scrollbackLen = at_surface_get_scrollback_len(s)
+        let scrollbackLen = Int(at_surface_get_scrollback_len(s))
+        let rows = Int(termRows)
 
+        // Convert absolute row to viewport offset needed to show it
+        // match.row: negative = scrollback, 0+ = screen row
+        // We want the match to be roughly centered in the viewport
         if match.row < 0 {
-            // Match is in scrollback — scroll viewport to show it
-            let sbIndex = Int(scrollbackLen) + Int(match.row)
-            let offset = Int(scrollbackLen) - sbIndex
-            // Reset viewport then set
-            at_surface_scroll_viewport(s, Int32(-10000)) // go to bottom
-            at_surface_scroll_viewport(s, Int32(offset))  // scroll up
+            // Scrollback match: row is -(scrollbackLen) to -1
+            // Offset needed = distance from bottom of scrollback
+            let sbIndex = scrollbackLen + Int(match.row) // 0-based index into scrollback
+            let targetOffset = scrollbackLen - sbIndex - rows / 2
+            let clampedOffset = max(0, min(targetOffset, scrollbackLen))
+            // Reset to bottom, then scroll up
+            at_surface_scroll_viewport(s, Int32(-scrollbackLen))
+            at_surface_scroll_viewport(s, Int32(clampedOffset))
         } else {
-            // Match is on screen — just go to live view
-            at_surface_scroll_viewport(s, Int32(-10000))
+            // On-screen match — go to live view
+            at_surface_scroll_viewport(s, Int32(-scrollbackLen))
         }
 
+        updateCellBuffer()
         needsRender = true
+    }
+
+    private func computeVisibleSearchHighlights() -> (cells: [(col: Int, row: Int, len: Int)], currentIndex: Int) {
+        guard let s = surface, !searchResults.isEmpty else { return ([], -1) }
+
+        let scrollbackLen = Int(at_surface_get_scrollback_len(s))
+        let viewportOffset = Int(at_surface_get_viewport_offset(s))
+        let rows = Int(termRows)
+        let cols = Int(termCols)
+
+        // The viewport shows rows from (scrollbackLen - viewportOffset - rows) to (scrollbackLen - viewportOffset - 1)
+        // in absolute terms. But our search results use: negative = scrollback, 0+ = screen.
+        // Convert viewport to absolute row range:
+        // Viewport top absolute row = -(viewportOffset + rows) .. -(viewportOffset) for scrollback,
+        //   or 0..(rows-1) for screen rows when viewportOffset==0
+
+        // Absolute row of viewport top: if offset=0 → screen row 0, if offset>0 → negative
+        let viewportTopAbs: Int = -viewportOffset
+        let viewportBottomAbs: Int = viewportTopAbs + rows - 1
+
+        var highlights: [(col: Int, row: Int, len: Int)] = []
+        var currentIdx = -1
+
+        for (i, result) in searchResults.enumerated() {
+            let absRow = Int(result.row)
+            if absRow >= viewportTopAbs && absRow <= viewportBottomAbs {
+                let screenRow = absRow - viewportTopAbs
+                let clampedLen = min(searchQueryLength, cols - result.col)
+                if clampedLen > 0 {
+                    if i == currentSearchIndex {
+                        currentIdx = highlights.count
+                    }
+                    highlights.append((col: result.col, row: screenRow, len: clampedLen))
+                }
+            }
+        }
+
+        return (highlights, currentIdx)
     }
 }
