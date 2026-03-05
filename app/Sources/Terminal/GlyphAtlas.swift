@@ -32,6 +32,7 @@ final class GlyphAtlas {
     private let boldFont: CTFont
     private let italicFont: CTFont
     private let boldItalicFont: CTFont
+    private let symbolFont: CTFont?
     private let scale: CGFloat
 
     init(device: MTLDevice, font: NSFont, boldFont: NSFont, scale: CGFloat) {
@@ -44,6 +45,9 @@ final class GlyphAtlas {
         self.italicFont = NSFont(descriptor: italicDesc, size: font.pointSize) as CTFont? ?? font as CTFont
         let boldItalicDesc = boldFont.fontDescriptor.withSymbolicTraits([.bold, .italic])
         self.boldItalicFont = NSFont(descriptor: boldItalicDesc, size: boldFont.pointSize) as CTFont? ?? boldFont as CTFont
+
+        // Find an installed Nerd Font for private use area glyphs
+        self.symbolFont = GlyphAtlas.findNerdFont(size: font.pointSize)
 
         let desc = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: .r8Unorm,
@@ -89,8 +93,27 @@ final class GlyphAtlas {
             ctFont = font
         }
         let ch = String(Character(scalar))
+        let isPUA = (key.codepoint >= 0xE000 && key.codepoint <= 0xF8FF)
+            || (key.codepoint >= 0xF0000 && key.codepoint <= 0xFFFFD)
+
+        // Font fallback: primary -> symbol font -> system fallback (non-PUA only) -> skip
+        let renderFont: CTFont
+        if fontHasGlyph(ctFont, ch) {
+            renderFont = ctFont
+        } else if let sf = symbolFont, fontHasGlyph(sf, ch) {
+            renderFont = sf
+        } else if !isPUA {
+            let systemFallback = CTFontCreateForString(ctFont, ch as CFString, CFRangeMake(0, ch.utf16.count))
+            if fontHasGlyph(systemFallback, ch) {
+                renderFont = systemFallback
+            } else {
+                return nil
+            }
+        } else {
+            return nil // PUA glyph with no matching font — render nothing
+        }
         let attrStr = NSAttributedString(string: ch, attributes: [
-            .font: ctFont as NSFont
+            .font: renderFont as NSFont
         ])
         let line = CTLineCreateWithAttributedString(attrStr)
 
@@ -184,4 +207,31 @@ final class GlyphAtlas {
     }
 
     var cachedCount: Int { cache.count }
+
+    /// Search installed fonts for a Nerd Font (by name) that has Powerline glyphs.
+    private static func findNerdFont(size: CGFloat) -> CTFont? {
+        let collection = CTFontCollectionCreateFromAvailableFonts(nil)
+        guard let descriptors = CTFontCollectionCreateMatchingFontDescriptors(collection) as? [CTFontDescriptor] else {
+            return nil
+        }
+
+        let testChar: UniChar = 0xE0A0
+        for fd in descriptors {
+            guard let name = CTFontDescriptorCopyAttribute(fd, kCTFontFamilyNameAttribute) as? String else { continue }
+            guard name.contains("Nerd") || name.hasSuffix(" NF") || name.contains("Powerline") else { continue }
+            let candidate = CTFontCreateWithFontDescriptor(fd, size, nil)
+            var glyph: CGGlyph = 0
+            if CTFontGetGlyphsForCharacters(candidate, [testChar], &glyph, 1), glyph != 0 {
+                NSLog("Found symbol font: \(CTFontCopyFullName(candidate))")
+                return candidate
+            }
+        }
+        return nil
+    }
+
+    private func fontHasGlyph(_ ctFont: CTFont, _ ch: String) -> Bool {
+        let chars = Array(ch.utf16)
+        var glyphs = [CGGlyph](repeating: 0, count: chars.count)
+        return CTFontGetGlyphsForCharacters(ctFont, chars, &glyphs, chars.count) && glyphs[0] != 0
+    }
 }
