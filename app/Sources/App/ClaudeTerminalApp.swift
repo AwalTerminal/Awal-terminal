@@ -13,10 +13,33 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         setupMainMenu()
 
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(menuDidBeginTracking(_:)),
+            name: NSMenu.didBeginTrackingNotification,
+            object: nil
+        )
+
         let controller = TerminalWindowController(isInitialTab: true)
         TerminalWindowTracker.shared.register(controller)
         controller.showWindow(nil)
         controller.window?.makeKeyAndOrderFront(nil)
+    }
+
+    @objc func menuDidBeginTracking(_ notification: Notification) {
+        guard let menu = notification.object as? NSMenu else { return }
+        let isTabMenu = menu.items.contains { $0.action == #selector(NSWindow.moveTabToNewWindow(_:)) }
+        guard isTabMenu else { return }
+        let alreadyHasRename = menu.items.contains { $0.action == #selector(TerminalWindowController.renameTab(_:)) }
+        guard !alreadyHasRename else { return }
+
+        menu.addItem(NSMenuItem.separator())
+        let renameItem = NSMenuItem(
+            title: "Rename Tab…",
+            action: #selector(TerminalWindowController.renameTab(_:)),
+            keyEquivalent: ""
+        )
+        menu.addItem(renameItem)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -100,6 +123,7 @@ enum Main {
     static func main() {
         let app = NSApplication.shared
         app.setActivationPolicy(.regular)
+        ProcessInfo.processInfo.processName = "Awal Terminal"
 
         let delegate = AppDelegate()
         app.delegate = delegate
