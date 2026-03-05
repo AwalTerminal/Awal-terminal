@@ -74,6 +74,7 @@ class TerminalView: NSView {
     private var metalLayer: CAMetalLayer!
     private var renderer: MetalRenderer!
     private var needsRender: Bool = true
+    private var currentScale: CGFloat = NSScreen.main?.backingScaleFactor ?? 2.0
 
     // MARK: - Init
 
@@ -142,6 +143,7 @@ class TerminalView: NSView {
 
         self.metalLayer = layer
         let scale = NSScreen.main?.backingScaleFactor ?? 2.0
+        self.currentScale = scale
         self.renderer = MetalRenderer(
             device: device,
             font: font,
@@ -234,6 +236,21 @@ class TerminalView: NSView {
     private func updateBackingScale() {
         let scale = window?.backingScaleFactor ?? 2.0
         metalLayer?.contentsScale = scale
+
+        if scale != currentScale {
+            currentScale = scale
+            if let device = metalLayer?.device {
+                renderer = MetalRenderer(
+                    device: device,
+                    font: font,
+                    boldFont: boldFont,
+                    cellWidth: cellWidth,
+                    cellHeight: cellHeight,
+                    scale: scale
+                )
+            }
+        }
+
         updateMetalLayerSize()
     }
 
