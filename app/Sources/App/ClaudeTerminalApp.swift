@@ -13,33 +13,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         setupMainMenu()
 
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(menuDidBeginTracking(_:)),
-            name: NSMenu.didBeginTrackingNotification,
-            object: nil
-        )
-
         let controller = TerminalWindowController(isInitialTab: true)
         TerminalWindowTracker.shared.register(controller)
         controller.showWindow(nil)
         controller.window?.makeKeyAndOrderFront(nil)
-    }
-
-    @objc func menuDidBeginTracking(_ notification: Notification) {
-        guard let menu = notification.object as? NSMenu else { return }
-        let isTabMenu = menu.items.contains { $0.action == #selector(NSWindow.moveTabToNewWindow(_:)) }
-        guard isTabMenu else { return }
-        let alreadyHasRename = menu.items.contains { $0.action == #selector(TerminalWindowController.renameTab(_:)) }
-        guard !alreadyHasRename else { return }
-
-        menu.addItem(NSMenuItem.separator())
-        let renameItem = NSMenuItem(
-            title: "Rename Tab…",
-            action: #selector(TerminalWindowController.renameTab(_:)),
-            keyEquivalent: ""
-        )
-        menu.addItem(renameItem)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -91,6 +68,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         let closeTabItem = NSMenuItem(title: "Close Tab", action: #selector(TerminalWindowController.closeTab(_:)), keyEquivalent: "w")
         shellMenu.addItem(closeTabItem)
+
+        shellMenu.addItem(NSMenuItem.separator())
+
+        let nextTabItem = NSMenuItem(title: "Next Tab", action: #selector(TerminalWindowController.selectNextTab(_:)), keyEquivalent: "]")
+        nextTabItem.keyEquivalentModifierMask = [.command, .shift]
+        shellMenu.addItem(nextTabItem)
+
+        let prevTabItem = NSMenuItem(title: "Previous Tab", action: #selector(TerminalWindowController.selectPreviousTab(_:)), keyEquivalent: "[")
+        prevTabItem.keyEquivalentModifierMask = [.command, .shift]
+        shellMenu.addItem(prevTabItem)
 
         shellMenu.addItem(NSMenuItem.separator())
 

@@ -32,6 +32,9 @@ class StatusBarView: NSView {
 
     private(set) var currentPath: String?
 
+    /// Pause polling when this tab is in the background
+    var isPaused: Bool = false
+
     private var sessionStart: Date = Date()
     private var updateTimer: Timer?
     private var shellPid: pid_t = 0
@@ -152,8 +155,9 @@ class StatusBarView: NSView {
 
         // Poll cwd + git every 2 seconds
         updateTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
-            self?.updateTime()
-            self?.pollCwdAndGit()
+            guard let self, !self.isPaused else { return }
+            self.updateTime()
+            self.pollCwdAndGit()
         }
     }
 
