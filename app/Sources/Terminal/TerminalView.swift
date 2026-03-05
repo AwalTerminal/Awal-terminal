@@ -343,22 +343,25 @@ class TerminalView: NSView {
         out += "\u{1b}[?25l"   // hide cursor
         out += "\u{1b}[H"      // home
 
+        // ASCII art "AWAL"
+        let artLines = [
+            "  ████    ██      ██    ████    ██      ",
+            "██    ██  ██      ██  ██    ██  ██      ",
+            "████████  ██  ██  ██  ████████  ██      ",
+            "██    ██  ██████████  ██    ██  ██      ",
+            "██    ██  ████  ████  ██    ██  ████████"
+        ]
+        let artWidth = 40
+        let useArt = cols >= artWidth + 4 && rows >= 20
+
         // Calculate total visible lines
-        let titleLines = 3 // title + subtitle + blank
+        let titleLines = useArt ? artLines.count + 3 : 3
         let entryLines = menuEntries.count
         let hintLines = 2  // blank + hint
         let totalLines = titleLines + entryLines + hintLines
         let startRow = max(1, (rows - totalLines) / 2)
 
-        // Title
-        let title = "Awal Terminal"
-        let titlePad = max(0, (cols - title.count) / 2)
-        out += "\u{1b}[\(startRow);1H"
-        out += "\u{1b}[1;37m"
-        out += String(repeating: " ", count: titlePad) + title
-        out += "\u{1b}[0m"
-
-        // Subtitle
+        // Subtitle text
         let subtitle: String
         switch menuPhase {
         case .main:
@@ -366,11 +369,44 @@ class TerminalView: NSView {
         case .pickModel(let path):
             subtitle = "Select a model for \(shortenPath(path))"
         }
-        let subPad = max(0, (cols - subtitle.count) / 2)
-        out += "\u{1b}[\(startRow + 1);1H"
-        out += "\u{1b}[90m"
-        out += String(repeating: " ", count: subPad) + subtitle
-        out += "\u{1b}[0m"
+
+        if useArt {
+            // Render ASCII art in white shades
+            let artPad = max(0, (cols - artWidth) / 2)
+            for (lineIdx, artLine) in artLines.enumerated() {
+                let row = startRow + lineIdx
+                out += "\u{1b}[\(row);1H"
+                out += String(repeating: " ", count: artPad)
+                for (charIdx, ch) in artLine.enumerated() {
+                    if ch == "█" {
+                        let t = Double(charIdx) / Double(artWidth - 1)
+                        let v = Int(255.0 - t * 105.0) // 255 → 150
+                        out += "\u{1b}[38;2;\(v);\(v);\(v)m█"
+                    } else {
+                        out += " "
+                    }
+                }
+                out += "\u{1b}[0m"
+            }
+            let subPad = max(0, (cols - subtitle.count) / 2)
+            out += "\u{1b}[\(startRow + artLines.count + 1);1H"
+            out += "\u{1b}[90m"
+            out += String(repeating: " ", count: subPad) + subtitle
+            out += "\u{1b}[0m"
+        } else {
+            // Fallback: simple text title
+            let title = "Awal Terminal"
+            let titlePad = max(0, (cols - title.count) / 2)
+            out += "\u{1b}[\(startRow);1H"
+            out += "\u{1b}[1;37m"
+            out += String(repeating: " ", count: titlePad) + title
+            out += "\u{1b}[0m"
+            let subPad = max(0, (cols - subtitle.count) / 2)
+            out += "\u{1b}[\(startRow + 1);1H"
+            out += "\u{1b}[90m"
+            out += String(repeating: " ", count: subPad) + subtitle
+            out += "\u{1b}[0m"
+        }
 
         // Menu entries
         let itemWidth = 44
