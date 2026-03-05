@@ -557,7 +557,7 @@ class TerminalView: NSView {
             if let dir = workingDir {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
                     guard let s = self?.surface else { return }
-                    let cmd = "cd \"\(dir)\" && clear\n"
+                    let cmd = "cd \"\(dir)\"\n"
                     let cmdBytes = Array(cmd.utf8)
                     cmdBytes.withUnsafeBufferPointer { ptr in
                         _ = at_surface_key_event(s, ptr.baseAddress!, UInt32(ptr.count))
@@ -590,7 +590,7 @@ class TerminalView: NSView {
 
     func changeDirectory(_ path: String) {
         guard let s = surface, appState == .terminal else { return }
-        let cmd = "cd \"\(path)\" && clear\n"
+        let cmd = "cd \"\(path)\"\n"
         let cmdBytes = Array(cmd.utf8)
         cmdBytes.withUnsafeBufferPointer { ptr in
             _ = at_surface_key_event(s, ptr.baseAddress!, UInt32(ptr.count))
