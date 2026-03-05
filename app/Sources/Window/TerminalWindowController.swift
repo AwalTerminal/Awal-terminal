@@ -47,7 +47,7 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate {
 
         // Enable native tabs
         window.tabbingMode = .preferred
-        window.tabbingIdentifier = "AwalTerminalTabs"
+        window.tabbingIdentifier = "Awal Terminal Tabs"
 
         // Container with split container + status bar
         let container = NSView()
@@ -283,16 +283,64 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate {
         TerminalWindowTracker.shared.remove(self)
     }
 
+    func window(_ window: NSWindow, shouldPopUpDocumentPathMenu menu: NSMenu) -> Bool {
+        return false
+    }
+
     // MARK: - Folder Switching
 
     private func switchFolder(to path: String) {
-        splitContainer.focusedTerminal.changeDirectory(path)
+        let focused = splitContainer.focusedTerminal
+        let isLLMSession = !focused.activeModelName.isEmpty && focused.activeModelName != "Shell"
 
-        let currentModel = splitContainer.focusedTerminal.activeModelName.isEmpty
-            ? "Shell"
-            : splitContainer.focusedTerminal.activeModelName
+        if !isLLMSession {
+            changeFolderInCurrentSession(path)
+            return
+        }
+
+        let alert = NSAlert()
+        alert.messageText = "Open Folder"
+        alert.informativeText = "A \(focused.activeModelName) session is running. How would you like to open this folder?"
+        alert.addButton(withTitle: "New Tab")
+        alert.addButton(withTitle: "Change in Session")
+        alert.addButton(withTitle: "Cancel")
+
+        guard let window = self.window else { return }
+        alert.beginSheetModal(for: window) { [weak self] response in
+            switch response {
+            case .alertFirstButtonReturn:
+                self?.openNewSession(with: path)
+            case .alertSecondButtonReturn:
+                self?.changeFolderInCurrentSession(path)
+            default:
+                break
+            }
+        }
+    }
+
+    private func changeFolderInCurrentSession(_ path: String) {
+        let focused = splitContainer.focusedTerminal
+
+        focused.changeDirectory(path)
+
+        let currentModel = focused.activeModelName.isEmpty ? "Shell" : focused.activeModelName
         WorkspaceStore.shared.save(path: path, model: currentModel)
         updateTabTitle()
+    }
+
+    private func openNewSession(with path: String) {
+        let focused = splitContainer.focusedTerminal
+        let model = focused.currentModel ?? ModelCatalog.find("Shell")!
+
+        let newController = TerminalWindowController(
+            isInitialTab: false,
+            model: model,
+            workingDir: path
+        )
+        TerminalWindowTracker.shared.register(newController)
+        window?.addTabbedWindow(newController.window!, ordered: .above)
+        newController.showWindow(nil)
+        newController.window?.makeKeyAndOrderFront(nil)
     }
 
     private func showFolderPicker() {
@@ -310,3 +358,4 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 }
+
