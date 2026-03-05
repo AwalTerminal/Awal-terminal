@@ -16,6 +16,42 @@ pub struct ATSurface {
     palette: [Color; 256],
 }
 
+/// Helper: safely convert a nullable const pointer to a reference, returning $default on null.
+macro_rules! ref_or {
+    ($ptr:expr) => {
+        if $ptr.is_null() {
+            return;
+        } else {
+            unsafe { &*$ptr }
+        }
+    };
+    ($ptr:expr, $default:expr) => {
+        if $ptr.is_null() {
+            return $default;
+        } else {
+            unsafe { &*$ptr }
+        }
+    };
+}
+
+/// Helper: safely convert a nullable mut pointer to a mutable reference, returning $default on null.
+macro_rules! mut_ref_or {
+    ($ptr:expr) => {
+        if $ptr.is_null() {
+            return;
+        } else {
+            unsafe { &mut *$ptr }
+        }
+    };
+    ($ptr:expr, $default:expr) => {
+        if $ptr.is_null() {
+            return $default;
+        } else {
+            unsafe { &mut *$ptr }
+        }
+    };
+}
+
 /// Create a new terminal surface with the given dimensions.
 #[no_mangle]
 pub extern "C" fn at_surface_new(cols: u32, rows: u32) -> *mut ATSurface {
@@ -45,7 +81,7 @@ pub extern "C" fn at_surface_spawn_shell(
     surface: *mut ATSurface,
     shell: *const libc::c_char,
 ) -> i32 {
-    let surface = unsafe { &mut *surface };
+    let surface = mut_ref_or!(surface, -1);
     let shell_str = if shell.is_null() {
         "/bin/zsh"
     } else {
@@ -72,7 +108,7 @@ pub extern "C" fn at_surface_spawn_command(
     shell: *const libc::c_char,
     command: *const libc::c_char,
 ) -> i32 {
-    let surface = unsafe { &mut *surface };
+    let surface = mut_ref_or!(surface, -1);
     let shell_str = if shell.is_null() {
         "/bin/zsh"
     } else {
@@ -95,21 +131,21 @@ pub extern "C" fn at_surface_spawn_command(
 /// Get the PTY master file descriptor (for polling).
 #[no_mangle]
 pub extern "C" fn at_surface_get_fd(surface: *const ATSurface) -> RawFd {
-    let surface = unsafe { &*surface };
+    let surface = ref_or!(surface, -1);
     surface.pty.as_ref().map_or(-1, |pty| pty.master_fd())
 }
 
 /// Get the child shell PID.
 #[no_mangle]
 pub extern "C" fn at_surface_get_child_pid(surface: *const ATSurface) -> i32 {
-    let surface = unsafe { &*surface };
+    let surface = ref_or!(surface, -1);
     surface.pty.as_ref().map_or(-1, |pty| pty.child_pid.as_raw())
 }
 
 /// Read from the PTY and process VT sequences. Returns number of bytes read, 0 if nothing available, -1 on error.
 #[no_mangle]
 pub extern "C" fn at_surface_process_pty(surface: *mut ATSurface) -> i32 {
-    let surface = unsafe { &mut *surface };
+    let surface = mut_ref_or!(surface, -1);
     let pty = match &surface.pty {
         Some(p) => p,
         None => return -1,
@@ -140,7 +176,10 @@ pub extern "C" fn at_surface_key_event(
     data: *const u8,
     len: u32,
 ) -> i32 {
-    let surface = unsafe { &mut *surface };
+    let surface = mut_ref_or!(surface, -1);
+    if data.is_null() || len == 0 {
+        return -1;
+    }
     let bytes = unsafe { slice::from_raw_parts(data, len as usize) };
     let pty = match &surface.pty {
         Some(p) => p,
@@ -160,7 +199,7 @@ pub extern "C" fn at_surface_get_size(
     cols: *mut u32,
     rows: *mut u32,
 ) {
-    let surface = unsafe { &*surface };
+    let surface = ref_or!(surface);
     unsafe {
         *cols = surface.screen.cols as u32;
         *rows = surface.screen.rows as u32;
@@ -170,7 +209,7 @@ pub extern "C" fn at_surface_get_size(
 /// Resize the terminal surface.
 #[no_mangle]
 pub extern "C" fn at_surface_resize(surface: *mut ATSurface, cols: u32, rows: u32) {
-    let surface = unsafe { &mut *surface };
+    let surface = mut_ref_or!(surface);
     surface.screen.resize(cols as usize, rows as usize);
     if let Some(pty) = &surface.pty {
         let _ = pty.resize(cols as u16, rows as u16);
@@ -186,7 +225,10 @@ pub extern "C" fn at_surface_read_cells(
     out: *mut CCell,
     max_cells: u32,
 ) -> u32 {
-    let surface = unsafe { &*surface };
+    let surface = ref_or!(surface, 0);
+    if out.is_null() {
+        return 0;
+    }
     let screen = &surface.screen;
     let rows = screen.rows;
     let cols = screen.cols;
@@ -275,7 +317,7 @@ pub extern "C" fn at_surface_get_cursor(
     col: *mut u32,
     visible: *mut bool,
 ) {
-    let surface = unsafe { &*surface };
+    let surface = ref_or!(surface);
     unsafe {
         *row = surface.screen.cursor.row as u32;
         *col = surface.screen.cursor.col as u32;
@@ -286,7 +328,7 @@ pub extern "C" fn at_surface_get_cursor(
 /// Check if screen content has changed since last check. Resets the dirty flag.
 #[no_mangle]
 pub extern "C" fn at_surface_is_dirty(surface: *mut ATSurface) -> bool {
-    let surface = unsafe { &mut *surface };
+    let surface = mut_ref_or!(surface, false);
     let dirty = surface.screen.dirty;
     surface.screen.dirty = false;
     dirty
@@ -300,7 +342,10 @@ pub extern "C" fn at_surface_feed_bytes(
     data: *const u8,
     len: u32,
 ) {
-    let surface = unsafe { &mut *surface };
+    let surface = mut_ref_or!(surface);
+    if data.is_null() || len == 0 {
+        return;
+    }
     let bytes = unsafe { slice::from_raw_parts(data, len as usize) };
     let _ = surface.parser.process(bytes, &mut surface.screen);
 }
@@ -316,21 +361,21 @@ pub extern "C" fn at_init_logging() {
 /// Scroll the viewport by delta lines. Positive = scroll up (into history).
 #[no_mangle]
 pub extern "C" fn at_surface_scroll_viewport(surface: *mut ATSurface, delta: i32) {
-    let surface = unsafe { &mut *surface };
+    let surface = mut_ref_or!(surface);
     surface.screen.scroll_viewport(delta);
 }
 
 /// Get current viewport offset (0 = live, >0 = scrolled into history).
 #[no_mangle]
 pub extern "C" fn at_surface_get_viewport_offset(surface: *const ATSurface) -> i32 {
-    let surface = unsafe { &*surface };
+    let surface = ref_or!(surface, 0);
     surface.screen.viewport_offset as i32
 }
 
 /// Get scrollback buffer length.
 #[no_mangle]
 pub extern "C" fn at_surface_get_scrollback_len(surface: *const ATSurface) -> i32 {
-    let surface = unsafe { &*surface };
+    let surface = ref_or!(surface, 0);
     surface.screen.scrollback.len() as i32
 }
 
@@ -339,7 +384,7 @@ pub extern "C" fn at_surface_get_scrollback_len(surface: *const ATSurface) -> i3
 /// Start a selection at grid position.
 #[no_mangle]
 pub extern "C" fn at_surface_start_selection(surface: *mut ATSurface, col: u32, row: i32) {
-    let surface = unsafe { &mut *surface };
+    let surface = mut_ref_or!(surface);
     let sel = &mut surface.screen.selection;
     sel.start_col = col as usize;
     sel.start_row = row as i64;
@@ -352,7 +397,7 @@ pub extern "C" fn at_surface_start_selection(surface: *mut ATSurface, col: u32, 
 /// Update selection endpoint.
 #[no_mangle]
 pub extern "C" fn at_surface_update_selection(surface: *mut ATSurface, col: u32, row: i32) {
-    let surface = unsafe { &mut *surface };
+    let surface = mut_ref_or!(surface);
     let sel = &mut surface.screen.selection;
     sel.end_col = col as usize;
     sel.end_row = row as i64;
@@ -362,7 +407,7 @@ pub extern "C" fn at_surface_update_selection(surface: *mut ATSurface, col: u32,
 /// Clear the selection.
 #[no_mangle]
 pub extern "C" fn at_surface_clear_selection(surface: *mut ATSurface) {
-    let surface = unsafe { &mut *surface };
+    let surface = mut_ref_or!(surface);
     surface.screen.selection.active = false;
     surface.screen.dirty = true;
 }
@@ -370,7 +415,7 @@ pub extern "C" fn at_surface_clear_selection(surface: *mut ATSurface) {
 /// Get selected text. Returns a C string that must be freed with `at_free_string`.
 #[no_mangle]
 pub extern "C" fn at_surface_get_selected_text(surface: *const ATSurface) -> *mut c_char {
-    let surface = unsafe { &*surface };
+    let surface = ref_or!(surface, std::ptr::null_mut());
     let text = surface.screen.get_selected_text();
     match CString::new(text) {
         Ok(cs) => cs.into_raw(),
@@ -393,7 +438,7 @@ pub extern "C" fn at_free_string(s: *mut c_char) {
 /// Get the current mouse tracking mode (0=none, 1=click, 2=button/drag, 3=any).
 #[no_mangle]
 pub extern "C" fn at_surface_get_mouse_mode(surface: *const ATSurface) -> i32 {
-    let surface = unsafe { &*surface };
+    let surface = ref_or!(surface, 0);
     use crate::terminal::modes::MouseMode;
     match surface.screen.modes.mouse_tracking {
         MouseMode::None => 0,
@@ -407,7 +452,7 @@ pub extern "C" fn at_surface_get_mouse_mode(surface: *const ATSurface) -> i32 {
 /// Check if SGR mouse mode (1006) is enabled.
 #[no_mangle]
 pub extern "C" fn at_surface_get_sgr_mouse(surface: *const ATSurface) -> bool {
-    let surface = unsafe { &*surface };
+    let surface = ref_or!(surface, false);
     surface.screen.modes.sgr_mouse
 }
 
@@ -416,7 +461,7 @@ pub extern "C" fn at_surface_get_sgr_mouse(surface: *const ATSurface) -> bool {
 /// Check if bracketed paste mode is enabled.
 #[no_mangle]
 pub extern "C" fn at_surface_get_bracketed_paste(surface: *const ATSurface) -> bool {
-    let surface = unsafe { &*surface };
+    let surface = ref_or!(surface, false);
     surface.screen.modes.bracketed_paste
 }
 
@@ -425,7 +470,7 @@ pub extern "C" fn at_surface_get_bracketed_paste(surface: *const ATSurface) -> b
 /// Get the terminal title. Returns a C string that must be freed with `at_free_string`.
 #[no_mangle]
 pub extern "C" fn at_surface_get_title(surface: *const ATSurface) -> *mut c_char {
-    let surface = unsafe { &*surface };
+    let surface = ref_or!(surface, std::ptr::null_mut());
     match CString::new(surface.screen.title.clone()) {
         Ok(cs) => cs.into_raw(),
         Err(_) => std::ptr::null_mut(),
@@ -435,7 +480,7 @@ pub extern "C" fn at_surface_get_title(surface: *const ATSurface) -> *mut c_char
 /// Get the working directory (from OSC 7). Returns a C string that must be freed with `at_free_string`.
 #[no_mangle]
 pub extern "C" fn at_surface_get_working_directory(surface: *const ATSurface) -> *mut c_char {
-    let surface = unsafe { &*surface };
+    let surface = ref_or!(surface, std::ptr::null_mut());
     match CString::new(surface.screen.working_directory.clone()) {
         Ok(cs) => cs.into_raw(),
         Err(_) => std::ptr::null_mut(),
@@ -452,7 +497,7 @@ pub extern "C" fn at_surface_get_hyperlink(
     col: u32,
     row: u32,
 ) -> *mut c_char {
-    let surface = unsafe { &*surface };
+    let surface = ref_or!(surface, std::ptr::null_mut());
     let cell = surface.screen.viewport_cell(row as usize, col as usize);
     match &cell.hyperlink {
         Some(url) => match CString::new(url.as_str()) {
@@ -481,7 +526,7 @@ pub extern "C" fn at_surface_search(
     out: *mut ATSearchResult,
     max_results: u32,
 ) -> u32 {
-    let surface = unsafe { &*surface };
+    let surface = ref_or!(surface, 0);
     if query.is_null() || out.is_null() {
         return 0;
     }
