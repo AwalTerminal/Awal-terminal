@@ -271,15 +271,11 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
     @objc private func contextCloseOthers(_ sender: NSMenuItem) {
         let keepIndex = sender.tag
         let keepTab = tabs[keepIndex]
-        // Uninstall all other tabs
-        for (i, tab) in tabs.enumerated() where i != keepIndex {
-            if i == activeTabIndex { uninstallTab(tab) }
-        }
+        // Uninstall the currently displayed tab
+        uninstallTab(activeTab)
         tabs = [keepTab]
         activeTabIndex = 0
-        if contentArea.subviews.isEmpty {
-            installTab(keepTab)
-        }
+        installTab(keepTab)
         reloadTabBar()
     }
 
@@ -377,7 +373,7 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         if let s = terminal.surfacePointer {
             let pid = at_surface_get_child_pid(s)
             if pid > 0 {
-                tab.statusBar.trackTerminal(pid: pid_t(pid))
+                tab.statusBar.setShellPid(pid_t(pid))
             }
         }
         reloadTabBar()

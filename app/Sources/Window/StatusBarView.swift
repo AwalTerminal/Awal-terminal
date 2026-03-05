@@ -241,11 +241,6 @@ class StatusBarView: NSView {
         pollCwdAndGit()
     }
 
-    func trackTerminal(pid: pid_t) {
-        self.shellPid = pid
-        pollCwdAndGit()
-    }
-
     private func pollCwdAndGit() {
         guard shellPid > 0 else { return }
 
@@ -294,25 +289,17 @@ class StatusBarView: NSView {
     }
 
     private func findChildProcess(_ ppid: pid_t) -> pid_t {
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: "/bin/ps")
-        proc.arguments = ["-o", "pid=", "--ppid", "\(ppid)"]
-        let pipe = Pipe()
-        proc.standardOutput = pipe
-        proc.standardError = FileHandle.nullDevice
-
-        // pgrep is more reliable on macOS
         let pgrep = Process()
         pgrep.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
         pgrep.arguments = ["-P", "\(ppid)"]
-        let pgrepPipe = Pipe()
-        pgrep.standardOutput = pgrepPipe
+        let pipe = Pipe()
+        pgrep.standardOutput = pipe
         pgrep.standardError = FileHandle.nullDevice
 
         do {
             try pgrep.run()
             pgrep.waitUntilExit()
-            let data = pgrepPipe.fileHandleForReading.readDataToEndOfFile()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
             let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             // Take the last child PID (usually the foreground process)
             if let lastLine = output.split(separator: "\n").last,
