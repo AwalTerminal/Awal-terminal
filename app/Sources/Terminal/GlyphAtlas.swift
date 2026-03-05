@@ -34,11 +34,13 @@ final class GlyphAtlas {
     private let boldItalicFont: CTFont
     private let symbolFont: CTFont?
     private let scale: CGFloat
+    private let cellHeight: CGFloat
 
-    init(device: MTLDevice, font: NSFont, boldFont: NSFont, scale: CGFloat) {
+    init(device: MTLDevice, font: NSFont, boldFont: NSFont, cellHeight: CGFloat, scale: CGFloat) {
         self.font = font as CTFont
         self.boldFont = boldFont as CTFont
         self.scale = scale
+        self.cellHeight = cellHeight
 
         // Create italic variants
         let italicDesc = font.fontDescriptor.withSymbolicTraits(.italic)
@@ -191,7 +193,9 @@ final class GlyphAtlas {
         // The renderer passes these directly to the shader (no additional scaling needed)
         let fontAscent = CTFontGetAscent(font)
         let bearingX = Float(1.0) // 1 pixel padding
-        let bearingY = Float((fontAscent - ascent) * scale) + 1.0
+        // Center glyph bitmap vertically within the cell
+        let cellHeightPx = cellHeight * scale
+        let bearingY = Float((cellHeightPx - CGFloat(bitmapH)) / 2.0) + Float((fontAscent - ascent) * scale)
 
         let info = GlyphInfo(
             uvRect: SIMD4<Float>(uvX, uvY, uvW, uvH),

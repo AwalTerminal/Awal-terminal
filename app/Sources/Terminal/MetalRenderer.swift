@@ -318,7 +318,7 @@ final class MetalRenderer {
         }
 
         // Atlas — rasterize glyphs at native pixel resolution
-        self.atlas = GlyphAtlas(device: device, font: font, boldFont: boldFont, scale: scale)
+        self.atlas = GlyphAtlas(device: device, font: font, boldFont: boldFont, cellHeight: cellHeight, scale: scale)
 
         // Uniform buffer
         self.uniformBuffer = device.makeBuffer(length: MemoryLayout<Uniforms>.size,
