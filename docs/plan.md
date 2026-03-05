@@ -123,8 +123,8 @@ Communication via lock-free MPSC channels; shared mutex on terminal state (locke
 - [x] Mouse event reporting (X10, Normal, Button, Any modes + SGR encoding)
 - [x] OSC sequences: window title (0/1/2), working directory (7), clipboard stub (52)
 - [x] Bracketed paste mode
-- [ ] Search in scrollback
-- [ ] OSC 8 hyperlinks (clickable URLs in terminal output)
+- [x] Search in scrollback (Cmd+F overlay, match navigation)
+- [x] OSC 8 hyperlinks (store URL per cell, Cmd+click to open)
 - [ ] Rectangular (block) selection mode
 - [ ] Pass `vttest` conformance suite
 - **Result**: Full terminal emulator, works with vim/tmux/htop
@@ -140,12 +140,12 @@ Communication via lock-free MPSC channels; shared mutex on terminal state (locke
 - [x] Per-model profile system (create, rename, delete, activate)
 - [x] Config editor window (structured tree + raw text, syntax coloring)
 - [x] Display scale change handling (recreate renderer)
-- [ ] Tab drag-to-reorder
+- [x] Tab drag-to-reorder
+- [x] Configurable font family + size (via AppConfig / TOML)
+- [x] TOML theme system (~/.config/awal/config.toml — bg, fg, cursor, accent, status bar, tab bar colors)
+- [x] User-configurable keybindings (TOML config)
 - [ ] Quick terminal (dropdown from menu bar via global hotkey)
 - [ ] Font ligature support (HarfBuzz or CoreText shaping)
-- [ ] Configurable font family + size
-- [ ] TOML theme system with light/dark mode switching
-- [ ] User-configurable keybindings (TOML file)
 - [ ] Preferences window (GUI for theme, font, keybindings)
 - **Result**: Polished macOS terminal competitive with iTerm2/Ghostty
 
@@ -182,27 +182,22 @@ Communication via lock-free MPSC channels; shared mutex on terminal state (locke
 
 ## What to Build Next
 
-Phase 3 is nearly complete. The remaining items to finish before moving to Phase 4:
+Phase 3 core features are done. Ready to move to Phase 4 (AI Intelligence Layer).
 
-### High priority (finish Phase 3)
-1. **Tab drag-to-reorder** — add drag gesture to CustomTabBarView, reorder `tabs` array
-2. **Configurable font family + size** — TOML config key `font.family` / `font.size`, apply in GlyphAtlas
-3. **TOML theme system** — `~/.config/awal/theme.toml` with color keys for bg, fg, cursor, selection, ANSI palette; parse in Rust or Swift
-4. **User keybindings** — `~/.config/awal/keybindings.toml` mapping key combos to actions
-
-### Medium priority (Phase 2 gaps)
-5. **Search in scrollback** — Cmd+F overlay, highlight matches, navigate with Enter/Shift+Enter
-6. **OSC 8 hyperlinks** — store URL per cell range, Cmd+click to open
-
-### Lower priority (defer)
+### Remaining Phase 3 polish (lower priority, defer)
 - Quick terminal dropdown (nice to have, not blocking Phase 4)
 - Font ligatures / HarfBuzz (complex, marginal benefit for LLM workflows)
 - Rectangular selection (rare use case)
 - vttest conformance (useful but not user-facing)
 - Preferences window (config files sufficient for now)
 
-### Then: Phase 4 (AI Intelligence Layer)
-This is the differentiator. Start with Output Analyzer + Smart Folding — these have the highest impact for Claude Code users.
+### Phase 4: AI Intelligence Layer (start here)
+This is the differentiator. Priority order:
+1. **Output Analyzer** — detect Claude Code patterns (prompt markers, tool use blocks, code blocks, diffs) via terminal byte stream
+2. **Smart Folding** — collapsible regions for long outputs (file contents, search results, tool output)
+3. **Rich Rendering** — Markdown with syntax-highlighted code blocks, inline diff viewer
+4. **AI Side Panel** — context display, token counter, cost estimation
+5. **Session Management** — save/restore, integrate with `~/.claude/projects/` JSONL files
 
 ## Key Technical Challenges
 
@@ -222,7 +217,7 @@ Pre-compiled Metal shaders (`.metallib` at build time). Dirty-region rendering (
 1. **Phase 0**: Launch app → zsh prompt appears → type commands → see output ✅
 2. **Phase 1**: Run `cat large-file.txt` → smooth scrolling at 120fps, check with Metal System Trace ✅
 3. **Phase 2**: Run `vttest` → pass all applicable tests; run vim, tmux, htop → correct rendering ✅ (vim/tmux/htop work, vttest formal pass pending)
-4. **Phase 3**: Create tabs/splits, drag-drop files, switch themes — all feel native (tabs/splits done, themes pending)
+4. **Phase 3**: Create tabs/splits, drag-drop files, switch themes — all feel native ✅ (tabs, splits, themes, keybindings, search, hyperlinks done)
 5. **Phase 4**: Run Claude Code → AI panel shows context, long outputs fold, diffs render inline
 6. **Phase 5**: Press push-to-talk → speak "list files" → `ls` appears in terminal
 7. **Performance**: Profile with Instruments throughout — startup <100ms, frame time <4ms
