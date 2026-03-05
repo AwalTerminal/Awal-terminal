@@ -359,7 +359,9 @@ final class MetalRenderer {
         cursorBlinkOn: Bool,
         drawable: CAMetalDrawable,
         viewportSize: CGSize,
-        scale: CGFloat
+        scale: CGFloat,
+        searchHighlights: [(col: Int, row: Int, len: Int)] = [],
+        currentHighlight: Int = -1
     ) {
         // Non-blocking wait to avoid freezing the main thread
         let result = frameSemaphore.wait(timeout: .now() + .milliseconds(16))
@@ -393,17 +395,17 @@ final class MetalRenderer {
         glyphInstances.reserveCapacity(totalCells)
         var lineInstances: [LineInstance] = []
 
+        // Hoist clear color comparison values out of the inner loop
+        let clearR = UInt8(clearColor.red * 255)
+        let clearG = UInt8(clearColor.green * 255)
+        let clearB = UInt8(clearColor.blue * 255)
+
         for row in 0..<gridRows {
             for col in 0..<gridCols {
                 let idx = row * gridCols + col
                 let cell = cells[idx]
 
                 let isWideSpacer = (cell.attrs & 0x0200) != 0
-
-                // Background: skip cells matching clear color
-                let clearR = UInt8(clearColor.red * 255)
-                let clearG = UInt8(clearColor.green * 255)
-                let clearB = UInt8(clearColor.blue * 255)
                 if cell.bg_r != clearR || cell.bg_g != clearG || cell.bg_b != clearB {
                     bgInstances.append(BgInstance(
                         posX: Float(col), posY: Float(row),
@@ -456,6 +458,21 @@ final class MetalRenderer {
                     sizeW: info.size.x, sizeH: info.size.y,
                     bearX: info.bearing.x, bearY: info.bearing.y,
                     r: cell.fg_r, g: cell.fg_g, b: cell.fg_b, a: cell.fg_a
+                ))
+            }
+        }
+
+        // Search highlight instances
+        for (i, hl) in searchHighlights.enumerated() {
+            let isCurrent = (i == currentHighlight)
+            let hlR: UInt8 = isCurrent ? 255 : 180
+            let hlG: UInt8 = isCurrent ? 200 : 140
+            let hlB: UInt8 = isCurrent ? 50 : 30
+            let hlA: UInt8 = isCurrent ? 180 : 100
+            for c in 0..<hl.len {
+                bgInstances.append(BgInstance(
+                    posX: Float(hl.col + c), posY: Float(hl.row),
+                    r: hlR, g: hlG, b: hlB, a: hlA
                 ))
             }
         }
