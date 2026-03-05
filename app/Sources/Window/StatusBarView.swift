@@ -255,10 +255,56 @@ class StatusBarView: NSView {
     }
 
     private func getCwd(pid: pid_t) -> String {
-        // Use lsof to get cwd of the child process
+        // Find the foreground (deepest child) process, then get its cwd
+        let targetPid = findForegroundProcess(pid)
+        return getCwdOfPid(targetPid)
+    }
+
+    private func findForegroundProcess(_ pid: pid_t) -> pid_t {
+        // Walk the process tree to find the deepest child
+        var current = pid
+        for _ in 0..<10 { // max depth to avoid infinite loops
+            let child = findChildProcess(current)
+            if child <= 0 || child == current { break }
+            current = child
+        }
+        return current
+    }
+
+    private func findChildProcess(_ ppid: pid_t) -> pid_t {
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/bin/ps")
+        proc.arguments = ["-o", "pid=", "--ppid", "\(ppid)"]
+        let pipe = Pipe()
+        proc.standardOutput = pipe
+        proc.standardError = FileHandle.nullDevice
+
+        // pgrep is more reliable on macOS
+        let pgrep = Process()
+        pgrep.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        pgrep.arguments = ["-P", "\(ppid)"]
+        let pgrepPipe = Pipe()
+        pgrep.standardOutput = pgrepPipe
+        pgrep.standardError = FileHandle.nullDevice
+
+        do {
+            try pgrep.run()
+            pgrep.waitUntilExit()
+            let data = pgrepPipe.fileHandleForReading.readDataToEndOfFile()
+            let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            // Take the last child PID (usually the foreground process)
+            if let lastLine = output.split(separator: "\n").last,
+               let childPid = Int32(lastLine.trimmingCharacters(in: .whitespaces)) {
+                return childPid
+            }
+        } catch {}
+        return -1
+    }
+
+    private func getCwdOfPid(_ pid: pid_t) -> String {
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
-        proc.arguments = ["-p", "\(pid)", "-Fn", "-d", "cwd"]
+        proc.arguments = ["-a", "-p", "\(pid)", "-d", "cwd", "-Fn"]
         let pipe = Pipe()
         proc.standardOutput = pipe
         proc.standardError = FileHandle.nullDevice
@@ -267,7 +313,6 @@ class StatusBarView: NSView {
             proc.waitUntilExit()
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
             let output = String(data: data, encoding: .utf8) ?? ""
-            // Parse: lines starting with 'n' after 'cwd' line
             for line in output.split(separator: "\n") {
                 if line.hasPrefix("n/") {
                     return String(line.dropFirst(1))
