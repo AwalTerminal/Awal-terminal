@@ -35,7 +35,10 @@
       "Bash(chmod +x /Users/brahim/Projects/Workspace/Code/claude-terminal/scripts/generate-icon.sh && /Users/brahim/Projects/Workspace/Code/claude-terminal/scripts/generate-icon.sh)",
       "Bash(git commit -m \"$\\(cat <<'EOF'\nAdd app icon with Tifinagh lettermark\n\nAdd the ⴰⵡⴰⵍ Tifinagh icon as the app icon, replacing the default\nmacOS executable icon. Includes a generation script that uses sips and\niconutil to produce the .icns from a 1024x1024 source PNG.\nEOF\n\\)\")",
       "Bash(sips -s format png \"/Users/brahim/Downloads/Assets.xcassets/AppIcon.appiconset/1024-mac.png\" --out /Users/brahim/Projects/Workspace/Code/claude-terminal/app/Sources/App/Resources/AppIcon-source.png 2>&1)",
-      "Bash(git add app/Sources/App/Resources/AppIcon-source.png app/Sources/App/Resources/AppIcon.icns scripts/generate-icon.sh && git commit --amend --no-edit)"
+      "Bash(git add app/Sources/App/Resources/AppIcon-source.png app/Sources/App/Resources/AppIcon.icns scripts/generate-icon.sh && git commit --amend --no-edit)",
+      "Bash(swift run 2>&1)",
+      "Bash(cp /Users/brahim/Downloads/5433799.png /Users/brahim/Projects/Workspace/Code/claude-terminal/app/Sources/App/Resources/AppIcon-source.png && /Users/brahim/Projects/Workspace/Code/claude-terminal/scripts/generate-icon.sh)",
+      "Bash(just run 2>&1)"
     ]
   }
 }
