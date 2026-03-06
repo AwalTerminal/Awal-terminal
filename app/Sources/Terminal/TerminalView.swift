@@ -32,6 +32,7 @@ class TerminalView: NSView {
     private var menuSelection: Int = 0
     private var menuRendered: Bool = false
     private var menuEntries: [MenuEntry] = []
+    private var pendingDeleteIndex: Int? = nil
 
     private(set) var activeModelName: String = ""
     private(set) var activeProvider: String = ""
@@ -480,31 +481,62 @@ class TerminalView: NSView {
 
             case .recentWorkspace(let ws):
                 let isSelected = i == menuSelection
-                let arrow = isSelected ? "▸" : " "
-                let pathStr = shortenPath(ws.path)
-                let modelStr = ws.lastModel
-                let maxPathLen = itemWidth - 6 - modelStr.count
-                let truncPath = pathStr.count > maxPathLen
-                    ? String(pathStr.prefix(maxPathLen - 1)) + "…"
-                    : pathStr
-                let nameField = truncPath.padding(toLength: max(maxPathLen, 1), withPad: " ", startingAt: 0)
+                let isPendingDelete = pendingDeleteIndex == i
 
-                if isSelected {
+                if isPendingDelete {
+                    // Red confirmation row
+                    let prompt = "Delete? y/n"
+                    let pathStr = shortenPath(ws.path)
+                    let maxPathLen = itemWidth - 4 - prompt.count
+                    let truncPath = pathStr.count > maxPathLen
+                        ? String(pathStr.prefix(maxPathLen - 1)) + "…"
+                        : pathStr
+                    let nameField = truncPath.padding(toLength: max(maxPathLen, 1), withPad: " ", startingAt: 0)
                     out += itemPadStr
-                    out += "\u{1b}[48;2;79;70;229m"
+                    out += "\u{1b}[48;2;180;40;40m"  // red bg
                     out += "\u{1b}[1;37m"
-                    out += " \(arrow) \(nameField)"
+                    out += " ▸ \(nameField)"
                     out += "\u{1b}[0;37m"
-                    out += "\u{1b}[48;2;79;70;229m"
-                    out += " \(modelStr) "
+                    out += "\u{1b}[48;2;180;40;40m"
+                    out += " \(prompt) "
                     out += "\u{1b}[0m"
                 } else {
-                    out += itemPadStr
-                    out += "\u{1b}[37m"
-                    out += " \(arrow) \(nameField)"
-                    out += "\u{1b}[90m"
-                    out += " \(modelStr) "
-                    out += "\u{1b}[0m"
+                    let arrow = isSelected ? "▸" : " "
+                    let pathStr = shortenPath(ws.path)
+                    let modelStr = ws.lastModel
+
+                    if isSelected {
+                        // Show model name + dim ⌫ hint
+                        let suffix = "\(modelStr) ⌫"
+                        let maxPathLen = itemWidth - 6 - suffix.count
+                        let truncPath = pathStr.count > maxPathLen
+                            ? String(pathStr.prefix(maxPathLen - 1)) + "…"
+                            : pathStr
+                        let nameField = truncPath.padding(toLength: max(maxPathLen, 1), withPad: " ", startingAt: 0)
+                        out += itemPadStr
+                        out += "\u{1b}[48;2;79;70;229m"
+                        out += "\u{1b}[1;37m"
+                        out += " \(arrow) \(nameField)"
+                        out += "\u{1b}[0;37m"
+                        out += "\u{1b}[48;2;79;70;229m"
+                        out += " \(modelStr)"
+                        out += "\u{1b}[90m"
+                        out += "\u{1b}[48;2;79;70;229m"
+                        out += " ⌫ "
+                        out += "\u{1b}[0m"
+                    } else {
+                        let maxPathLen = itemWidth - 6 - modelStr.count
+                        let truncPath = pathStr.count > maxPathLen
+                            ? String(pathStr.prefix(maxPathLen - 1)) + "…"
+                            : pathStr
+                        let nameField = truncPath.padding(toLength: max(maxPathLen, 1), withPad: " ", startingAt: 0)
+                        out += itemPadStr
+                        out += "\u{1b}[37m"
+                        out += " \(arrow) \(nameField)"
+                        out += "\u{1b}[90m"
+                        out += " \(modelStr) "
+                        out += "\u{1b}[0m"
+                    }
                 }
 
             case .modelItem(let item):
@@ -562,7 +594,7 @@ class TerminalView: NSView {
         let hint: String
         switch menuPhase {
         case .main:
-            hint = "↑↓/jk Navigate  ⏎ Select  o Open Folder  Esc Shell"
+            hint = "↑↓/jk Navigate  ⏎ Select  ⌫ Delete  o Open  Esc Shell"
         case .pickModel:
             hint = "↑↓/jk Navigate  ⏎ Select  Esc Back"
         }
@@ -1223,6 +1255,31 @@ class TerminalView: NSView {
     }
 
     private func handleMenuKey(_ event: NSEvent) {
+        // Handle delete confirmation mode
+        if pendingDeleteIndex != nil {
+            if let chars = event.characters, chars == "y" {
+                // Confirm deletion
+                if let idx = pendingDeleteIndex, idx < menuEntries.count,
+                   case .recentWorkspace(let ws) = menuEntries[idx] {
+                    WorkspaceStore.shared.remove(path: ws.path)
+                    pendingDeleteIndex = nil
+                    buildMenuEntries()
+                    // Adjust selection if it's now out of bounds
+                    if menuSelection >= menuEntries.count {
+                        menuSelection = max(0, menuEntries.count - 1)
+                    }
+                    if !menuEntries.isEmpty && !isSelectable(menuEntries[menuSelection]) {
+                        moveToFirstSelectable()
+                    }
+                }
+            } else {
+                // Any other key cancels
+                pendingDeleteIndex = nil
+            }
+            renderMenu()
+            return
+        }
+
         switch event.keyCode {
         case 126: // Up arrow
             moveSelection(by: -1)
@@ -1232,6 +1289,13 @@ class TerminalView: NSView {
             renderMenu()
         case 36: // Return
             handleSelection()
+        case 51: // Backspace / Delete
+            if case .main = menuPhase,
+               menuSelection < menuEntries.count,
+               case .recentWorkspace = menuEntries[menuSelection] {
+                pendingDeleteIndex = menuSelection
+                renderMenu()
+            }
         case 53: // Escape
             switch menuPhase {
             case .main:
