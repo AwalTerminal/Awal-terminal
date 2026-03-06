@@ -210,6 +210,8 @@ final class MetalRenderer {
     struct LineVertexOut {
         float4 position [[position]];
         float4 color;
+        float2 uv;
+        float cornerRadius; // 0 = rect, >0 = rounded (1.0 = circle)
     };
 
     vertex LineVertexOut line_vertex(
@@ -237,10 +239,23 @@ final class MetalRenderer {
             float(inst.color[2]) / 255.0,
             float(inst.color[3]) / 255.0
         );
+        out.uv = corner;
+        // Use reserved bit: if w == h and both <= 20px, treat as circle
+        float minDim = min(rect.z, rect.w);
+        out.cornerRadius = (rect.z == rect.w && minDim <= 20.0) ? 1.0 : 0.0;
         return out;
     }
 
     fragment float4 line_fragment(LineVertexOut in [[stage_in]]) {
+        if (in.cornerRadius > 0.0) {
+            // SDF circle: discard pixels outside radius
+            float2 centered = in.uv * 2.0 - 1.0; // -1..1
+            float dist = dot(centered, centered);
+            if (dist > 1.0) discard_fragment();
+            // Smooth edge
+            float alpha = 1.0 - smoothstep(0.7, 1.0, dist);
+            return float4(in.color.rgb, in.color.a * alpha);
+        }
         return in.color;
     }
     """
@@ -362,7 +377,7 @@ final class MetalRenderer {
         scale: CGFloat,
         searchHighlights: [(col: Int, row: Int, len: Int)] = [],
         currentHighlight: Int = -1,
-        foldIndicators: [(row: Int, collapsed: Bool, regionType: UInt8, label: String)] = []
+        foldIndicators: [TerminalView.FoldIndicator] = []
     ) {
         // Non-blocking wait to avoid freezing the main thread
         let result = frameSemaphore.wait(timeout: .now() + .milliseconds(16))
@@ -478,48 +493,39 @@ final class MetalRenderer {
             }
         }
 
-        // Fold indicator instances — colored bars on the left edge of foldable rows
+        // Fold indicator instances — colored bars spanning the full region height
         for indicator in foldIndicators {
-            // Region type colors
             let (indR, indG, indB): (UInt8, UInt8, UInt8)
             switch indicator.regionType {
-            case 1: // ToolUse
-                (indR, indG, indB) = (79, 70, 229)   // Indigo accent
-            case 2: // ToolOutput
-                (indR, indG, indB) = (60, 60, 180)   // Darker indigo
-            case 3: // CodeBlock
-                (indR, indG, indB) = (80, 200, 120)   // Green
-            case 4: // Thinking
-                (indR, indG, indB) = (255, 180, 50)   // Orange/amber
-            case 7: // Diff
-                (indR, indG, indB) = (200, 100, 100)  // Red-ish
-            default:
-                (indR, indG, indB) = (100, 100, 100)  // Gray
+            case 1: (indR, indG, indB) = (79, 70, 229)    // ToolUse: indigo
+            case 2: (indR, indG, indB) = (60, 60, 180)    // ToolOutput: darker indigo
+            case 3: (indR, indG, indB) = (80, 200, 120)   // CodeBlock: green
+            case 4: (indR, indG, indB) = (255, 180, 50)   // Thinking: amber
+            case 7: (indR, indG, indB) = (200, 100, 100)  // Diff: red
+            default: (indR, indG, indB) = (100, 100, 100) // Gray
             }
 
-            // Left edge bar (3px wide)
-            let barWidth: Float = 3.0 * Float(scale)
+            let barWidth: Float = 2.0 * Float(scale)
+            let regionHeight = Float(indicator.endViewportRow - indicator.startViewportRow + 1) * scaledCellH
+
+            // Full-height left edge bar
             lineInstances.append(LineInstance(
                 x: 0,
-                y: Float(indicator.row) * scaledCellH,
+                y: Float(indicator.startViewportRow) * scaledCellH,
                 w: barWidth,
-                h: scaledCellH,
-                r: indR, g: indG, b: indB, a: 200
+                h: regionHeight,
+                r: indR, g: indG, b: indB, a: 160
             ))
 
-            // Fold chevron indicator: ▼ (expanded) or ▶ (collapsed)
-            // Render as a small triangle using the line pipeline
-            if indicator.collapsed {
-                // Right-pointing triangle (collapsed) — rendered as a small filled rect
-                let triX: Float = barWidth + 2.0 * Float(scale)
-                let triY = Float(indicator.row) * scaledCellH + scaledCellH * 0.25
-                let triSize = scaledCellH * 0.5
-                lineInstances.append(LineInstance(
-                    x: triX, y: triY,
-                    w: triSize * 0.6, h: triSize,
-                    r: indR, g: indG, b: indB, a: 180
-                ))
-            }
+            // Circle indicator on the first row — approximate with a small square
+            let circleSize: Float = 6.0 * Float(scale)
+            let circleX: Float = barWidth + 3.0 * Float(scale)
+            let circleY = Float(indicator.startViewportRow) * scaledCellH + (scaledCellH - circleSize) / 2.0
+            lineInstances.append(LineInstance(
+                x: circleX, y: circleY,
+                w: circleSize, h: circleSize,
+                r: indR, g: indG, b: indB, a: indicator.collapsed ? 220 : 140
+            ))
         }
 
         // Cursor instance

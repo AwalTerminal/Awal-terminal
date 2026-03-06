@@ -854,51 +854,61 @@ class TerminalView: NSView {
         }
     }
 
-    /// Compute fold indicator positions for rendering as line decorations.
-    /// Returns positions of fold chevrons visible in the current viewport.
-    private func computeFoldIndicators() -> [(row: Int, collapsed: Bool, regionType: UInt8, label: String)] {
+    /// Fold indicator spanning visible rows of a region.
+    struct FoldIndicator {
+        let startViewportRow: Int
+        let endViewportRow: Int
+        let collapsed: Bool
+        let regionType: UInt8
+        let label: String
+    }
+
+    /// Compute fold indicator ranges visible in the current viewport.
+    private func computeFoldIndicators() -> [FoldIndicator] {
         guard let s = surface, !foldRegions.isEmpty else { return [] }
 
         let viewportOffset = Int(at_surface_get_viewport_offset(s))
         let scrollbackLen = Int(at_surface_get_scrollback_len(s))
         let rows = Int(termRows)
 
-        var indicators: [(row: Int, collapsed: Bool, regionType: UInt8, label: String)] = []
+        var indicators: [FoldIndicator] = []
 
         for region in foldRegions {
-            // Only show indicators for multi-line foldable regions
             guard region.lineCount > 2 else { continue }
 
-            // Region types that are foldable
-            let foldable: Bool
+            // Only foldable region types
             switch region.regionType {
-            case 1, 2, 3, 4, 7: // ToolUse, ToolOutput, CodeBlock, Thinking, Diff
-                foldable = true
-            default:
-                foldable = false
+            case 1, 2, 3, 4, 7: break // ToolUse, ToolOutput, CodeBlock, Thinking, Diff
+            default: continue
             }
-            guard foldable else { continue }
 
-            let startRow = Int(region.startRow)
+            let regStart = Int(region.startRow)
+            let regEnd = Int(region.endRow)
 
-            // Convert absolute row to viewport row
-            let viewportRow: Int
+            // Convert absolute rows to viewport rows
+            let vpStart: Int
+            let vpEnd: Int
             if viewportOffset == 0 {
-                viewportRow = startRow
+                vpStart = regStart
+                vpEnd = regEnd
             } else {
                 let viewportStart = scrollbackLen - viewportOffset
-                let absIdx = scrollbackLen + startRow
-                viewportRow = absIdx - viewportStart
+                vpStart = scrollbackLen + regStart - viewportStart
+                vpEnd = scrollbackLen + regEnd - viewportStart
             }
 
-            if viewportRow >= 0 && viewportRow < rows {
-                indicators.append((
-                    row: viewportRow,
-                    collapsed: region.collapsed,
-                    regionType: region.regionType,
-                    label: region.label
-                ))
-            }
+            // Clip to visible range
+            let clippedStart = max(0, vpStart)
+            let clippedEnd = min(rows - 1, vpEnd)
+            guard clippedStart <= clippedEnd else { continue }
+
+            indicators.append(FoldIndicator(
+                startViewportRow: clippedStart,
+                endViewportRow: clippedEnd,
+                collapsed: region.collapsed,
+                regionType: region.regionType,
+                label: region.label
+            ))
         }
 
         return indicators
