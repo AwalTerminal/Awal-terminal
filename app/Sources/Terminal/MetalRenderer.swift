@@ -377,7 +377,8 @@ final class MetalRenderer {
         scale: CGFloat,
         searchHighlights: [(col: Int, row: Int, len: Int)] = [],
         currentHighlight: Int = -1,
-        foldIndicators: [TerminalView.FoldIndicator] = []
+        foldIndicators: [TerminalView.FoldIndicator] = [],
+        codeBlockRows: Set<Int> = []
     ) {
         // Non-blocking wait to avoid freezing the main thread
         let result = frameSemaphore.wait(timeout: .now() + .milliseconds(16))
@@ -426,6 +427,11 @@ final class MetalRenderer {
                     bgInstances.append(BgInstance(
                         posX: Float(col), posY: Float(row),
                         r: cell.bg_r, g: cell.bg_g, b: cell.bg_b, a: cell.bg_a
+                    ))
+                } else if codeBlockRows.contains(row) {
+                    bgInstances.append(BgInstance(
+                        posX: Float(col), posY: Float(row),
+                        r: 40, g: 42, b: 46, a: 180
                     ))
                 }
 
