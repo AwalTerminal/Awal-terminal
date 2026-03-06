@@ -6,8 +6,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     func applicationDidFinishLaunching(_ notification: Notification) {
         at_init_logging()
 
-        if let iconURL = Bundle.module.url(forResource: "AppIcon", withExtension: "icns"),
-           let icon = NSImage(contentsOf: iconURL) {
+        if let icon = NSImage(named: "AppIcon") {
             NSApp.applicationIconImage = icon
         }
 
@@ -112,6 +111,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         shellMenuItem.submenu = shellMenu
         mainMenu.addItem(shellMenuItem)
+
+        // View menu
+        let viewMenuItem = NSMenuItem()
+        let viewMenu = NSMenu(title: "View")
+
+        let sidePanelItem = NSMenuItem(title: "AI Side Panel", action: #selector(TerminalWindowController.toggleAISidePanel(_:)), keyEquivalent: "i")
+        sidePanelItem.keyEquivalentModifierMask = [.command, .shift]
+        viewMenu.addItem(sidePanelItem)
+
+        viewMenuItem.submenu = viewMenu
+        mainMenu.addItem(viewMenuItem)
 
         // Window menu
         let windowMenuItem = NSMenuItem()

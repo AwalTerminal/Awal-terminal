@@ -86,7 +86,9 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
 
         let splitContainer = SplitContainerView(rootTerminal: rootTerminal)
         let statusBar = StatusBarView()
-        let tab = TabState(splitContainer: splitContainer, statusBar: statusBar)
+        let aiSidePanel = AISidePanelView()
+        aiSidePanel.hide() // Hidden by default
+        let tab = TabState(splitContainer: splitContainer, statusBar: statusBar, aiSidePanel: aiSidePanel)
 
         wireTerminalCallbacks(rootTerminal, tab: tab)
         wireSplitContainer(splitContainer, tab: tab)
@@ -103,9 +105,20 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
 
         tab.splitContainer.translatesAutoresizingMaskIntoConstraints = false
         tab.statusBar.translatesAutoresizingMaskIntoConstraints = false
+        tab.aiSidePanel.translatesAutoresizingMaskIntoConstraints = false
 
         contentArea.addSubview(tab.splitContainer)
         contentArea.addSubview(tab.statusBar)
+        contentArea.addSubview(tab.aiSidePanel)
+
+        // Side panel clips content when collapsed to 0 width
+        tab.aiSidePanel.wantsLayer = true
+        tab.aiSidePanel.layer?.masksToBounds = true
+
+        let widthConstraint = tab.aiSidePanel.widthAnchor.constraint(
+            equalToConstant: tab.aiSidePanel.isPanelVisible ? AISidePanelView.defaultWidth : 0
+        )
+        tab.sidePanelWidthConstraint = widthConstraint
 
         NSLayoutConstraint.activate([
             tab.statusBar.leadingAnchor.constraint(equalTo: contentArea.leadingAnchor),
@@ -113,8 +126,15 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
             tab.statusBar.bottomAnchor.constraint(equalTo: contentArea.bottomAnchor),
             tab.statusBar.heightAnchor.constraint(equalToConstant: StatusBarView.barHeight),
 
+            // AI Side Panel on the right
+            tab.aiSidePanel.trailingAnchor.constraint(equalTo: contentArea.trailingAnchor),
+            tab.aiSidePanel.topAnchor.constraint(equalTo: contentArea.topAnchor),
+            tab.aiSidePanel.bottomAnchor.constraint(equalTo: tab.statusBar.topAnchor),
+            widthConstraint,
+
+            // Terminal fills the remaining space
             tab.splitContainer.leadingAnchor.constraint(equalTo: contentArea.leadingAnchor),
-            tab.splitContainer.trailingAnchor.constraint(equalTo: contentArea.trailingAnchor),
+            tab.splitContainer.trailingAnchor.constraint(equalTo: tab.aiSidePanel.leadingAnchor),
             tab.splitContainer.topAnchor.constraint(equalTo: contentArea.topAnchor),
             tab.splitContainer.bottomAnchor.constraint(equalTo: tab.statusBar.topAnchor),
         ])
@@ -127,6 +147,7 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
     private func uninstallTab(_ tab: TabState) {
         tab.splitContainer.removeFromSuperview()
         tab.statusBar.removeFromSuperview()
+        tab.aiSidePanel.removeFromSuperview()
         tab.statusBar.isPaused = true
     }
 
@@ -324,6 +345,13 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
             guard let self, let tab else { return }
             tab.statusBar.resetSession()
             tab.statusBar.update(model: model, provider: provider, cols: cols, rows: rows)
+            tab.aiSidePanel.setModel(model)
+            tab.aiSidePanel.resetSession()
+            // Enable AI analysis for LLM sessions (not plain Shell)
+            let isAI = !model.isEmpty && model != "Shell"
+            if let surface = terminal.surfacePointer {
+                at_surface_set_ai_analysis(surface, isAI)
+            }
             self.reloadTabBar()
             self.updateWindowTitle()
         }
@@ -333,9 +361,16 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         terminal.onFocused = { [weak tab] tv in
             tab?.splitContainer.setFocused(tv)
         }
-        terminal.onTerminalIdle = { [weak terminal] in
+        terminal.onTerminalIdle = { [weak terminal, weak tab] in
             guard let terminal else { return }
             NotificationManager.shared.notifyIdleIfNeeded(modelName: terminal.activeModelName)
+            // Update side panel with latest analyzer data
+            tab?.aiSidePanel.updateFromSurface(terminal.surfacePointer)
+            // Update token display from TokenTracker
+            tab?.aiSidePanel.updateTokenDisplay(
+                input: TokenTracker.shared.totalInput,
+                output: TokenTracker.shared.totalOutput
+            )
         }
     }
 
@@ -438,6 +473,22 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         let tab = createTabState(isInitialTab: false, model: model, workingDir: dir)
         tabs.append(tab)
         switchToTab(at: tabs.count - 1)
+    }
+
+    // MARK: - AI Side Panel
+
+    @objc func toggleAISidePanel(_ sender: Any?) {
+        let tab = activeTab
+        tab.aiSidePanel.toggle()
+
+        let targetWidth: CGFloat = tab.aiSidePanel.isPanelVisible ? AISidePanelView.defaultWidth : 0
+        tab.sidePanelWidthConstraint?.constant = targetWidth
+
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.2
+            context.allowsImplicitAnimation = true
+            self.contentArea.layoutSubtreeIfNeeded()
+        }
     }
 
     // MARK: - Settings
