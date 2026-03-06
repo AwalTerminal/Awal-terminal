@@ -361,7 +361,8 @@ final class MetalRenderer {
         viewportSize: CGSize,
         scale: CGFloat,
         searchHighlights: [(col: Int, row: Int, len: Int)] = [],
-        currentHighlight: Int = -1
+        currentHighlight: Int = -1,
+        foldIndicators: [(row: Int, collapsed: Bool, regionType: UInt8, label: String)] = []
     ) {
         // Non-blocking wait to avoid freezing the main thread
         let result = frameSemaphore.wait(timeout: .now() + .milliseconds(16))
@@ -473,6 +474,50 @@ final class MetalRenderer {
                 bgInstances.append(BgInstance(
                     posX: Float(hl.col + c), posY: Float(hl.row),
                     r: hlR, g: hlG, b: hlB, a: hlA
+                ))
+            }
+        }
+
+        // Fold indicator instances — colored bars on the left edge of foldable rows
+        for indicator in foldIndicators {
+            // Region type colors
+            let (indR, indG, indB): (UInt8, UInt8, UInt8)
+            switch indicator.regionType {
+            case 1: // ToolUse
+                (indR, indG, indB) = (79, 70, 229)   // Indigo accent
+            case 2: // ToolOutput
+                (indR, indG, indB) = (60, 60, 180)   // Darker indigo
+            case 3: // CodeBlock
+                (indR, indG, indB) = (80, 200, 120)   // Green
+            case 4: // Thinking
+                (indR, indG, indB) = (255, 180, 50)   // Orange/amber
+            case 7: // Diff
+                (indR, indG, indB) = (200, 100, 100)  // Red-ish
+            default:
+                (indR, indG, indB) = (100, 100, 100)  // Gray
+            }
+
+            // Left edge bar (3px wide)
+            let barWidth: Float = 3.0 * Float(scale)
+            lineInstances.append(LineInstance(
+                x: 0,
+                y: Float(indicator.row) * scaledCellH,
+                w: barWidth,
+                h: scaledCellH,
+                r: indR, g: indG, b: indB, a: 200
+            ))
+
+            // Fold chevron indicator: ▼ (expanded) or ▶ (collapsed)
+            // Render as a small triangle using the line pipeline
+            if indicator.collapsed {
+                // Right-pointing triangle (collapsed) — rendered as a small filled rect
+                let triX: Float = barWidth + 2.0 * Float(scale)
+                let triY = Float(indicator.row) * scaledCellH + scaledCellH * 0.25
+                let triSize = scaledCellH * 0.5
+                lineInstances.append(LineInstance(
+                    x: triX, y: triY,
+                    w: triSize * 0.6, h: triSize,
+                    r: indR, g: indG, b: indB, a: 180
                 ))
             }
         }

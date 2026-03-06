@@ -80,12 +80,29 @@ class TerminalView: NSView {
     private var needsRender: Bool = true
     private var currentScale: CGFloat = NSScreen.main?.backingScaleFactor ?? 2.0
 
+    /// True when the user has manually scrolled up; suppresses auto-snap to bottom.
+    private var userScrolledUp: Bool = false
+
     // MARK: - Search State
 
     private var searchBar: SearchBarView?
     private var searchResults: [(col: Int, row: Int32)] = []
     private var currentSearchIndex: Int = 0
     private var searchQueryLength: Int = 0
+
+    // MARK: - AI Fold State
+
+    /// Cached fold regions for rendering indicators.
+    private var foldRegions: [FoldRegion] = []
+
+    struct FoldRegion {
+        let startRow: Int32
+        let endRow: Int32
+        let regionType: UInt8
+        let collapsed: Bool
+        let label: String
+        let lineCount: UInt32
+    }
 
     // MARK: - Init
 
@@ -724,10 +741,12 @@ class TerminalView: NSView {
         }
 
         if totalRead > 0 {
-            // Auto-snap to bottom when new output arrives
-            let offset = at_surface_get_viewport_offset(s)
-            if offset > 0 {
-                at_surface_scroll_viewport(s, -offset)
+            // Auto-snap to bottom only if the user hasn't manually scrolled up
+            if !userScrolledUp {
+                let offset = at_surface_get_viewport_offset(s)
+                if offset > 0 {
+                    at_surface_scroll_viewport(s, -offset)
+                }
             }
             updateCellBuffer()
             needsRender = true
@@ -782,6 +801,9 @@ class TerminalView: NSView {
             _ = at_surface_read_cells(s, ptr.baseAddress!, UInt32(needed))
         }
 
+        // Update fold regions from AI analyzer
+        updateFoldRegions()
+
         var row: UInt32 = 0
         var col: UInt32 = 0
         var visible: Bool = true
@@ -789,6 +811,97 @@ class TerminalView: NSView {
         cursorRow = row
         cursorCol = col
         cursorVisible = visible
+    }
+
+    private func updateFoldRegions() {
+        guard let s = surface else {
+            foldRegions = []
+            return
+        }
+
+        let regionCount = at_surface_get_region_count(s)
+        guard regionCount > 0 else {
+            foldRegions = []
+            return
+        }
+
+        let maxRegions = min(regionCount, 500)
+        var cRegions = [COutputRegion](repeating: COutputRegion(
+            start_row: 0, end_row: 0, region_type: 0, collapsed: 0, line_count: 0, label: nil
+        ), count: Int(maxRegions))
+
+        let count = cRegions.withUnsafeMutableBufferPointer { ptr in
+            at_surface_get_regions(s, ptr.baseAddress!, maxRegions)
+        }
+
+        foldRegions = (0..<Int(count)).map { i in
+            let r = cRegions[i]
+            let label: String
+            if let lbl = r.label {
+                label = String(cString: lbl)
+                at_free_string(lbl)
+            } else {
+                label = ""
+            }
+            return FoldRegion(
+                startRow: r.start_row,
+                endRow: r.end_row,
+                regionType: r.region_type,
+                collapsed: r.collapsed != 0,
+                label: label,
+                lineCount: r.line_count
+            )
+        }
+    }
+
+    /// Compute fold indicator positions for rendering as line decorations.
+    /// Returns positions of fold chevrons visible in the current viewport.
+    private func computeFoldIndicators() -> [(row: Int, collapsed: Bool, regionType: UInt8, label: String)] {
+        guard let s = surface, !foldRegions.isEmpty else { return [] }
+
+        let viewportOffset = Int(at_surface_get_viewport_offset(s))
+        let scrollbackLen = Int(at_surface_get_scrollback_len(s))
+        let rows = Int(termRows)
+
+        var indicators: [(row: Int, collapsed: Bool, regionType: UInt8, label: String)] = []
+
+        for region in foldRegions {
+            // Only show indicators for multi-line foldable regions
+            guard region.lineCount > 2 else { continue }
+
+            // Region types that are foldable
+            let foldable: Bool
+            switch region.regionType {
+            case 1, 2, 3, 4, 7: // ToolUse, ToolOutput, CodeBlock, Thinking, Diff
+                foldable = true
+            default:
+                foldable = false
+            }
+            guard foldable else { continue }
+
+            let startRow = Int(region.startRow)
+
+            // Convert absolute row to viewport row
+            let viewportRow: Int
+            if viewportOffset == 0 {
+                viewportRow = startRow
+            } else {
+                let viewportStart = scrollbackLen - viewportOffset
+                let absIdx = scrollbackLen + startRow
+                viewportRow = absIdx - viewportStart
+            }
+
+            if viewportRow >= 0 && viewportRow < rows {
+                indicators.append((
+                    row: viewportRow,
+                    collapsed: region.collapsed,
+                    regionType: region.regionType,
+                    label: region.label
+                ))
+            }
+        }
+
+        return indicators
     }
 
     // MARK: - Metal Rendering (Display Link)
@@ -807,6 +920,9 @@ class TerminalView: NSView {
         // Compute visible search highlights
         let highlights = computeVisibleSearchHighlights()
 
+        // Compute fold indicators
+        let foldIndicators = computeFoldIndicators()
+
         cellBuffer.withUnsafeBufferPointer { ptr in
             guard let baseAddress = ptr.baseAddress else { return }
             renderer.render(
@@ -822,7 +938,8 @@ class TerminalView: NSView {
                 viewportSize: CGSize(width: viewportSize.width, height: viewportSize.height),
                 scale: layer.contentsScale,
                 searchHighlights: highlights.cells,
-                currentHighlight: highlights.currentIndex
+                currentHighlight: highlights.currentIndex,
+                foldIndicators: foldIndicators
             )
         }
     }
@@ -1039,6 +1156,8 @@ class TerminalView: NSView {
         let lines = Int(delta / 3.0)
         if lines != 0 {
             at_surface_scroll_viewport(s, Int32(lines))
+            let offset = at_surface_get_viewport_offset(s)
+            userScrolledUp = offset > 0
             updateCellBuffer()
             needsRender = true
         }
@@ -1102,6 +1221,16 @@ class TerminalView: NSView {
         }
 
         let (col, row) = gridPosition(for: event)
+
+        // Click on fold indicator (left edge, col 0) to toggle fold
+        if col == 0 && !foldRegions.isEmpty {
+            let absRow = absoluteRow(gridRow: row)
+            if at_surface_toggle_fold(s, absRow) {
+                updateCellBuffer()
+                needsRender = true
+                return
+            }
+        }
 
         // Cmd+click: open hyperlink
         if event.modifierFlags.contains(.command) {
@@ -1461,7 +1590,6 @@ class TerminalView: NSView {
     private func computeVisibleSearchHighlights() -> (cells: [(col: Int, row: Int, len: Int)], currentIndex: Int) {
         guard let s = surface, !searchResults.isEmpty else { return ([], -1) }
 
-        let scrollbackLen = Int(at_surface_get_scrollback_len(s))
         let viewportOffset = Int(at_surface_get_viewport_offset(s))
         let rows = Int(termRows)
         let cols = Int(termCols)
