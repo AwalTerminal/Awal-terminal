@@ -32,7 +32,10 @@ build-debug: build-core-debug build-app-debug
 
 # Run the app (debug build)
 run: build-core-debug
-    cd {{app_dir}} && swift build && swift run
+    cd {{app_dir}} && swift build
+    @bin_path=$(cd {{app_dir}} && swift build --show-bin-path) && \
+        ln -sf "$bin_path/AwalTerminal" "$bin_path/Awal Terminal" && \
+        "$bin_path/Awal Terminal"
 
 # Run tests
 test:
