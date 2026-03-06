@@ -378,7 +378,8 @@ final class MetalRenderer {
         searchHighlights: [(col: Int, row: Int, len: Int)] = [],
         currentHighlight: Int = -1,
         foldIndicators: [TerminalView.FoldIndicator] = [],
-        codeBlockRows: Set<Int> = []
+        codeBlockRows: Set<Int> = [],
+        diffRowColors: [Int: (UInt8, UInt8, UInt8, UInt8)] = [:]
     ) {
         // Non-blocking wait to avoid freezing the main thread
         let result = frameSemaphore.wait(timeout: .now() + .milliseconds(16))
@@ -427,6 +428,11 @@ final class MetalRenderer {
                     bgInstances.append(BgInstance(
                         posX: Float(col), posY: Float(row),
                         r: cell.bg_r, g: cell.bg_g, b: cell.bg_b, a: cell.bg_a
+                    ))
+                } else if let diffColor = diffRowColors[row] {
+                    bgInstances.append(BgInstance(
+                        posX: Float(col), posY: Float(row),
+                        r: diffColor.0, g: diffColor.1, b: diffColor.2, a: diffColor.3
                     ))
                 } else if codeBlockRows.contains(row) {
                     bgInstances.append(BgInstance(

@@ -35,12 +35,27 @@ class TerminalView: NSView {
 
     private(set) var activeModelName: String = ""
     private(set) var activeProvider: String = ""
+    private(set) var isGenerating: Bool = false
+
+    /// Maps the last region type to a human-readable phase label.
+    var generationPhase: String {
+        guard let last = foldRegions.last else { return "Generating..." }
+        switch last.regionType {
+        case 1: return "Running tool..."
+        case 2: return "Reading output..."
+        case 3: return "Writing code..."
+        case 4: return "Thinking..."
+        case 7: return "Generating diff..."
+        default: return "Generating..."
+        }
+    }
 
     // Callbacks for status bar updates
     var onSessionChanged: ((_ model: String, _ provider: String, _ cols: Int, _ rows: Int) -> Void)?
     var onShellSpawned: ((_ pid: pid_t) -> Void)?
     var onFocused: ((_ terminal: TerminalView) -> Void)?
     var onTerminalIdle: (() -> Void)?
+    var onGeneratingChanged: ((_ isGenerating: Bool) -> Void)?
 
     // Deferred launch for new panes (set before adding to window)
     var pendingLaunchModel: MenuItem?
@@ -89,6 +104,11 @@ class TerminalView: NSView {
     private var searchResults: [(col: Int, row: Int32)] = []
     private var currentSearchIndex: Int = 0
     private var searchQueryLength: Int = 0
+
+    // MARK: - Selection Tracking
+
+    private var selectionStartAbsRow: Int32 = 0
+    private var selectionEndAbsRow: Int32 = 0
 
     // MARK: - AI Fold State
 
@@ -755,6 +775,10 @@ class TerminalView: NSView {
             updateCellBuffer()
             needsRender = true
             hadRecentOutput = true
+            if !isGenerating && !activeModelName.isEmpty {
+                isGenerating = true
+                onGeneratingChanged?(true)
+            }
             resetIdleTimer()
         }
     }
@@ -769,6 +793,10 @@ class TerminalView: NSView {
     private func handleIdleTimeout() {
         guard hadRecentOutput, !activeModelName.isEmpty else { return }
         hadRecentOutput = false
+        if isGenerating {
+            isGenerating = false
+            onGeneratingChanged?(false)
+        }
         onTerminalIdle?()
     }
 
@@ -1030,6 +1058,80 @@ class TerminalView: NSView {
         return codeBlockRows
     }
 
+    /// Apply colored backgrounds to diff regions (type 7) based on line content.
+    /// Returns a dict mapping viewport row → RGBA color tuple.
+    private func applyDiffHighlighting() -> [Int: (UInt8, UInt8, UInt8, UInt8)] {
+        guard let s = surface, !foldRegions.isEmpty else { return [:] }
+
+        let cols = Int(termCols)
+        let rows = Int(termRows)
+        let viewportOffset = Int(at_surface_get_viewport_offset(s))
+        let scrollbackLen = Int(at_surface_get_scrollback_len(s))
+
+        var diffColors: [Int: (UInt8, UInt8, UInt8, UInt8)] = [:]
+
+        for region in foldRegions {
+            guard region.regionType == 7 else { continue }
+
+            let regStart = Int(region.startRow)
+            let regEnd = Int(region.endRow)
+
+            let vpStart: Int
+            let vpEnd: Int
+            if viewportOffset == 0 {
+                vpStart = regStart
+                vpEnd = regEnd
+            } else {
+                let viewportStart = scrollbackLen - viewportOffset
+                vpStart = scrollbackLen + regStart - viewportStart
+                vpEnd = scrollbackLen + regEnd - viewportStart
+            }
+
+            let clippedStart = max(0, vpStart)
+            let clippedEnd = min(rows - 1, vpEnd)
+            guard clippedStart <= clippedEnd else { continue }
+
+            for vpRow in clippedStart...clippedEnd {
+                guard vpRow >= 0 && vpRow < rows else { continue }
+
+                // Read first non-space character from cellBuffer
+                let base = vpRow * cols
+                var firstChar: UInt32 = 0
+                var secondChar: UInt32 = 0
+                for c in 0..<cols {
+                    let idx = base + c
+                    guard idx < cellBuffer.count else { break }
+                    let cp = cellBuffer[idx].codepoint
+                    if cp > 32 {
+                        if firstChar == 0 {
+                            firstChar = cp
+                        } else if secondChar == 0 {
+                            secondChar = cp
+                            break
+                        }
+                    }
+                }
+
+                let color: (UInt8, UInt8, UInt8, UInt8)
+                if firstChar == 0x2B { // '+'
+                    color = (30, 60, 30, 140)
+                } else if firstChar == 0x2D { // '-'
+                    color = (60, 25, 25, 140)
+                } else if firstChar == 0x40 && secondChar == 0x40 { // '@@'
+                    color = (40, 30, 65, 140)
+                } else if firstChar == 0x64 { // 'd' (diff --git)
+                    color = (35, 35, 50, 100)
+                } else {
+                    continue
+                }
+
+                diffColors[vpRow] = color
+            }
+        }
+
+        return diffColors
+    }
+
     // MARK: - Metal Rendering (Display Link)
 
     private func renderFrame() {
@@ -1052,6 +1154,9 @@ class TerminalView: NSView {
         // Apply syntax highlighting to code blocks (mutates cellBuffer, returns rows for bg tint)
         let codeBlockRows = applySyntaxHighlighting()
 
+        // Apply diff highlighting (colored backgrounds for +/-/@@ lines)
+        let diffRowColors = applyDiffHighlighting()
+
         cellBuffer.withUnsafeBufferPointer { ptr in
             guard let baseAddress = ptr.baseAddress else { return }
             renderer.render(
@@ -1069,7 +1174,8 @@ class TerminalView: NSView {
                 searchHighlights: highlights.cells,
                 currentHighlight: highlights.currentIndex,
                 foldIndicators: foldIndicators,
-                codeBlockRows: codeBlockRows
+                codeBlockRows: codeBlockRows,
+                diffRowColors: diffRowColors
             )
         }
     }
@@ -1383,6 +1489,8 @@ class TerminalView: NSView {
 
         // Start selection
         let absRow = absoluteRow(gridRow: row)
+        selectionStartAbsRow = absRow
+        selectionEndAbsRow = absRow
 
         if event.clickCount == 2 {
             // Double-click: select word
@@ -1412,6 +1520,7 @@ class TerminalView: NSView {
 
         if mouseMode == 0 {
             let absRow = absoluteRow(gridRow: row)
+            selectionEndAbsRow = absRow
             at_surface_update_selection(s, UInt32(col), absRow)
             updateCellBuffer()
             needsRender = true
@@ -1515,10 +1624,13 @@ class TerminalView: NSView {
     private func copySelection() -> Bool {
         guard let s = surface else { return false }
         guard let cStr = at_surface_get_selected_text(s) else { return false }
-        let text = String(cString: cStr)
+        var text = String(cString: cStr)
         at_free_string(cStr)
 
         if text.isEmpty { return false }
+
+        // Smart copy: strip code block fences if selection is within a CodeBlock region
+        text = smartStripCodeBlock(text)
 
         let pb = NSPasteboard.general
         pb.clearContents()
@@ -1529,6 +1641,35 @@ class TerminalView: NSView {
         updateCellBuffer()
         needsRender = true
         return true
+    }
+
+    /// If the selection falls entirely within a single CodeBlock region (type 3),
+    /// strip leading/trailing lines that start with ```.
+    private func smartStripCodeBlock(_ text: String) -> String {
+        let minRow = min(selectionStartAbsRow, selectionEndAbsRow)
+        let maxRow = max(selectionStartAbsRow, selectionEndAbsRow)
+
+        // Check if selection bounds fall within a single CodeBlock region
+        for region in foldRegions {
+            guard region.regionType == 3 else { continue }
+            if minRow >= region.startRow && maxRow <= region.endRow {
+                // Selection is within this code block — strip fence lines
+                var lines = text.components(separatedBy: "\n")
+                // Strip leading fence
+                if let first = lines.first?.trimmingCharacters(in: .whitespaces),
+                   first.hasPrefix("```") {
+                    lines.removeFirst()
+                }
+                // Strip trailing fence
+                if let last = lines.last?.trimmingCharacters(in: .whitespaces),
+                   last.hasPrefix("```") {
+                    lines.removeLast()
+                }
+                return lines.joined(separator: "\n")
+            }
+        }
+
+        return text
     }
 
     private func pasteFromClipboard() {
