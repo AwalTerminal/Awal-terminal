@@ -61,4 +61,4 @@ bundle: build
 
 # Generate app icon from source PNG
 generate-icon:
-    scripts/generate-icon.sh
+    swift scripts/generate-icon.swift

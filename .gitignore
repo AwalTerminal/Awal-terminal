@@ -6,6 +6,9 @@ core/Cargo.lock
 app/.build/
 app/.swiftpm/
 app/Package.resolved
+*.d
+*.o
+*.swiftdeps
 
 # macOS
 .DS_Store
@@ -13,12 +16,18 @@ app/Package.resolved
 *.xcworkspace
 xcuserdata/
 
+# Build output
+build/
+
 # IDE
 .idea/
 .vscode/
 *.swp
 *.swo
 *~
+
+# Claude local settings
+app/.claude/
 
 # Local docs
 docs/plan.md
