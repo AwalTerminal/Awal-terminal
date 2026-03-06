@@ -1,12 +1,45 @@
 import AppKit
 import CAwalTerminal
 
+/// Centralized app icon accessor — works in both .app bundle and swift-run contexts.
+enum AppIcon {
+    static let image: NSImage? = {
+        // 1. Try bundle (works in .app)
+        if let icon = NSImage(named: "AppIcon"), icon.isValid {
+            return icon
+        }
+        // 2. Fallback: load .icns from source tree (swift run)
+        let execURL = URL(fileURLWithPath: CommandLine.arguments[0])
+        var dir = execURL.deletingLastPathComponent()
+        for _ in 0..<8 {
+            let icnsURL = dir.appendingPathComponent("app/Sources/App/Resources/AppIcon.icns")
+            if FileManager.default.fileExists(atPath: icnsURL.path),
+               let icon = NSImage(contentsOf: icnsURL) {
+                return icon
+            }
+            dir = dir.deletingLastPathComponent()
+        }
+        return nil
+    }()
+}
+
+extension NSAlert {
+    /// Creates an alert pre-configured with the Awal Terminal app icon.
+    static func branded() -> NSAlert {
+        let alert = NSAlert()
+        if let icon = AppIcon.image {
+            alert.icon = icon
+        }
+        return alert
+    }
+}
+
 class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         at_init_logging()
 
-        if let icon = NSImage(named: "AppIcon") {
+        if let icon = AppIcon.image {
             NSApp.applicationIconImage = icon
         }
 
@@ -20,6 +53,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return true
+    }
+
+    @objc func showAboutPanel(_ sender: Any?) {
+        var options: [NSApplication.AboutPanelOptionKey: Any] = [:]
+        if let icon = AppIcon.image {
+            options[.applicationIcon] = icon
+        }
+        NSApp.orderFrontStandardAboutPanel(options: options)
     }
 
     @objc func toggleNotifications(_ sender: Any?) {
@@ -41,7 +82,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // App menu
         let appMenuItem = NSMenuItem()
         let appMenu = NSMenu(title: "Awal Terminal")
-        appMenu.addItem(withTitle: "About Awal Terminal", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(withTitle: "About Awal Terminal", action: #selector(showAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(NSMenuItem.separator())
         appMenu.addItem(withTitle: "Hide Awal Terminal", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         let hideOthers = appMenu.addItem(withTitle: "Hide Others", action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h")

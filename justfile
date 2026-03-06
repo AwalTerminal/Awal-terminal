@@ -62,3 +62,7 @@ bundle: build
 # Generate app icon from source PNG
 generate-icon:
     swift scripts/generate-icon.swift
+
+# Generate brand assets (logomark, banners, social cards, favicons)
+generate-brand:
+    swift scripts/generate-brand-assets.swift

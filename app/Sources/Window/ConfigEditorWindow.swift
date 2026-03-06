@@ -454,7 +454,7 @@ class ConfigEditorWindow: NSWindowController, NSWindowDelegate {
 
     private func promptSaveThen(completion: @escaping () -> Void) {
         guard let win = window else { completion(); return }
-        let alert = NSAlert()
+        let alert = NSAlert.branded()
         alert.messageText = "Save changes to \(currentProfileName)?"
         alert.informativeText = "Your changes will be lost if you don't save them."
         alert.addButton(withTitle: "Save")
@@ -490,7 +490,7 @@ class ConfigEditorWindow: NSWindowController, NSWindowDelegate {
             }
         }
 
-        let alert = NSAlert()
+        let alert = NSAlert.branded()
         alert.messageText = "Add Key"
         alert.addButton(withTitle: "Add")
         alert.addButton(withTitle: "Cancel")
@@ -611,7 +611,7 @@ class ConfigEditorWindow: NSWindowController, NSWindowDelegate {
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         if isDirty {
-            let alert = NSAlert()
+            let alert = NSAlert.branded()
             alert.messageText = "Save changes?"
             alert.informativeText = "Your changes will be lost if you don't save them."
             alert.addButton(withTitle: "Save")
@@ -649,7 +649,7 @@ extension ConfigEditorWindow: ProfileBarDelegate {
 
     func profileBarDidRequestNew(_ bar: ProfileBar) {
         guard let win = window else { return }
-        let alert = NSAlert()
+        let alert = NSAlert.branded()
         alert.messageText = "New Profile"
         alert.informativeText = "Enter a name for the new profile:"
         alert.addButton(withTitle: "Create")
@@ -676,7 +676,7 @@ extension ConfigEditorWindow: ProfileBarDelegate {
 
     func profileBarDidRequestRename(_ bar: ProfileBar) {
         guard let win = window else { return }
-        let alert = NSAlert()
+        let alert = NSAlert.branded()
         alert.messageText = "Rename Profile"
         alert.informativeText = "Enter a new name for \"\(currentProfileName)\":"
         alert.addButton(withTitle: "Rename")
@@ -705,7 +705,7 @@ extension ConfigEditorWindow: ProfileBarDelegate {
         let profiles = ProfileStore.shared.profiles(for: currentModel)
         guard profiles.count > 1 else { return }
 
-        let alert = NSAlert()
+        let alert = NSAlert.branded()
         alert.messageText = "Delete \"\(currentProfileName)\"?"
         alert.informativeText = "This cannot be undone."
         alert.addButton(withTitle: "Delete")

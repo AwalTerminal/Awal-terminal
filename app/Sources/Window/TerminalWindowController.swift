@@ -310,7 +310,7 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         guard index >= 0 && index < tabs.count else { return }
         let tab = tabs[index]
 
-        let alert = NSAlert()
+        let alert = NSAlert.branded()
         alert.messageText = "Rename Tab"
         alert.addButton(withTitle: "OK")
         alert.addButton(withTitle: "Cancel")
@@ -343,6 +343,7 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
     private func wireTerminalCallbacks(_ terminal: TerminalView, tab: TabState) {
         terminal.onSessionChanged = { [weak self, weak tab] model, provider, cols, rows in
             guard let self, let tab else { return }
+            TokenTracker.shared.reset()
             tab.statusBar.resetSession()
             tab.statusBar.update(model: model, provider: provider, cols: cols, rows: rows)
             tab.aiSidePanel.setModel(model)
@@ -538,7 +539,7 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
             return
         }
 
-        let alert = NSAlert()
+        let alert = NSAlert.branded()
         alert.messageText = "Open Folder"
         alert.informativeText = "A \(focused.activeModelName) session is running. How would you like to open this folder?"
         alert.addButton(withTitle: "New Tab")

@@ -13,6 +13,7 @@ class TokenTracker {
 
     private var lastFile: String = ""
     private var lastFileSize: UInt64 = 0
+    private var sessionStart: Date = Date()
 
     private init() {}
 
@@ -68,9 +69,19 @@ class TokenTracker {
         let sessionFile = (latestPath as NSString).lastPathComponent
         let sid = (sessionFile as NSString).deletingPathExtension
 
+        let dateFormatter = ISO8601DateFormatter()
+        dateFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
         for line in text.split(separator: "\n") {
             guard let lineData = line.data(using: .utf8),
                   let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any] else { continue }
+
+            // Skip messages from before the current session
+            if let ts = json["timestamp"] as? String,
+               let date = dateFormatter.date(from: ts),
+               date < sessionStart {
+                continue
+            }
 
             let type = json["type"] as? String ?? ""
 
@@ -138,6 +149,7 @@ class TokenTracker {
         sessionId = ""
         lastFile = ""
         lastFileSize = 0
+        sessionStart = Date()
     }
 
     private func formatTokenCount(_ n: Int) -> String {
