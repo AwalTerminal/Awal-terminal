@@ -55,6 +55,10 @@ fmt:
 lint:
     cd {{core_dir}} && cargo clippy -- -W warnings
 
+# Package as .app bundle (release)
+bundle: build
+    scripts/bundle.sh
+
 # Generate app icon from source PNG
 generate-icon:
     scripts/generate-icon.sh
