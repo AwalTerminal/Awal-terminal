@@ -44,6 +44,10 @@ class AISidePanelView: NSView {
     private let filesSectionLabel = NSTextField(labelWithString: "Files Referenced")
     private let filesStackView = NSStackView()
 
+    // Phase / generating indicator
+    private let phaseLabel = NSTextField(labelWithString: "")
+    private var generatingTimer: Timer?
+
     // Elapsed time
     private let elapsedLabel = NSTextField(labelWithString: "")
 
@@ -62,6 +66,7 @@ class AISidePanelView: NSView {
 
     deinit {
         updateTimer?.invalidate()
+        generatingTimer?.invalidate()
     }
 
     private func setup() {
@@ -117,6 +122,12 @@ class AISidePanelView: NSView {
             label.textColor = textColor
             configureLabel(label)
         }
+
+        // Phase label (generating indicator)
+        phaseLabel.font = monoFont
+        phaseLabel.textColor = NSColor(red: 120/255, green: 220/255, blue: 120/255, alpha: 1.0)
+        phaseLabel.isHidden = true
+        configureLabel(phaseLabel)
 
         // Files section
         filesSectionLabel.font = sectionFont
@@ -190,9 +201,14 @@ class AISidePanelView: NSView {
             diffCountLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -margin),
             diffCountLabel.topAnchor.constraint(equalTo: codeBlockCountLabel.bottomAnchor, constant: itemGap),
 
+            // Phase label (generating indicator)
+            phaseLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: margin),
+            phaseLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -margin),
+            phaseLabel.topAnchor.constraint(equalTo: diffCountLabel.bottomAnchor, constant: itemGap),
+
             // Files section
             filesSectionLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: margin),
-            filesSectionLabel.topAnchor.constraint(equalTo: diffCountLabel.bottomAnchor, constant: sectionGap),
+            filesSectionLabel.topAnchor.constraint(equalTo: phaseLabel.bottomAnchor, constant: sectionGap),
 
             filesStackView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: margin),
             filesStackView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -margin),
@@ -328,6 +344,32 @@ class AISidePanelView: NSView {
             }
         }
         updateFileRefs(files)
+    }
+
+    func setGenerating(_ generating: Bool, surface: OpaquePointer? = nil, phaseText: String = "") {
+        if generating {
+            phaseLabel.isHidden = false
+            phaseLabel.stringValue = "  \(phaseText)"
+            generatingTimer?.invalidate()
+            generatingTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
+                guard let self else { return }
+                if let surface {
+                    self.updateFromSurface(surface)
+                }
+                self.updateTokenDisplay(
+                    input: TokenTracker.shared.totalInput,
+                    output: TokenTracker.shared.totalOutput
+                )
+            }
+        } else {
+            phaseLabel.isHidden = true
+            generatingTimer?.invalidate()
+            generatingTimer = nil
+        }
+    }
+
+    func updatePhase(_ text: String) {
+        phaseLabel.stringValue = "  \(text)"
     }
 
     // MARK: - Visibility

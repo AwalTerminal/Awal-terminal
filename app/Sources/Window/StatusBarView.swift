@@ -35,6 +35,11 @@ class StatusBarView: NSView {
     /// Pause polling when this tab is in the background
     var isPaused: Bool = false
 
+    private let generatingLabel = NSTextField(labelWithString: "")
+    private var generatingTimer: Timer?
+    private var generatingDotCount: Int = 0
+    private var generatingWidthConstraint: NSLayoutConstraint!
+
     private var sessionStart: Date = Date()
     private var updateTimer: Timer?
     private var shellPid: pid_t = 0
@@ -83,6 +88,16 @@ class StatusBarView: NSView {
         modelButton.action = #selector(modelClicked(_:))
         addSubview(modelButton)
 
+        // Generating indicator (fixed-width, between model and sep1)
+        generatingLabel.font = monoFont
+        generatingLabel.textColor = NSColor(red: 120/255, green: 220/255, blue: 120/255, alpha: 1.0)
+        generatingLabel.isEditable = false
+        generatingLabel.isBordered = false
+        generatingLabel.drawsBackground = false
+        generatingLabel.alignment = .left
+        generatingLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(generatingLabel)
+
         // Path button styled like a label
         pathButton.font = monoFont
         pathButton.contentTintColor = pathColor
@@ -117,8 +132,12 @@ class StatusBarView: NSView {
             modelButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
             modelButton.centerYAnchor.constraint(equalTo: centerYAnchor),
 
-            // Sep 1
-            sep1.leadingAnchor.constraint(equalTo: modelButton.trailingAnchor, constant: 10),
+            // Generating dots (fixed width, collapses to 0 when idle)
+            generatingLabel.leadingAnchor.constraint(equalTo: modelButton.trailingAnchor, constant: 2),
+            generatingLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+
+            // Sep 1 chains off generating label
+            sep1.leadingAnchor.constraint(equalTo: generatingLabel.trailingAnchor, constant: 8),
             sep1.centerYAnchor.constraint(equalTo: centerYAnchor),
 
             // Path (clickable button)
@@ -150,6 +169,9 @@ class StatusBarView: NSView {
             dimsLabel.trailingAnchor.constraint(equalTo: sep2.leadingAnchor, constant: -10),
             dimsLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
+
+        generatingWidthConstraint = generatingLabel.widthAnchor.constraint(equalToConstant: 0)
+        generatingWidthConstraint.isActive = true
 
         modelButton.title = "Awal Terminal"
 
@@ -393,5 +415,25 @@ class StatusBarView: NSView {
 
     func resetSession() {
         sessionStart = Date()
+    }
+
+    func setGenerating(_ generating: Bool) {
+        if generating {
+            generatingDotCount = 0
+            generatingWidthConstraint.constant = 22
+            generatingLabel.stringValue = "."
+            generatingTimer?.invalidate()
+            generatingTimer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: true) { [weak self] _ in
+                guard let self else { return }
+                self.generatingDotCount = (self.generatingDotCount + 1) % 4
+                let dots = ["", ".", "..", "..."]
+                self.generatingLabel.stringValue = dots[self.generatingDotCount]
+            }
+        } else {
+            generatingTimer?.invalidate()
+            generatingTimer = nil
+            generatingWidthConstraint.constant = 0
+            generatingLabel.stringValue = ""
+        }
     }
 }

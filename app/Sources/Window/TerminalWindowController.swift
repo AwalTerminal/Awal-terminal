@@ -372,6 +372,16 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
                 output: TokenTracker.shared.totalOutput
             )
         }
+        terminal.onGeneratingChanged = { [weak terminal, weak tab] isGenerating in
+            guard let terminal, let tab else { return }
+            if isGenerating {
+                tab.statusBar.setGenerating(true)
+                tab.aiSidePanel.setGenerating(true, surface: terminal.surfacePointer, phaseText: terminal.generationPhase)
+            } else {
+                tab.statusBar.setGenerating(false)
+                tab.aiSidePanel.setGenerating(false)
+            }
+        }
     }
 
     private func wireSplitContainer(_ splitContainer: SplitContainerView, tab: TabState) {
