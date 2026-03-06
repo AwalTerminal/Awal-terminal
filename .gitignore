@@ -20,5 +20,8 @@ xcuserdata/
 *.swo
 *~
 
+# Local docs
+docs/plan.md
+
 # Generated (tracked in repo for convenience, but can be regenerated)
 # core/include/awalterminal.h
