@@ -3,7 +3,11 @@ import AppKit
 class TabState {
     let splitContainer: SplitContainerView
     let statusBar: StatusBarView
+    let aiSidePanel: AISidePanelView
     var customTitle: String?
+
+    /// Stored constraint for animating side panel width.
+    var sidePanelWidthConstraint: NSLayoutConstraint?
 
     var title: String {
         if let custom = customTitle { return custom }
@@ -15,8 +19,9 @@ class TabState {
         return model
     }
 
-    init(splitContainer: SplitContainerView, statusBar: StatusBarView) {
+    init(splitContainer: SplitContainerView, statusBar: StatusBarView, aiSidePanel: AISidePanelView) {
         self.splitContainer = splitContainer
         self.statusBar = statusBar
+        self.aiSidePanel = aiSidePanel
     }
 }
