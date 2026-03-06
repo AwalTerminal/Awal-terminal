@@ -104,6 +104,10 @@ class TerminalView: NSView {
         let lineCount: UInt32
     }
 
+    // MARK: - Syntax Highlighting
+
+    private let syntaxHighlighter = SyntaxHighlighter()
+
     // MARK: - Init
 
     override init(frame: NSRect) {
@@ -914,6 +918,118 @@ class TerminalView: NSView {
         return indicators
     }
 
+    /// Apply syntax highlighting to code block regions, mutating cellBuffer in-place.
+    /// Returns the set of viewport rows that belong to code blocks (for background tinting).
+    private func applySyntaxHighlighting() -> Set<Int> {
+        guard let s = surface, !foldRegions.isEmpty else { return [] }
+
+        let cols = Int(termCols)
+        let rows = Int(termRows)
+        let viewportOffset = Int(at_surface_get_viewport_offset(s))
+        let scrollbackLen = Int(at_surface_get_scrollback_len(s))
+
+        var codeBlockRows = Set<Int>()
+
+        for region in foldRegions {
+            // Only highlight CodeBlock regions (type 3)
+            guard region.regionType == 3 else { continue }
+
+            let regStart = Int(region.startRow)
+            let regEnd = Int(region.endRow)
+
+            // Convert absolute rows to viewport rows
+            let vpStart: Int
+            let vpEnd: Int
+            if viewportOffset == 0 {
+                vpStart = regStart
+                vpEnd = regEnd
+            } else {
+                let viewportStart = scrollbackLen - viewportOffset
+                vpStart = scrollbackLen + regStart - viewportStart
+                vpEnd = scrollbackLen + regEnd - viewportStart
+            }
+
+            // Clip to visible range
+            let clippedStart = max(0, vpStart)
+            let clippedEnd = min(rows - 1, vpEnd)
+            guard clippedStart <= clippedEnd else { continue }
+
+            // Detect language from the first row (``` fence line)
+            let lang: LanguageInfo
+            if vpStart >= 0 && vpStart < rows {
+                var fenceLine = ""
+                let fenceBase = vpStart * cols
+                for c in 0..<cols {
+                    let idx = fenceBase + c
+                    guard idx < cellBuffer.count else { break }
+                    let cp = cellBuffer[idx].codepoint
+                    if cp > 0 { fenceLine.append(Character(UnicodeScalar(cp)!)) }
+                }
+                // Extract language after ```
+                let trimmed = fenceLine.trimmingCharacters(in: .whitespaces)
+                let langStr = trimmed.hasPrefix("```") ? String(trimmed.dropFirst(3)).trimmingCharacters(in: .whitespaces) : ""
+                lang = syntaxHighlighter.languageInfo(for: langStr)
+            } else {
+                lang = syntaxHighlighter.languageInfo(for: "")
+            }
+
+            // Process content rows (skip first/last fence rows)
+            let contentStart = max(clippedStart, vpStart + 1)
+            let contentEnd = min(clippedEnd, vpEnd - 1)
+
+            for vpRow in contentStart...max(contentStart, contentEnd) {
+                guard vpRow >= 0 && vpRow < rows else { continue }
+                codeBlockRows.insert(vpRow)
+
+                // Extract text from cellBuffer for this row
+                let base = vpRow * cols
+                var lineText = ""
+                var colOffsets: [Int] = [] // maps string index → cell column
+                for c in 0..<cols {
+                    let idx = base + c
+                    guard idx < cellBuffer.count else { break }
+                    let cp = cellBuffer[idx].codepoint
+                    if cp > 0 {
+                        colOffsets.append(c)
+                        lineText.append(Character(UnicodeScalar(cp)!))
+                    }
+                }
+
+                guard !lineText.isEmpty else { continue }
+
+                // Tokenize
+                let spans = syntaxHighlighter.tokenize(line: lineText, language: lang)
+
+                // Apply colors to cellBuffer — only override default fg (229,229,229)
+                for span in spans {
+                    guard let color = SyntaxColorScheme.color(for: span.type) else { continue }
+                    for j in 0..<span.length {
+                        let charIdx = span.start + j
+                        guard charIdx < colOffsets.count else { break }
+                        let col = colOffsets[charIdx]
+                        let cellIdx = base + col
+                        guard cellIdx < cellBuffer.count else { break }
+                        // Only override cells with default fg color
+                        if cellBuffer[cellIdx].fg_r == 229 &&
+                           cellBuffer[cellIdx].fg_g == 229 &&
+                           cellBuffer[cellIdx].fg_b == 229 {
+                            cellBuffer[cellIdx].fg_r = color.r
+                            cellBuffer[cellIdx].fg_g = color.g
+                            cellBuffer[cellIdx].fg_b = color.b
+                        }
+                    }
+                }
+            }
+
+            // Also add fence rows to codeBlockRows for background
+            for vpRow in clippedStart...clippedEnd {
+                codeBlockRows.insert(vpRow)
+            }
+        }
+
+        return codeBlockRows
+    }
+
     // MARK: - Metal Rendering (Display Link)
 
     private func renderFrame() {
@@ -933,6 +1049,9 @@ class TerminalView: NSView {
         // Compute fold indicators
         let foldIndicators = computeFoldIndicators()
 
+        // Apply syntax highlighting to code blocks (mutates cellBuffer, returns rows for bg tint)
+        let codeBlockRows = applySyntaxHighlighting()
+
         cellBuffer.withUnsafeBufferPointer { ptr in
             guard let baseAddress = ptr.baseAddress else { return }
             renderer.render(
@@ -949,7 +1068,8 @@ class TerminalView: NSView {
                 scale: layer.contentsScale,
                 searchHighlights: highlights.cells,
                 currentHighlight: highlights.currentIndex,
-                foldIndicators: foldIndicators
+                foldIndicators: foldIndicators,
+                codeBlockRows: codeBlockRows
             )
         }
     }
