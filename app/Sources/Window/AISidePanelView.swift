@@ -33,6 +33,13 @@ class AISidePanelView: NSView {
     private let outputTokensLabel = NSTextField(labelWithString: "")
     private let totalTokensLabel = NSTextField(labelWithString: "")
     private let costLabel = NSTextField(labelWithString: "")
+    private let tokenUnavailableLabel = NSTextField(labelWithString: "")
+
+    // Context window bar
+    private let contextBarBackground = NSView()
+    private let contextBarFill = NSView()
+    private let contextPercentLabel = NSTextField(labelWithString: "")
+    private var contextBarFillWidth: NSLayoutConstraint?
 
     // Activity section
     private let activitySectionLabel = NSTextField(labelWithString: "Activity")
@@ -121,6 +128,29 @@ class AISidePanelView: NSView {
             label.textColor = textColor
             configureLabel(label)
         }
+
+        tokenUnavailableLabel.font = monoFontSmall
+        tokenUnavailableLabel.textColor = dimColor
+        tokenUnavailableLabel.isHidden = true
+        configureLabel(tokenUnavailableLabel)
+
+        // Context window bar
+        contextBarBackground.wantsLayer = true
+        contextBarBackground.layer?.backgroundColor = NSColor(white: 1.0, alpha: 0.08).cgColor
+        contextBarBackground.layer?.cornerRadius = 3
+        contextBarBackground.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(contextBarBackground)
+
+        contextBarFill.wantsLayer = true
+        contextBarFill.layer?.backgroundColor = NSColor(red: 80/255, green: 200/255, blue: 120/255, alpha: 1.0).cgColor
+        contextBarFill.layer?.cornerRadius = 3
+        contextBarFill.translatesAutoresizingMaskIntoConstraints = false
+        contextBarBackground.addSubview(contextBarFill)
+
+        contextPercentLabel.font = monoFontSmall
+        contextPercentLabel.textColor = dimColor
+        contextPercentLabel.alignment = .right
+        configureLabel(contextPercentLabel)
 
         // Activity section
         activitySectionLabel.font = sectionFont
@@ -221,6 +251,10 @@ class AISidePanelView: NSView {
             tokenSectionLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: margin),
             tokenSectionLabel.topAnchor.constraint(equalTo: separator1.bottomAnchor, constant: sectionGap),
 
+            tokenUnavailableLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: margin),
+            tokenUnavailableLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -margin),
+            tokenUnavailableLabel.topAnchor.constraint(equalTo: tokenSectionLabel.bottomAnchor, constant: itemGap),
+
             inputTokensLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: margin),
             inputTokensLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -margin),
             inputTokensLabel.topAnchor.constraint(equalTo: tokenSectionLabel.bottomAnchor, constant: itemGap),
@@ -237,9 +271,23 @@ class AISidePanelView: NSView {
             costLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -margin),
             costLabel.topAnchor.constraint(equalTo: totalTokensLabel.bottomAnchor, constant: itemGap),
 
+            // Context window bar
+            contextPercentLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: margin),
+            contextPercentLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -margin),
+            contextPercentLabel.topAnchor.constraint(equalTo: costLabel.bottomAnchor, constant: 6),
+
+            contextBarBackground.leadingAnchor.constraint(equalTo: leadingAnchor, constant: margin),
+            contextBarBackground.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -margin),
+            contextBarBackground.topAnchor.constraint(equalTo: contextPercentLabel.bottomAnchor, constant: 3),
+            contextBarBackground.heightAnchor.constraint(equalToConstant: 6),
+
+            contextBarFill.leadingAnchor.constraint(equalTo: contextBarBackground.leadingAnchor),
+            contextBarFill.topAnchor.constraint(equalTo: contextBarBackground.topAnchor),
+            contextBarFill.bottomAnchor.constraint(equalTo: contextBarBackground.bottomAnchor),
+
             // Activity section
             activitySectionLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: margin),
-            activitySectionLabel.topAnchor.constraint(equalTo: costLabel.bottomAnchor, constant: sectionGap),
+            activitySectionLabel.topAnchor.constraint(equalTo: contextBarBackground.bottomAnchor, constant: sectionGap),
 
             toolCountLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: margin),
             toolCountLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -margin),
@@ -289,6 +337,14 @@ class AISidePanelView: NSView {
             elapsedLabel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -margin),
         ])
 
+        // Context bar fill width (starts at 0)
+        contextBarFillWidth = contextBarFill.widthAnchor.constraint(equalToConstant: 0)
+        contextBarFillWidth?.isActive = true
+
+        // Hide context bar initially (shown when model has a context window)
+        contextBarBackground.isHidden = true
+        contextPercentLabel.isHidden = true
+
         // Update timer
         updateTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             self?.updateElapsedTime()
@@ -311,9 +367,28 @@ class AISidePanelView: NSView {
 
     // MARK: - Public API
 
+    /// Whether the current model supports token tracking (Claude only).
+    private var hasTokenTracking: Bool { currentModel == "Claude" }
+
     func setModel(_ model: String) {
         currentModel = model
         headerLabel.stringValue = model.isEmpty ? "AI Context" : "\(model) Session"
+
+        let showTokens = (model == "Claude")
+        inputTokensLabel.isHidden = !showTokens
+        outputTokensLabel.isHidden = !showTokens
+        totalTokensLabel.isHidden = !showTokens
+        costLabel.isHidden = !showTokens
+        contextPercentLabel.isHidden = !showTokens
+        contextBarBackground.isHidden = !showTokens
+
+        let isLLM = !model.isEmpty && model != "Shell"
+        if isLLM && !showTokens {
+            tokenUnavailableLabel.isHidden = false
+            tokenUnavailableLabel.stringValue = "  Token tracking is Claude-only"
+        } else {
+            tokenUnavailableLabel.isHidden = true
+        }
     }
 
     func resetSession() {
@@ -324,6 +399,8 @@ class AISidePanelView: NSView {
     }
 
     func updateTokenDisplay(input: Int, output: Int) {
+        guard hasTokenTracking else { return }
+
         inputTokensLabel.stringValue = "  Input:  \(formatTokenCount(input))"
         outputTokensLabel.stringValue = "  Output: \(formatTokenCount(output))"
         let total = input + output
@@ -339,6 +416,47 @@ class AISidePanelView: NSView {
         } else {
             costLabel.stringValue = "  Cost:   —"
         }
+
+        // Update context window bar
+        updateContextBar(inputTokens: input)
+    }
+
+    private func updateContextBar(inputTokens: Int) {
+        guard let model = ModelCatalog.find(currentModel),
+              model.contextWindow > 0 else {
+            contextBarBackground.isHidden = true
+            contextPercentLabel.isHidden = true
+            return
+        }
+
+        contextBarBackground.isHidden = false
+        contextPercentLabel.isHidden = false
+
+        let fraction = min(Double(inputTokens) / Double(model.contextWindow), 1.0)
+        let percent = Int(fraction * 100)
+        contextPercentLabel.stringValue = "  Context: \(percent)%"
+
+        // Color coding
+        let barColor: NSColor
+        if fraction < 0.5 {
+            barColor = NSColor(red: 80/255, green: 200/255, blue: 120/255, alpha: 1.0)
+        } else if fraction < 0.8 {
+            barColor = NSColor(red: 240/255, green: 200/255, blue: 60/255, alpha: 1.0)
+        } else {
+            barColor = NSColor(red: 240/255, green: 100/255, blue: 70/255, alpha: 1.0)
+        }
+        contextBarFill.layer?.backgroundColor = barColor.cgColor
+        contextPercentLabel.textColor = barColor
+
+        // Update fill width using proportional constraint
+        contextBarFillWidth?.isActive = false
+        if fraction > 0 {
+            contextBarFillWidth = contextBarFill.widthAnchor.constraint(
+                equalTo: contextBarBackground.widthAnchor, multiplier: CGFloat(fraction))
+        } else {
+            contextBarFillWidth = contextBarFill.widthAnchor.constraint(equalToConstant: 0)
+        }
+        contextBarFillWidth?.isActive = true
     }
 
     func updateActivityDisplay(tools: Int, codeBlocks: Int, diffs: Int) {
@@ -466,16 +584,17 @@ class AISidePanelView: NSView {
         return container
     }
 
-    @objc private func gitOutlineClicked(_ sender: NSOutlineView) {
-        let row = sender.clickedRow
-        guard row >= 0, let node = sender.item(atRow: row) as? GitTreeNode else { return }
+    @objc private func gitOutlineClicked(_ sender: Any) {
+        guard let outlineView = sender as? NSOutlineView else { return }
+        let row = outlineView.clickedRow
+        guard row >= 0, let node = outlineView.item(atRow: row) as? GitTreeNode else { return }
 
         if node.isDirectory {
             // Toggle expand/collapse
-            if sender.isItemExpanded(node) {
-                sender.collapseItem(node)
+            if outlineView.isItemExpanded(node) {
+                outlineView.collapseItem(node)
             } else {
-                sender.expandItem(node)
+                outlineView.expandItem(node)
             }
         } else {
             // Copy relative path to clipboard
@@ -484,7 +603,7 @@ class AISidePanelView: NSView {
             pasteboard.setString(node.fileChange?.path ?? node.fullPath, forType: .string)
 
             // Brief flash effect on the row
-            if let rowView = sender.rowView(atRow: row, makeIfNecessary: false) {
+            if let rowView = outlineView.rowView(atRow: row, makeIfNecessary: false) {
                 rowView.wantsLayer = true
                 rowView.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.1).cgColor
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
