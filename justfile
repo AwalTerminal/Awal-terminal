@@ -30,12 +30,13 @@ build: build-core build-app
 # Build everything (debug)
 build-debug: build-core-debug build-app-debug
 
-# Run the app (debug build)
+# Run the app (debug build, launched from .app bundle for correct icon/notifications)
 run: build-core-debug
     cd {{app_dir}} && swift build
     @bin_path=$(cd {{app_dir}} && swift build --show-bin-path) && \
-        ln -sf "$bin_path/AwalTerminal" "$bin_path/Awal Terminal" && \
-        "$bin_path/Awal Terminal"
+        cp "$bin_path/AwalTerminal" build/AwalTerminal.app/Contents/MacOS/AwalTerminal && \
+        codesign -f -s - build/AwalTerminal.app && \
+        build/AwalTerminal.app/Contents/MacOS/AwalTerminal
 
 # Run tests
 test:

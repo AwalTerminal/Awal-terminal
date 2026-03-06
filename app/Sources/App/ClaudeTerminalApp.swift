@@ -43,6 +43,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             NSApp.applicationIconImage = icon
         }
 
+        // Register the .app bundle with LaunchServices so macOS associates our
+        // icon with the bundle identifier (needed for notification icons).
+        if let bundleURL = Bundle.main.bundleURL as CFURL? {
+            LSRegisterURL(bundleURL, true)
+        }
+
         setupMainMenu()
 
         let controller = TerminalWindowController(isInitialTab: true)

@@ -281,6 +281,27 @@ pub extern "C" fn at_surface_read_cells(
                 fg_b = bg_b;
             }
 
+            // Ensure foreground is visible against background.
+            // If fg is too close to bg (e.g. ANSI black on dark terminal bg),
+            // bump fg to a readable gray. Only affects fg, not bg.
+            {
+                let fg_luma = fg_r as i16 * 3 + fg_g as i16 * 6 + fg_b as i16;  // weighted ~10x
+                let bg_luma = bg_r as i16 * 3 + bg_g as i16 * 6 + bg_b as i16;
+                if (fg_luma - bg_luma).unsigned_abs() < 100 && !has_hidden {
+                    if bg_luma < 1280 {
+                        // Dark bg: lighten fg
+                        fg_r = fg_r.saturating_add(90);
+                        fg_g = fg_g.saturating_add(90);
+                        fg_b = fg_b.saturating_add(90);
+                    } else {
+                        // Light bg: darken fg
+                        fg_r = fg_r.saturating_sub(90);
+                        fg_g = fg_g.saturating_sub(90);
+                        fg_b = fg_b.saturating_sub(90);
+                    }
+                }
+            }
+
             let fg_a: u8 = if cell.attrs.contains(CellAttrs::DIM) { 128 } else { 255 };
 
             // Selection highlight: compute absolute row for selection check
