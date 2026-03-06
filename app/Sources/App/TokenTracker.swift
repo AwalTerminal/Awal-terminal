@@ -6,19 +6,28 @@ class TokenTracker {
 
     private(set) var totalInput: Int = 0
     private(set) var totalOutput: Int = 0
+    private(set) var conversationTurns: Int = 0
+    private(set) var toolCalls: [String] = []
+    private(set) var modelUsed: String = ""
+    private(set) var sessionId: String = ""
 
     private var lastFile: String = ""
     private var lastFileSize: UInt64 = 0
 
     private init() {}
 
-    func update(projectPath: String?) {
-        guard let projectPath = projectPath, !projectPath.isEmpty else { return }
-
-        // Convert project path to Claude's dir format: /Users/foo/Bar → -Users-foo-Bar
+    /// Find the Claude projects directory for a given working path.
+    static func claudeProjectDir(for projectPath: String) -> URL? {
         let dirName = projectPath.replacingOccurrences(of: "/", with: "-")
         let claudeDir = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".claude/projects/\(dirName)")
+        return FileManager.default.fileExists(atPath: claudeDir.path) ? claudeDir : nil
+    }
+
+    func update(projectPath: String?) {
+        guard let projectPath = projectPath, !projectPath.isEmpty else { return }
+
+        guard let claudeDir = Self.claudeProjectDir(for: projectPath) else { return }
 
         // Find most recently modified .jsonl file
         let fm = FileManager.default
@@ -53,25 +62,55 @@ class TokenTracker {
 
         var inputTotal = 0
         var outputTotal = 0
+        var turns = 0
+        var tools: [String] = []
+        var model = ""
+        let sessionFile = (latestPath as NSString).lastPathComponent
+        let sid = (sessionFile as NSString).deletingPathExtension
 
         for line in text.split(separator: "\n") {
             guard let lineData = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
-                  json["type"] as? String == "assistant",
-                  let message = json["message"] as? [String: Any],
-                  let usage = message["usage"] as? [String: Any] else { continue }
+                  let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any] else { continue }
 
-            if let input = usage["input_tokens"] as? Int {
-                inputTotal += input
-            }
-            if let output = usage["output_tokens"] as? Int {
-                outputTotal += output
-            }
-            if let cacheRead = usage["cache_read_input_tokens"] as? Int {
-                inputTotal += cacheRead
-            }
-            if let cacheCreate = usage["cache_creation_input_tokens"] as? Int {
-                inputTotal += cacheCreate
+            let type = json["type"] as? String ?? ""
+
+            if type == "assistant" {
+                turns += 1
+
+                if let message = json["message"] as? [String: Any] {
+                    // Extract model
+                    if let m = message["model"] as? String, !m.isEmpty {
+                        model = m
+                    }
+
+                    // Extract usage
+                    if let usage = message["usage"] as? [String: Any] {
+                        if let input = usage["input_tokens"] as? Int {
+                            inputTotal += input
+                        }
+                        if let output = usage["output_tokens"] as? Int {
+                            outputTotal += output
+                        }
+                        if let cacheRead = usage["cache_read_input_tokens"] as? Int {
+                            inputTotal += cacheRead
+                        }
+                        if let cacheCreate = usage["cache_creation_input_tokens"] as? Int {
+                            inputTotal += cacheCreate
+                        }
+                    }
+
+                    // Extract tool use from content blocks
+                    if let content = message["content"] as? [[String: Any]] {
+                        for block in content {
+                            if block["type"] as? String == "tool_use",
+                               let name = block["name"] as? String {
+                                if !tools.contains(name) {
+                                    tools.append(name)
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -79,6 +118,10 @@ class TokenTracker {
         lastFileSize = fileSize
         totalInput = inputTotal
         totalOutput = outputTotal
+        conversationTurns = turns
+        toolCalls = tools
+        modelUsed = model
+        sessionId = sid
     }
 
     var displayString: String {
@@ -89,6 +132,10 @@ class TokenTracker {
     func reset() {
         totalInput = 0
         totalOutput = 0
+        conversationTurns = 0
+        toolCalls = []
+        modelUsed = ""
+        sessionId = ""
         lastFile = ""
         lastFileSize = 0
     }
