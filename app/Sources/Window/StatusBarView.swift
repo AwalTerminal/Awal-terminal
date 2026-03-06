@@ -9,6 +9,7 @@ class StatusBarView: NSView {
     var onOpenFolderRequested: (() -> Void)?
     var onModelSelected: ((_ modelName: String) -> Void)?
     var onPathChanged: (() -> Void)?
+    var onGitStatusChanged: ((_ changes: [GitFileChange]) -> Void)?
 
     private(set) var currentModelName: String = ""
 
@@ -272,7 +273,7 @@ class StatusBarView: NSView {
         DispatchQueue.global(qos: .utility).async { [weak self] in
             // Get cwd from procfs (macOS: use proc_pidinfo or lsof)
             let cwd = self?.getCwd(pid: pid) ?? ""
-            let gitInfo = self?.getGitInfo(cwd: cwd) ?? ""
+            let gitResult = self?.getGitInfo(cwd: cwd) ?? (label: "", changes: [])
 
             // Update token tracking for Claude sessions
             if isClaudeSession {
@@ -284,8 +285,9 @@ class StatusBarView: NSView {
                 let oldPath = self?.currentPath
                 self?.currentPath = cwd.isEmpty ? nil : cwd
                 self?.pathButton.title = self?.shortenPath(cwd) ?? ""
-                self?.gitLabel.stringValue = gitInfo
+                self?.gitLabel.stringValue = gitResult.label
                 self?.tokensLabel.stringValue = tokenDisplay
+                self?.onGitStatusChanged?(gitResult.changes)
                 if self?.currentPath != oldPath {
                     self?.onPathChanged?()
                 }
@@ -353,8 +355,8 @@ class StatusBarView: NSView {
         return ""
     }
 
-    private func getGitInfo(cwd: String) -> String {
-        guard !cwd.isEmpty else { return "" }
+    private func getGitInfo(cwd: String) -> (label: String, changes: [GitFileChange]) {
+        guard !cwd.isEmpty else { return ("", []) }
 
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/usr/bin/git")
@@ -366,10 +368,10 @@ class StatusBarView: NSView {
         do {
             try proc.run()
             proc.waitUntilExit()
-            guard proc.terminationStatus == 0 else { return "" }
+            guard proc.terminationStatus == 0 else { return ("", []) }
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
             let branch = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            guard !branch.isEmpty else { return "" }
+            guard !branch.isEmpty else { return ("", []) }
 
             // Get short status
             let statusProc = Process()
@@ -382,15 +384,15 @@ class StatusBarView: NSView {
             statusProc.waitUntilExit()
             let statusData = statusPipe.fileHandleForReading.readDataToEndOfFile()
             let statusStr = String(data: statusData, encoding: .utf8) ?? ""
-            let changes = statusStr.split(separator: "\n").count
+            let parsed = GitFileChange.parseGitStatus(statusStr)
 
-            if changes > 0 {
-                return "\(branch) *\(changes)"
+            if parsed.count > 0 {
+                return ("\(branch) *\(parsed.count)", parsed)
             } else {
-                return "\(branch)"
+                return ("\(branch)", [])
             }
         } catch {}
-        return ""
+        return ("", [])
     }
 
     private func shortenPath(_ path: String) -> String {
