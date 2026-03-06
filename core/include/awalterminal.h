@@ -40,6 +40,29 @@ typedef struct ATSearchResult {
 } ATSearchResult;
 
 /**
+ * C-compatible output region for FFI transfer.
+ */
+typedef struct COutputRegion {
+    int32_t start_row;
+    int32_t end_row;
+    uint8_t region_type;
+    uint8_t collapsed;
+    uint32_t line_count;
+    char *label;
+} COutputRegion;
+
+/**
+ * C-compatible region summary for the side panel.
+ */
+typedef struct CRegionSummary {
+    uint32_t tool_use_count;
+    uint32_t code_block_count;
+    uint32_t thinking_count;
+    uint32_t diff_count;
+    uint32_t file_ref_count;
+} CRegionSummary;
+
+/**
  * Create a new terminal surface with the given dimensions.
  */
 struct ATSurface *at_surface_new(uint32_t cols,
@@ -221,5 +244,56 @@ uint32_t at_surface_search(const struct ATSurface *surface,
                            const char *query,
                            struct ATSearchResult *out,
                            uint32_t max_results);
+
+/**
+ * Enable or disable AI output analysis for this surface.
+ */
+void at_surface_set_ai_analysis(struct ATSurface *surface,
+                                bool enabled);
+
+/**
+ * Check if AI analysis is enabled.
+ */
+bool at_surface_get_ai_analysis(const struct ATSurface *surface);
+
+/**
+ * Get the number of detected regions.
+ */
+uint32_t at_surface_get_region_count(const struct ATSurface *surface);
+
+/**
+ * Read detected regions into the provided buffer.
+ * Buffer must have space for at least `max_regions` COutputRegion entries.
+ * Returns the number of regions written.
+ * Caller must free each label with `at_free_string`.
+ */
+uint32_t at_surface_get_regions(const struct ATSurface *surface,
+                                struct COutputRegion *out,
+                                uint32_t max_regions);
+
+/**
+ * Toggle fold/collapse state for the region containing the given row.
+ * Returns true if a region was found and toggled.
+ */
+bool at_surface_toggle_fold(struct ATSurface *surface,
+                            int32_t row);
+
+/**
+ * Get a summary of detected regions (counts by type).
+ */
+void at_surface_get_region_summary(const struct ATSurface *surface,
+                                   struct CRegionSummary *out);
+
+/**
+ * Get a file reference by index from the region summary.
+ * Returns a C string that must be freed with `at_free_string`.
+ */
+char *at_surface_get_file_ref(const struct ATSurface *surface,
+                              uint32_t index);
+
+/**
+ * Manually trigger AI analysis (e.g. after scrollback changes without PTY activity).
+ */
+void at_surface_analyze(struct ATSurface *surface);
 
 #endif  /* AWALTERMINAL_H */

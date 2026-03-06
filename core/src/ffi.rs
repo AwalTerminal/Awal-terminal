@@ -1,4 +1,5 @@
 use crate::io::pty::Pty;
+use crate::terminal::ai_analyzer::AiAnalyzer;
 use crate::terminal::cell::{CCell, CellAttrs, Color, default_palette};
 use crate::terminal::parser::Parser;
 use crate::terminal::screen::Screen;
@@ -14,6 +15,7 @@ pub struct ATSurface {
     pty: Option<Pty>,
     read_buf: Vec<u8>,
     palette: [Color; 256],
+    analyzer: AiAnalyzer,
 }
 
 /// Helper: safely convert a nullable const pointer to a reference, returning $default on null.
@@ -61,6 +63,7 @@ pub extern "C" fn at_surface_new(cols: u32, rows: u32) -> *mut ATSurface {
         pty: None,
         read_buf: vec![0u8; 65536],
         palette: default_palette(),
+        analyzer: AiAnalyzer::new(),
     });
     Box::into_raw(surface)
 }
@@ -160,6 +163,15 @@ pub extern "C" fn at_surface_process_pty(surface: *mut ATSurface) -> i32 {
                 for response in responses {
                     let _ = pty.write(&response);
                 }
+            }
+            // Run AI analyzer on updated screen content
+            if surface.analyzer.is_enabled() {
+                let grid = surface.screen.active_grid();
+                surface.analyzer.analyze(
+                    &surface.screen.scrollback,
+                    &grid.cells,
+                    grid.rows,
+                );
             }
             n as i32
         }
@@ -541,4 +553,148 @@ pub extern "C" fn at_surface_search(
         };
     }
     count as u32
+}
+
+// --- AI Analyzer ---
+
+/// C-compatible output region for FFI transfer.
+#[repr(C)]
+pub struct COutputRegion {
+    pub start_row: i32,
+    pub end_row: i32,
+    pub region_type: u8,
+    pub collapsed: u8,  // 0 = expanded, 1 = collapsed
+    pub line_count: u32,
+    pub label: *mut c_char,
+}
+
+/// C-compatible region summary for the side panel.
+#[repr(C)]
+pub struct CRegionSummary {
+    pub tool_use_count: u32,
+    pub code_block_count: u32,
+    pub thinking_count: u32,
+    pub diff_count: u32,
+    pub file_ref_count: u32,
+}
+
+/// Enable or disable AI output analysis for this surface.
+#[no_mangle]
+pub extern "C" fn at_surface_set_ai_analysis(surface: *mut ATSurface, enabled: bool) {
+    let surface = mut_ref_or!(surface);
+    surface.analyzer.set_enabled(enabled);
+}
+
+/// Check if AI analysis is enabled.
+#[no_mangle]
+pub extern "C" fn at_surface_get_ai_analysis(surface: *const ATSurface) -> bool {
+    let surface = ref_or!(surface, false);
+    surface.analyzer.is_enabled()
+}
+
+/// Get the number of detected regions.
+#[no_mangle]
+pub extern "C" fn at_surface_get_region_count(surface: *const ATSurface) -> u32 {
+    let surface = ref_or!(surface, 0);
+    surface.analyzer.region_count() as u32
+}
+
+/// Read detected regions into the provided buffer.
+/// Buffer must have space for at least `max_regions` COutputRegion entries.
+/// Returns the number of regions written.
+/// Caller must free each label with `at_free_string`.
+#[no_mangle]
+pub extern "C" fn at_surface_get_regions(
+    surface: *const ATSurface,
+    out: *mut COutputRegion,
+    max_regions: u32,
+) -> u32 {
+    let surface = ref_or!(surface, 0);
+    if out.is_null() {
+        return 0;
+    }
+    let regions = surface.analyzer.regions();
+    let count = regions.len().min(max_regions as usize);
+    let out_slice = unsafe { slice::from_raw_parts_mut(out, count) };
+
+    for (i, region) in regions.iter().take(count).enumerate() {
+        let label_ptr = match CString::new(region.label.clone()) {
+            Ok(cs) => cs.into_raw(),
+            Err(_) => std::ptr::null_mut(),
+        };
+        out_slice[i] = COutputRegion {
+            start_row: region.start_row as i32,
+            end_row: region.end_row as i32,
+            region_type: region.region_type as u8,
+            collapsed: if region.collapsed { 1 } else { 0 },
+            line_count: region.line_count as u32,
+            label: label_ptr,
+        };
+    }
+    count as u32
+}
+
+/// Toggle fold/collapse state for the region containing the given row.
+/// Returns true if a region was found and toggled.
+#[no_mangle]
+pub extern "C" fn at_surface_toggle_fold(surface: *mut ATSurface, row: i32) -> bool {
+    let surface = mut_ref_or!(surface, false);
+    let toggled = surface.analyzer.toggle_fold(row as i64);
+    if toggled {
+        surface.screen.dirty = true;
+    }
+    toggled
+}
+
+/// Get a summary of detected regions (counts by type).
+#[no_mangle]
+pub extern "C" fn at_surface_get_region_summary(
+    surface: *const ATSurface,
+    out: *mut CRegionSummary,
+) {
+    let surface = ref_or!(surface);
+    if out.is_null() {
+        return;
+    }
+    let summary = surface.analyzer.region_summary();
+    unsafe {
+        (*out).tool_use_count = summary.tool_use_count as u32;
+        (*out).code_block_count = summary.code_block_count as u32;
+        (*out).thinking_count = summary.thinking_count as u32;
+        (*out).diff_count = summary.diff_count as u32;
+        (*out).file_ref_count = summary.file_refs.len() as u32;
+    }
+}
+
+/// Get a file reference by index from the region summary.
+/// Returns a C string that must be freed with `at_free_string`.
+#[no_mangle]
+pub extern "C" fn at_surface_get_file_ref(
+    surface: *const ATSurface,
+    index: u32,
+) -> *mut c_char {
+    let surface = ref_or!(surface, std::ptr::null_mut());
+    let summary = surface.analyzer.region_summary();
+    let idx = index as usize;
+    if idx >= summary.file_refs.len() {
+        return std::ptr::null_mut();
+    }
+    match CString::new(summary.file_refs[idx].clone()) {
+        Ok(cs) => cs.into_raw(),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+/// Manually trigger AI analysis (e.g. after scrollback changes without PTY activity).
+#[no_mangle]
+pub extern "C" fn at_surface_analyze(surface: *mut ATSurface) {
+    let surface = mut_ref_or!(surface);
+    if surface.analyzer.is_enabled() {
+        let grid = surface.screen.active_grid();
+        surface.analyzer.analyze(
+            &surface.screen.scrollback,
+            &grid.cells,
+            grid.rows,
+        );
+    }
 }
