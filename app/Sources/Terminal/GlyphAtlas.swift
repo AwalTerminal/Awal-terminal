@@ -115,7 +115,8 @@ final class GlyphAtlas {
             return nil // PUA glyph with no matching font — render nothing
         }
         let attrStr = NSAttributedString(string: ch, attributes: [
-            .font: renderFont as NSFont
+            .font: renderFont as NSFont,
+            .foregroundColor: NSColor.white,
         ])
         let line = CTLineCreateWithAttributedString(attrStr)
 
@@ -140,15 +141,17 @@ final class GlyphAtlas {
         }
 
         // Rasterize at native pixel resolution
+        // Use explicit BGRA byte order (macOS native) for reliable byte extraction
         let colorSpace = CGColorSpaceCreateDeviceRGB()
+        let bitmapInfo = CGBitmapInfo.byteOrder32Little.rawValue | CGImageAlphaInfo.premultipliedFirst.rawValue
         guard let ctx = CGContext(
             data: nil,
             width: bitmapW,
             height: bitmapH,
             bitsPerComponent: 8,
-            bytesPerRow: bitmapW * 4,
+            bytesPerRow: 0, // let CG pick optimal stride
             space: colorSpace,
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            bitmapInfo: bitmapInfo
         ) else { return nil }
 
         ctx.clear(CGRect(x: 0, y: 0, width: bitmapW, height: bitmapH))
@@ -156,7 +159,6 @@ final class GlyphAtlas {
         // Scale the context so CoreText renders at Retina resolution
         ctx.scaleBy(x: scale, y: scale)
 
-        ctx.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
         ctx.setShouldAntialias(true)
         ctx.setShouldSmoothFonts(false)
         ctx.setShouldSubpixelPositionFonts(true)
@@ -169,11 +171,22 @@ final class GlyphAtlas {
 
         guard let data = ctx.data else { return nil }
 
-        // Extract alpha channel
-        let rgba = data.assumingMemoryBound(to: UInt8.self)
+        // BGRA byte order (byteOrder32Little + premultipliedFirst):
+        // Memory layout: B, G, R, A per pixel
+        // White text with coverage c: B=c, G=c, R=c, A=c
+        // Use max of all channels for byte-order robustness
+        let bytes = data.assumingMemoryBound(to: UInt8.self)
+        let actualBytesPerRow = ctx.bytesPerRow
         let alphaData = UnsafeMutablePointer<UInt8>.allocate(capacity: bitmapW * bitmapH)
-        for i in 0..<(bitmapW * bitmapH) {
-            alphaData[i] = rgba[i * 4 + 3]
+        for y in 0..<bitmapH {
+            for x in 0..<bitmapW {
+                let offset = y * actualBytesPerRow + x * 4
+                let b0 = bytes[offset]
+                let b1 = bytes[offset + 1]
+                let b2 = bytes[offset + 2]
+                let b3 = bytes[offset + 3]
+                alphaData[y * bitmapW + x] = max(b0, max(b1, max(b2, b3)))
+            }
         }
 
         let region = MTLRegion(
