@@ -56,11 +56,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     @objc func showAboutPanel(_ sender: Any?) {
-        var options: [NSApplication.AboutPanelOptionKey: Any] = [:]
-        if let icon = AppIcon.image {
-            options[.applicationIcon] = icon
-        }
-        NSApp.orderFrontStandardAboutPanel(options: options)
+        AboutWindow.show()
     }
 
     @objc func toggleNotifications(_ sender: Any?) {
