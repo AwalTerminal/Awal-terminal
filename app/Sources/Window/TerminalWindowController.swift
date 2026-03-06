@@ -405,6 +405,9 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
             self?.reloadTabBar()
             self?.updateWindowTitle()
         }
+        statusBar.onGitStatusChanged = { [weak tab] changes in
+            tab?.aiSidePanel.updateGitChanges(changes)
+        }
     }
 
     private func handleFocusChanged(_ terminal: TerminalView, tab: TabState) {

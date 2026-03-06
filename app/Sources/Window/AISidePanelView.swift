@@ -48,6 +48,16 @@ class AISidePanelView: NSView {
     private let phaseLabel = NSTextField(labelWithString: "")
     private var generatingTimer: Timer?
 
+    // Git Changes section
+    private let gitSeparator = NSView()
+    private let gitSectionLabel = NSTextField(labelWithString: "Changes")
+    private let gitSummaryStack = NSStackView()
+    private let gitScrollView = NSScrollView()
+    private let gitOutlineView = NSOutlineView()
+    private var gitTreeNodes: [GitTreeNode] = []
+    private var gitLastPaths: Set<String> = []
+    private var gitExpandedPaths: Set<String> = []
+
     // Elapsed time
     private let elapsedLabel = NSTextField(labelWithString: "")
 
@@ -140,6 +150,48 @@ class AISidePanelView: NSView {
         filesStackView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(filesStackView)
 
+        // Git Changes section
+        gitSeparator.wantsLayer = true
+        gitSeparator.layer?.backgroundColor = NSColor(white: 1.0, alpha: 0.08).cgColor
+        gitSeparator.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(gitSeparator)
+
+        gitSectionLabel.font = sectionFont
+        gitSectionLabel.textColor = sectionColor
+        configureLabel(gitSectionLabel)
+
+        gitSummaryStack.orientation = .horizontal
+        gitSummaryStack.spacing = 4
+        gitSummaryStack.alignment = .centerY
+        gitSummaryStack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(gitSummaryStack)
+
+        // NSOutlineView in scroll view
+        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("GitFile"))
+        column.isEditable = false
+        gitOutlineView.addTableColumn(column)
+        gitOutlineView.outlineTableColumn = column
+        gitOutlineView.headerView = nil
+        gitOutlineView.rowHeight = 22
+        gitOutlineView.backgroundColor = .clear
+        gitOutlineView.focusRingType = .none
+        gitOutlineView.selectionHighlightStyle = .none
+        gitOutlineView.intercellSpacing = NSSize(width: 0, height: 0)
+        gitOutlineView.indentationPerLevel = 14
+        gitOutlineView.dataSource = self
+        gitOutlineView.delegate = self
+        gitOutlineView.target = self
+        gitOutlineView.action = #selector(gitOutlineClicked(_:))
+
+        gitScrollView.documentView = gitOutlineView
+        gitScrollView.hasVerticalScroller = true
+        gitScrollView.hasHorizontalScroller = false
+        gitScrollView.autohidesScrollers = true
+        gitScrollView.drawsBackground = false
+        gitScrollView.borderType = .noBorder
+        gitScrollView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(gitScrollView)
+
         // Elapsed time
         elapsedLabel.font = monoFontSmall
         elapsedLabel.textColor = dimColor
@@ -213,6 +265,24 @@ class AISidePanelView: NSView {
             filesStackView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: margin),
             filesStackView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -margin),
             filesStackView.topAnchor.constraint(equalTo: filesSectionLabel.bottomAnchor, constant: itemGap),
+
+            // Git Changes section
+            gitSeparator.leadingAnchor.constraint(equalTo: leadingAnchor, constant: margin),
+            gitSeparator.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -margin),
+            gitSeparator.topAnchor.constraint(equalTo: filesStackView.bottomAnchor, constant: sectionGap),
+            gitSeparator.heightAnchor.constraint(equalToConstant: 1),
+
+            gitSectionLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: margin),
+            gitSectionLabel.topAnchor.constraint(equalTo: gitSeparator.bottomAnchor, constant: sectionGap),
+
+            gitSummaryStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: margin),
+            gitSummaryStack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -margin),
+            gitSummaryStack.topAnchor.constraint(equalTo: gitSectionLabel.bottomAnchor, constant: 6),
+
+            gitScrollView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
+            gitScrollView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
+            gitScrollView.topAnchor.constraint(equalTo: gitSummaryStack.bottomAnchor, constant: 6),
+            gitScrollView.bottomAnchor.constraint(equalTo: elapsedLabel.topAnchor, constant: -8),
 
             // Elapsed at bottom
             elapsedLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: margin),
@@ -313,6 +383,126 @@ class AISidePanelView: NSView {
             moreLabel.drawsBackground = false
             filesStackView.addArrangedSubview(moreLabel)
         }
+    }
+
+    func updateGitChanges(_ changes: [GitFileChange]) {
+        let newPaths = Set(changes.map { $0.path })
+        guard newPaths != gitLastPaths else { return }
+        gitLastPaths = newPaths
+
+        // Save expanded state
+        gitExpandedPaths = Set<String>()
+        for node in allNodes(gitTreeNodes) where node.isDirectory {
+            if gitOutlineView.isItemExpanded(node) {
+                gitExpandedPaths.insert(node.fullPath)
+            }
+        }
+
+        // Cap at 200 files
+        let capped = changes.count > 200 ? Array(changes.prefix(200)) : changes
+        gitTreeNodes = GitTreeNode.buildTree(from: capped)
+
+        // Build summary badges
+        gitSummaryStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        var counts: [GitFileChange.Status: Int] = [:]
+        for c in changes { counts[c.status, default: 0] += 1 }
+        for s: GitFileChange.Status in [.modified, .added, .deleted, .renamed, .untracked] {
+            if let n = counts[s], n > 0 {
+                gitSummaryStack.addArrangedSubview(makeBadge(count: n, status: s))
+            }
+        }
+        if changes.count > 200 {
+            let more = NSTextField(labelWithString: "+\(changes.count - 200)")
+            more.font = NSFont.monospacedSystemFont(ofSize: 9.0, weight: .regular)
+            more.textColor = NSColor(white: 0.45, alpha: 1.0)
+            more.isEditable = false
+            more.isBordered = false
+            more.drawsBackground = false
+            gitSummaryStack.addArrangedSubview(more)
+        }
+        if changes.isEmpty {
+            let clean = NSTextField(labelWithString: "clean")
+            clean.font = NSFont.monospacedSystemFont(ofSize: 9.0, weight: .regular)
+            clean.textColor = NSColor(white: 0.35, alpha: 1.0)
+            clean.isEditable = false
+            clean.isBordered = false
+            clean.drawsBackground = false
+            gitSummaryStack.addArrangedSubview(clean)
+        }
+
+        gitOutlineView.reloadData()
+
+        // Restore expanded state
+        for node in allNodes(gitTreeNodes) where node.isDirectory {
+            if gitExpandedPaths.contains(node.fullPath) {
+                gitOutlineView.expandItem(node)
+            }
+        }
+    }
+
+    private func makeBadge(count: Int, status: GitFileChange.Status) -> NSView {
+        let container = NSView()
+        container.wantsLayer = true
+        container.layer?.cornerRadius = 3
+        container.layer?.backgroundColor = status.color.withAlphaComponent(0.15).cgColor
+        container.translatesAutoresizingMaskIntoConstraints = false
+
+        let label = NSTextField(labelWithString: "\(count)\(status.label)")
+        label.font = NSFont.monospacedSystemFont(ofSize: 9.0, weight: .medium)
+        label.textColor = status.color
+        label.isEditable = false
+        label.isBordered = false
+        label.drawsBackground = false
+        label.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(label)
+
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 5),
+            label.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -5),
+            label.topAnchor.constraint(equalTo: container.topAnchor, constant: 2),
+            label.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -2),
+        ])
+
+        return container
+    }
+
+    @objc private func gitOutlineClicked(_ sender: NSOutlineView) {
+        let row = sender.clickedRow
+        guard row >= 0, let node = sender.item(atRow: row) as? GitTreeNode else { return }
+
+        if node.isDirectory {
+            // Toggle expand/collapse
+            if sender.isItemExpanded(node) {
+                sender.collapseItem(node)
+            } else {
+                sender.expandItem(node)
+            }
+        } else {
+            // Copy relative path to clipboard
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
+            pasteboard.setString(node.fileChange?.path ?? node.fullPath, forType: .string)
+
+            // Brief flash effect on the row
+            if let rowView = sender.rowView(atRow: row, makeIfNecessary: false) {
+                rowView.wantsLayer = true
+                rowView.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.1).cgColor
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    rowView.layer?.backgroundColor = nil
+                }
+            }
+        }
+    }
+
+    private func allNodes(_ nodes: [GitTreeNode]) -> [GitTreeNode] {
+        var result: [GitTreeNode] = []
+        for node in nodes {
+            result.append(node)
+            if node.isDirectory {
+                result.append(contentsOf: allNodes(node.children))
+            }
+        }
+        return result
     }
 
     /// Update from surface's analyzer data.
@@ -430,5 +620,119 @@ class AISidePanelView: NSView {
             return (path as NSString).lastPathComponent
         }
         return path
+    }
+}
+
+// MARK: - NSOutlineViewDataSource & NSOutlineViewDelegate
+
+extension AISidePanelView: NSOutlineViewDataSource, NSOutlineViewDelegate {
+
+    func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
+        if let node = item as? GitTreeNode {
+            return node.children.count
+        }
+        return gitTreeNodes.count
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
+        if let node = item as? GitTreeNode {
+            return node.children[index]
+        }
+        return gitTreeNodes[index]
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
+        guard let node = item as? GitTreeNode else { return false }
+        return node.isDirectory
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
+        guard let node = item as? GitTreeNode else { return nil }
+
+        let cellID = NSUserInterfaceItemIdentifier("GitCell")
+        let cellView: NSTableCellView
+        if let existing = outlineView.makeView(withIdentifier: cellID, owner: nil) as? NSTableCellView {
+            cellView = existing
+        } else {
+            cellView = NSTableCellView()
+            cellView.identifier = cellID
+
+            let iv = NSImageView()
+            iv.translatesAutoresizingMaskIntoConstraints = false
+            iv.imageScaling = .scaleProportionallyDown
+            cellView.addSubview(iv)
+            cellView.imageView = iv
+
+            let tf = NSTextField(labelWithString: "")
+            tf.isEditable = false
+            tf.isBordered = false
+            tf.drawsBackground = false
+            tf.lineBreakMode = .byTruncatingTail
+            tf.translatesAutoresizingMaskIntoConstraints = false
+            cellView.addSubview(tf)
+            cellView.textField = tf
+
+            NSLayoutConstraint.activate([
+                iv.leadingAnchor.constraint(equalTo: cellView.leadingAnchor),
+                iv.centerYAnchor.constraint(equalTo: cellView.centerYAnchor),
+                iv.widthAnchor.constraint(equalToConstant: 14),
+                iv.heightAnchor.constraint(equalToConstant: 14),
+                tf.leadingAnchor.constraint(equalTo: iv.trailingAnchor, constant: 4),
+                tf.trailingAnchor.constraint(equalTo: cellView.trailingAnchor),
+                tf.centerYAnchor.constraint(equalTo: cellView.centerYAnchor),
+            ])
+        }
+
+        let monoFont = NSFont.monospacedSystemFont(ofSize: 11.0, weight: .regular)
+
+        if node.isDirectory {
+            let img = NSImage(systemSymbolName: "folder.fill", accessibilityDescription: nil)
+            cellView.imageView?.image = img
+            cellView.imageView?.contentTintColor = NSColor(red: 130/255, green: 170/255, blue: 255/255, alpha: 1.0)
+            cellView.textField?.stringValue = "\(node.name)/"
+            cellView.textField?.font = monoFont
+            cellView.textField?.textColor = NSColor(white: 0.55, alpha: 1.0)
+        } else if let change = node.fileChange {
+            let status = change.status
+            let symbolName = fileIcon(for: node.name, status: status)
+            let img = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)
+            cellView.imageView?.image = img
+            cellView.imageView?.contentTintColor = status.color
+
+            let attrStr = NSMutableAttributedString()
+            attrStr.append(NSAttributedString(
+                string: "\(status.label) ",
+                attributes: [.foregroundColor: status.color, .font: monoFont]
+            ))
+            attrStr.append(NSAttributedString(
+                string: node.name,
+                attributes: [.foregroundColor: NSColor(white: 0.7, alpha: 1.0), .font: monoFont]
+            ))
+            cellView.textField?.attributedStringValue = attrStr
+        }
+
+        return cellView
+    }
+
+    private func fileIcon(for name: String, status: GitFileChange.Status) -> String {
+        switch status {
+        case .added:     return "doc.badge.plus"
+        case .deleted:   return "doc.badge.minus"
+        case .renamed:   return "doc.badge.arrow.up"
+        default: break
+        }
+        let ext = (name as NSString).pathExtension.lowercased()
+        switch ext {
+        case "swift", "rs", "py", "js", "ts", "go", "c", "h", "cpp", "java", "rb":
+            return "doc.text"
+        case "json", "toml", "yaml", "yml", "xml", "plist":
+            return "doc.text.fill"
+        case "png", "jpg", "jpeg", "svg", "icns", "gif":
+            return "photo"
+        case "md", "txt", "rtf":
+            return "doc.plaintext"
+        default:
+            return "doc"
+        }
     }
 }
