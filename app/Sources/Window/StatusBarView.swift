@@ -41,6 +41,18 @@ class StatusBarView: NSView {
     private var generatingDotCount: Int = 0
     private var generatingWidthConstraint: NSLayoutConstraint!
 
+    // Voice controls
+    private let voiceLabel: VoiceClickLabel = {
+        let label = VoiceClickLabel(labelWithString: "MIC")
+        label.isEditable = false
+        label.isBordered = false
+        label.drawsBackground = false
+        return label
+    }()
+    private let voiceWaveform = WaveformView(frame: .zero)
+
+    var onVoiceToggle: (() -> Void)?
+
     private var sessionStart: Date = Date()
     private var updateTimer: Timer?
     private var shellPid: pid_t = 0
@@ -99,6 +111,19 @@ class StatusBarView: NSView {
         generatingLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(generatingLabel)
 
+        // Voice controls (between generating and sep1)
+        voiceLabel.font = monoFont
+        voiceLabel.textColor = NSColor(white: 0.7, alpha: 1.0)
+        voiceLabel.translatesAutoresizingMaskIntoConstraints = false
+        voiceLabel.toolTip = "Click to toggle voice input"
+        voiceLabel.onClick = { [weak self] in
+            self?.onVoiceToggle?()
+        }
+        addSubview(voiceLabel)
+
+        voiceWaveform.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(voiceWaveform)
+
         // Path button styled like a label
         pathButton.font = monoFont
         pathButton.contentTintColor = pathColor
@@ -137,8 +162,17 @@ class StatusBarView: NSView {
             generatingLabel.leadingAnchor.constraint(equalTo: modelButton.trailingAnchor, constant: 2),
             generatingLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
 
-            // Sep 1 chains off generating label
-            sep1.leadingAnchor.constraint(equalTo: generatingLabel.trailingAnchor, constant: 8),
+            // Voice controls (after generating, before sep1)
+            voiceLabel.leadingAnchor.constraint(equalTo: generatingLabel.trailingAnchor, constant: 6),
+            voiceLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+
+            voiceWaveform.leadingAnchor.constraint(equalTo: voiceLabel.trailingAnchor, constant: 4),
+            voiceWaveform.centerYAnchor.constraint(equalTo: centerYAnchor),
+            voiceWaveform.heightAnchor.constraint(equalToConstant: 14),
+            voiceWaveform.widthAnchor.constraint(equalToConstant: 30),
+
+            // Sep 1 chains off voice waveform
+            sep1.leadingAnchor.constraint(equalTo: voiceWaveform.trailingAnchor, constant: 8),
             sep1.centerYAnchor.constraint(equalTo: centerYAnchor),
 
             // Path (clickable button)
@@ -173,6 +207,9 @@ class StatusBarView: NSView {
 
         generatingWidthConstraint = generatingLabel.widthAnchor.constraint(equalToConstant: 0)
         generatingWidthConstraint.isActive = true
+
+        // Voice waveform starts hidden
+        voiceWaveform.isHidden = true
 
         modelButton.title = "Awal Terminal"
 
@@ -419,6 +456,37 @@ class StatusBarView: NSView {
         sessionStart = Date()
     }
 
+    // MARK: - Voice Controls
+
+    func setVoiceState(_ state: VoiceInputController.State) {
+        switch state {
+        case .idle:
+            voiceLabel.stringValue = "MIC"
+            voiceLabel.textColor = NSColor(white: 0.55, alpha: 1.0)
+            voiceWaveform.stopAnimating()
+            voiceWaveform.isHidden = true
+        case .listening:
+            voiceLabel.stringValue = "MIC"
+            voiceLabel.textColor = NSColor(red: 120/255, green: 220/255, blue: 120/255, alpha: 1.0)
+            voiceWaveform.isHidden = true
+            voiceWaveform.stopAnimating()
+        case .recording:
+            voiceLabel.stringValue = "REC"
+            voiceLabel.textColor = NSColor(red: 255/255, green: 80/255, blue: 80/255, alpha: 1.0)
+            voiceWaveform.isHidden = false
+            voiceWaveform.startAnimating()
+        case .processing:
+            voiceLabel.stringValue = "..."
+            voiceLabel.textColor = NSColor(red: 255/255, green: 200/255, blue: 50/255, alpha: 1.0)
+            voiceWaveform.stopAnimating()
+            voiceWaveform.isHidden = true
+        }
+    }
+
+    func setVoiceAudioLevel(_ level: Float) {
+        voiceWaveform.audioLevel = level
+    }
+
     func setGenerating(_ generating: Bool) {
         if generating {
             generatingDotCount = 0
@@ -437,5 +505,18 @@ class StatusBarView: NSView {
             generatingWidthConstraint.constant = 0
             generatingLabel.stringValue = ""
         }
+    }
+}
+
+/// Clickable NSTextField — fires `onClick` on mouse down.
+class VoiceClickLabel: NSTextField {
+    var onClick: (() -> Void)?
+
+    override func mouseDown(with event: NSEvent) {
+        onClick?()
+    }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .pointingHand)
     }
 }

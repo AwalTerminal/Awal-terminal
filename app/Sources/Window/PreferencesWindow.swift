@@ -57,6 +57,7 @@ class PreferencesWindow: NSWindowController, NSWindowDelegate {
         tabView.addTabViewItem(createThemeTab())
         tabView.addTabViewItem(createFontTab())
         tabView.addTabViewItem(createKeybindingsTab())
+        tabView.addTabViewItem(createVoiceTab())
     }
 
     // MARK: - Theme Tab
@@ -321,6 +322,149 @@ class PreferencesWindow: NSWindowController, NSWindowDelegate {
         } else {
             updateConfigValue(key: "keybindings.\(action)", value: "\"\(value)\"")
         }
+    }
+
+    // MARK: - Voice Tab
+
+    private func createVoiceTab() -> NSTabViewItem {
+        let item = NSTabViewItem(identifier: "voice")
+        item.label = "Voice"
+
+        let view = NSView()
+        let config = AppConfig.shared
+
+        let grid = NSGridView(numberOfColumns: 2, rows: 0)
+        grid.translatesAutoresizingMaskIntoConstraints = false
+        grid.columnSpacing = 12
+        grid.rowSpacing = 10
+
+        // Enabled toggle
+        let enabledLabel = NSTextField(labelWithString: "Enabled")
+        enabledLabel.font = .systemFont(ofSize: 13)
+        let enabledCheck = NSButton(checkboxWithTitle: "", target: self, action: #selector(voiceEnabledChanged(_:)))
+        enabledCheck.state = config.voiceEnabled ? .on : .off
+        grid.addRow(with: [enabledLabel, enabledCheck])
+
+        // Mode picker
+        let modeLabel = NSTextField(labelWithString: "Mode")
+        modeLabel.font = .systemFont(ofSize: 13)
+        let modePicker = NSPopUpButton(frame: .zero, pullsDown: false)
+        modePicker.addItems(withTitles: ["Push-to-Talk", "Continuous", "Wake Word"])
+        switch config.voiceMode {
+        case "continuous": modePicker.selectItem(at: 1)
+        case "wake_word": modePicker.selectItem(at: 2)
+        default: modePicker.selectItem(at: 0)
+        }
+        modePicker.target = self
+        modePicker.action = #selector(voiceModeChanged(_:))
+        grid.addRow(with: [modeLabel, modePicker])
+
+        // Whisper model
+        let modelLabel = NSTextField(labelWithString: "Whisper Model")
+        modelLabel.font = .systemFont(ofSize: 13)
+        let modelPicker = NSPopUpButton(frame: .zero, pullsDown: false)
+        modelPicker.addItems(withTitles: ModelDownloadManager.availableModels)
+        if let idx = ModelDownloadManager.availableModels.firstIndex(of: config.voiceWhisperModel) {
+            modelPicker.selectItem(at: idx)
+        }
+        modelPicker.target = self
+        modelPicker.action = #selector(voiceModelChanged(_:))
+        grid.addRow(with: [modelLabel, modelPicker])
+
+        // VAD threshold slider
+        let vadLabel = NSTextField(labelWithString: "VAD Threshold")
+        vadLabel.font = .systemFont(ofSize: 13)
+        let vadSlider = NSSlider(value: Double(config.voiceVadThreshold), minValue: 0.005, maxValue: 0.1, target: self, action: #selector(voiceVadChanged(_:)))
+        vadSlider.numberOfTickMarks = 10
+        grid.addRow(with: [vadLabel, vadSlider])
+
+        // PTT hotkey
+        let hotkeyLabel = NSTextField(labelWithString: "Push-to-Talk Key")
+        hotkeyLabel.font = .systemFont(ofSize: 13)
+        let hotkeyField = NSTextField(string: config.voicePushToTalkKey)
+        hotkeyField.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
+        hotkeyField.identifier = NSUserInterfaceItemIdentifier("voice.push_to_talk_key")
+        hotkeyField.target = self
+        hotkeyField.action = #selector(voiceFieldChanged(_:))
+        grid.addRow(with: [hotkeyLabel, hotkeyField])
+
+        // Wake word
+        let wakeLabel = NSTextField(labelWithString: "Wake Word")
+        wakeLabel.font = .systemFont(ofSize: 13)
+        let wakeField = NSTextField(string: config.voiceWakeWord)
+        wakeField.font = .systemFont(ofSize: 13)
+        wakeField.identifier = NSUserInterfaceItemIdentifier("voice.wake_word")
+        wakeField.target = self
+        wakeField.action = #selector(voiceFieldChanged(_:))
+        grid.addRow(with: [wakeLabel, wakeField])
+
+        // Auto-enter
+        let enterLabel = NSTextField(labelWithString: "Auto-Enter")
+        enterLabel.font = .systemFont(ofSize: 13)
+        let enterCheck = NSButton(checkboxWithTitle: "Append newline after dictation", target: self, action: #selector(voiceAutoEnterChanged(_:)))
+        enterCheck.state = config.voiceDictationAutoEnter ? .on : .off
+        grid.addRow(with: [enterLabel, enterCheck])
+
+        // Auto-space
+        let spaceLabel = NSTextField(labelWithString: "Auto-Space")
+        spaceLabel.font = .systemFont(ofSize: 13)
+        let spaceCheck = NSButton(checkboxWithTitle: "Add space between segments", target: self, action: #selector(voiceAutoSpaceChanged(_:)))
+        spaceCheck.state = config.voiceDictationAutoSpace ? .on : .off
+        grid.addRow(with: [spaceLabel, spaceCheck])
+
+        grid.column(at: 1).width = 200
+        view.addSubview(grid)
+
+        NSLayoutConstraint.activate([
+            grid.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            grid.topAnchor.constraint(equalTo: view.topAnchor, constant: 20),
+            grid.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -20),
+        ])
+
+        let note = NSTextField(labelWithString: "Changes are saved to ~/.config/awal/config.toml\nRestart the app for changes to take effect.")
+        note.font = .systemFont(ofSize: 11)
+        note.textColor = .secondaryLabelColor
+        note.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(note)
+        NSLayoutConstraint.activate([
+            note.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            note.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -16),
+        ])
+
+        item.view = view
+        return item
+    }
+
+    @objc private func voiceEnabledChanged(_ sender: NSButton) {
+        updateConfigValue(key: "voice.enabled", value: sender.state == .on ? "true" : "false")
+    }
+
+    @objc private func voiceModeChanged(_ sender: NSPopUpButton) {
+        let modes = ["push_to_talk", "continuous", "wake_word"]
+        let value = modes[sender.indexOfSelectedItem]
+        updateConfigValue(key: "voice.mode", value: "\"\(value)\"")
+    }
+
+    @objc private func voiceModelChanged(_ sender: NSPopUpButton) {
+        let model = ModelDownloadManager.availableModels[sender.indexOfSelectedItem]
+        updateConfigValue(key: "voice.whisper_model", value: "\"\(model)\"")
+    }
+
+    @objc private func voiceVadChanged(_ sender: NSSlider) {
+        updateConfigValue(key: "voice.vad_threshold", value: String(format: "%.3f", sender.doubleValue))
+    }
+
+    @objc private func voiceFieldChanged(_ sender: NSTextField) {
+        guard let key = sender.identifier?.rawValue else { return }
+        updateConfigValue(key: key, value: "\"\(sender.stringValue)\"")
+    }
+
+    @objc private func voiceAutoEnterChanged(_ sender: NSButton) {
+        updateConfigValue(key: "voice.dictation_auto_enter", value: sender.state == .on ? "true" : "false")
+    }
+
+    @objc private func voiceAutoSpaceChanged(_ sender: NSButton) {
+        updateConfigValue(key: "voice.dictation_auto_space", value: sender.state == .on ? "true" : "false")
     }
 
     // MARK: - Config File Helpers
