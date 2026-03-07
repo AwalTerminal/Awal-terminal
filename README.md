@@ -56,6 +56,14 @@ A native macOS terminal built from scratch with Swift and Rust, designed specifi
 
 Grab the latest build from the [website](https://awalterminal.github.io/Awal-terminal/).
 
+Since the app is not yet notarized with Apple, macOS will block it on first launch. After unzipping, run:
+
+```bash
+xattr -cr AwalTerminal.app
+```
+
+Then open the app normally.
+
 ### Build from Source
 
 Requires Rust and Swift toolchains on macOS.
