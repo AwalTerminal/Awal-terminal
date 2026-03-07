@@ -44,7 +44,7 @@ A native macOS terminal built from scratch with Swift and Rust, designed specifi
 
 **Syntax Highlighting** — Language-aware coloring for code blocks and diffs inside AI output.
 
-**Git Integration** — Live branch, status, and changed files displayed in the status bar and side panel.
+**Git Integration** — Live branch, status, and changed files displayed in the status bar and side panel. Click any changed file to view its diff inline.
 
 **Smart Notifications** — Desktop alerts when long-running AI tasks complete.
 
