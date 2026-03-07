@@ -380,7 +380,8 @@ final class MetalRenderer {
         currentHighlight: Int = -1,
         foldIndicators: [TerminalView.FoldIndicator] = [],
         codeBlockRows: Set<Int> = [],
-        diffRowColors: [Int: (UInt8, UInt8, UInt8, UInt8)] = [:]
+        diffRowColors: [Int: (UInt8, UInt8, UInt8, UInt8)] = [:],
+        loadingPhase: Float? = nil
     ) {
         // Non-blocking wait to avoid freezing the main thread
         let result = frameSemaphore.wait(timeout: .now() + .milliseconds(16))
@@ -568,6 +569,36 @@ final class MetalRenderer {
                 w: circleSize, h: circleSize,
                 r: indR, g: indG, b: indB, a: indicator.collapsed ? 220 : 140
             ))
+        }
+
+        // Loading bar at top border
+        if let phase = loadingPhase {
+            let barH: Float = 2.0 * Float(scale)
+            let totalW = Float(viewportSize.width)
+            let segW = totalW * 0.3
+
+            // phase goes 0..2: 0..1 slide right, 1..2 slide right off-screen
+            let t = phase.truncatingRemainder(dividingBy: 2.0)
+            let startX = (t - 0.3) * totalW / 1.7
+            let drawStart = max(0, startX)
+            let drawEnd = min(totalW, startX + segW)
+            if drawEnd > drawStart {
+                // Gradient effect: brighter in the center
+                let segments = 8
+                let segmentW = (drawEnd - drawStart) / Float(segments)
+                for i in 0..<segments {
+                    let center = Float(segments) / 2.0
+                    let dist = abs(Float(i) - center + 0.5) / center
+                    let alpha = UInt8(max(40, min(200, 200.0 * (1.0 - dist * dist))))
+                    lineInstances.append(LineInstance(
+                        x: drawStart + Float(i) * segmentW,
+                        y: 0,
+                        w: segmentW,
+                        h: barH,
+                        r: 79, g: 130, b: 229, a: alpha
+                    ))
+                }
+            }
         }
 
         // Cursor instance

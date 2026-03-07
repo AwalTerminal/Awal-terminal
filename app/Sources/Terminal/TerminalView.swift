@@ -88,6 +88,8 @@ class TerminalView: NSView {
 
     private var idleTimer: Timer?
     private var hadRecentOutput: Bool = false
+    private var isWaitingForOutput: Bool = false
+    private var loadingPhase: Float = 0
 
     // MARK: - Metal Properties
 
@@ -680,6 +682,11 @@ class TerminalView: NSView {
             at_surface_feed_bytes(s, ptr.baseAddress!, UInt32(ptr.count))
         }
 
+        updateCellBuffer()
+        needsRender = true
+        isWaitingForOutput = true
+        loadingPhase = 0
+
         recalculateGridSize()
 
         // Save workspace
@@ -832,6 +839,7 @@ class TerminalView: NSView {
             updateCellBuffer()
             needsRender = true
             hadRecentOutput = true
+            isWaitingForOutput = false
             if !isGenerating && !activeModelName.isEmpty {
                 isGenerating = true
                 onGeneratingChanged?(true)
@@ -1220,6 +1228,15 @@ class TerminalView: NSView {
 
         let viewportSize = layer.drawableSize
 
+        // Advance loading animation
+        var currentLoadingPhase: Float? = nil
+        if isWaitingForOutput {
+            loadingPhase += 0.012
+            if loadingPhase > 2.0 { loadingPhase -= 2.0 }
+            currentLoadingPhase = loadingPhase
+            needsRender = true
+        }
+
         // Compute visible search highlights
         let highlights = computeVisibleSearchHighlights()
 
@@ -1250,7 +1267,8 @@ class TerminalView: NSView {
                 currentHighlight: highlights.currentIndex,
                 foldIndicators: foldIndicators,
                 codeBlockRows: codeBlockRows,
-                diffRowColors: diffRowColors
+                diffRowColors: diffRowColors,
+                loadingPhase: currentLoadingPhase
             )
         }
     }
