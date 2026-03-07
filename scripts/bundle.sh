@@ -76,4 +76,7 @@ cat > "$APP_DIR/Contents/Info.plist" << 'PLIST'
 </plist>
 PLIST
 
+# Ad-hoc code sign so macOS TCC can persist permission grants (e.g. microphone)
+codesign --force --sign - "$APP_DIR"
+
 echo "Built: $APP_DIR"

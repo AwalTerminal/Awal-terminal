@@ -67,8 +67,8 @@ class VoiceInputController {
         }
         isEnabled = true
         NSLog("VoiceInput: startRecording() called")
+        setState(.recording)  // Set early to prevent re-entry during async gap
 
-        // Request authorization first (async), then start
         Task {
             let authorized = await transcriber.requestAccess()
             NSLog("VoiceInput: speech auth=\(authorized)")
@@ -76,20 +76,16 @@ class VoiceInputController {
             await MainActor.run {
                 guard authorized else {
                     NSLog("VoiceInput: not authorized, aborting")
+                    self.setState(.idle)
                     return
                 }
 
-                // Start streaming recognition
                 self.transcriber.startStreaming()
-
-                // Wire audio buffers to recognizer
                 self.audioManager.onBuffer = { [weak self] buffer in
                     self?.transcriber.appendBuffer(buffer)
                 }
-
                 self.audioManager.startCapture()
                 NSLog("VoiceInput: capture started, isCapturing=\(self.audioManager.isCapturing)")
-                self.setState(.recording)
             }
         }
     }
