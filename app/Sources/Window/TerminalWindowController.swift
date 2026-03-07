@@ -411,7 +411,8 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
             self?.reloadTabBar()
             self?.updateWindowTitle()
         }
-        statusBar.onGitStatusChanged = { [weak tab] changes in
+        statusBar.onGitStatusChanged = { [weak tab, weak statusBar] changes in
+            tab?.aiSidePanel.currentCwd = statusBar?.currentPath
             tab?.aiSidePanel.updateGitChanges(changes)
         }
         statusBar.onVoiceToggle = {

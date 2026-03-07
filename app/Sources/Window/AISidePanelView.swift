@@ -65,6 +65,11 @@ class AISidePanelView: NSView {
     private var gitLastPaths: Set<String> = []
     private var gitExpandedPaths: Set<String> = []
 
+    // Diff popover
+    var currentCwd: String?
+    private var diffPopover: NSPopover?
+    private var diffPopoverFilePath: String?
+
     // Elapsed time
     private let elapsedLabel = NSTextField(labelWithString: "")
 
@@ -212,6 +217,7 @@ class AISidePanelView: NSView {
         gitOutlineView.delegate = self
         gitOutlineView.target = self
         gitOutlineView.action = #selector(gitOutlineClicked(_:))
+        gitOutlineView.doubleAction = #selector(gitOutlineDoubleClicked(_:))
 
         gitScrollView.documentView = gitOutlineView
         gitScrollView.hasVerticalScroller = true
@@ -518,6 +524,8 @@ class AISidePanelView: NSView {
         guard newPaths != gitLastPaths else { return }
         gitLastPaths = newPaths
 
+        closeDiffPopover()
+
         // Save expanded state
         gitExpandedPaths = Set<String>()
         for node in allNodes(gitTreeNodes) where node.isDirectory {
@@ -600,26 +608,70 @@ class AISidePanelView: NSView {
         guard row >= 0, let node = outlineView.item(atRow: row) as? GitTreeNode else { return }
 
         if node.isDirectory {
-            // Toggle expand/collapse
             if outlineView.isItemExpanded(node) {
                 outlineView.collapseItem(node)
             } else {
                 outlineView.expandItem(node)
             }
         } else {
-            // Copy relative path to clipboard
-            let pasteboard = NSPasteboard.general
-            pasteboard.clearContents()
-            pasteboard.setString(node.fileChange?.path ?? node.fullPath, forType: .string)
+            let filePath = node.fileChange?.path ?? node.fullPath
+            let status = node.fileChange?.status ?? .modified
 
-            // Brief flash effect on the row
-            if let rowView = outlineView.rowView(atRow: row, makeIfNecessary: false) {
-                rowView.wantsLayer = true
-                rowView.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.1).cgColor
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                    rowView.layer?.backgroundColor = nil
-                }
+            // Toggle: if popover is open for the same file, dismiss it
+            if diffPopover != nil && diffPopoverFilePath == filePath {
+                closeDiffPopover()
+                return
             }
+
+            // Dismiss any existing popover before opening a new one
+            closeDiffPopover()
+
+            guard let cwd = currentCwd, !cwd.isEmpty else { return }
+
+            let vc = DiffPopoverViewController()
+            let popover = NSPopover()
+            popover.contentViewController = vc
+            popover.behavior = .applicationDefined
+            popover.delegate = self
+            popover.contentSize = NSSize(width: 400, height: 300)
+            vc.parentPopover = popover
+
+            diffPopover = popover
+            diffPopoverFilePath = filePath
+
+            let rowRect = outlineView.rect(ofRow: row)
+            popover.show(relativeTo: rowRect, of: outlineView, preferredEdge: .minX)
+            vc.loadDiff(filePath: filePath, status: status, cwd: cwd)
+        }
+    }
+
+    @objc private func gitOutlineDoubleClicked(_ sender: Any) {
+        guard let outlineView = sender as? NSOutlineView else { return }
+        let row = outlineView.clickedRow
+        guard row >= 0, let node = outlineView.item(atRow: row) as? GitTreeNode else { return }
+        guard !node.isDirectory else { return }
+
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(node.fileChange?.path ?? node.fullPath, forType: .string)
+
+        if let rowView = outlineView.rowView(atRow: row, makeIfNecessary: false) {
+            rowView.wantsLayer = true
+            rowView.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.1).cgColor
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                rowView.layer?.backgroundColor = nil
+            }
+        }
+    }
+
+    private func closeDiffPopover() {
+        if let popover = diffPopover {
+            popover.delegate = nil
+            if popover.isShown {
+                popover.performClose(nil)
+            }
+            diffPopover = nil
+            diffPopoverFilePath = nil
         }
     }
 
@@ -867,5 +919,14 @@ extension AISidePanelView: NSOutlineViewDataSource, NSOutlineViewDelegate {
         default:
             return "doc"
         }
+    }
+}
+
+// MARK: - NSPopoverDelegate
+
+extension AISidePanelView: NSPopoverDelegate {
+    func popoverDidClose(_ notification: Notification) {
+        diffPopover = nil
+        diffPopoverFilePath = nil
     }
 }
