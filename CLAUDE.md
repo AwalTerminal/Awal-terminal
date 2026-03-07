@@ -17,6 +17,16 @@
 - Website download link (`docs/index.html`) uses `/releases/latest/download/AwalTerminal.zip` — auto-resolves to newest release
 - Check download counts: `gh api repos/AwalTerminal/Awal-terminal/releases -q '.[].assets[] | "\(.name): \(.download_count) downloads"'`
 
+## Documentation Maintenance
+
+When making changes that add, remove, or modify user-facing features (new UI elements, new shortcuts, new config options, behavior changes, etc.), you MUST also update the relevant documentation:
+
+- **`README.md`** — Update the Features list, Keybindings table, Configuration example, or Architecture section as needed
+- **`docs/documentation.html`** — Update the corresponding section(s) in the website documentation page (Getting Started, AI Features, Keyboard Shortcuts, Configuration, etc.)
+- **`docs/index.html`** — Update the feature cards on the landing page if a major new feature is added
+
+Do NOT update docs for internal refactors, bug fixes, or changes that don't affect the user-facing behavior.
+
 ## Project Structure
 
 - `app/` — Swift macOS app (SwiftPM)
