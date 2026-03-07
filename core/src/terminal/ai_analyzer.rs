@@ -472,8 +472,15 @@ impl AiAnalyzer {
         if let Some(paren_start) = label.find('(') {
             let inner = &label[paren_start + 1..];
             let end = inner.find(|c: char| c == ')' || c == ',').unwrap_or(inner.len());
-            let path = inner[..end].trim().trim_matches('"').trim_matches('\'');
-            if !path.is_empty() && (path.contains('/') || path.contains('.')) {
+            let mut path = inner[..end].trim().trim_matches('"').trim_matches('\'');
+            // Strip parameter name prefix like "file_path: " or "path: "
+            if let Some(colon_pos) = path.find(':') {
+                path = path[colon_pos + 1..].trim().trim_matches('"').trim_matches('\'');
+            }
+            if !path.is_empty()
+                && path != "null"
+                && (path.contains('/') || path.contains('.'))
+            {
                 return Some(path.to_string());
             }
         }

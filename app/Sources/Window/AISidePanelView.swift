@@ -488,7 +488,8 @@ class AISidePanelView: NSView {
             return
         }
 
-        for file in files.prefix(20) {
+        let maxVisible = 2
+        for file in files.prefix(maxVisible) {
             let label = NSTextField(labelWithString: "  \(shortenPath(file))")
             label.font = NSFont.monospacedSystemFont(ofSize: 10.0, weight: .regular)
             label.textColor = NSColor(red: 130/255, green: 170/255, blue: 255/255, alpha: 1.0)
@@ -500,8 +501,9 @@ class AISidePanelView: NSView {
             filesStackView.addArrangedSubview(label)
         }
 
-        if files.count > 20 {
-            let moreLabel = NSTextField(labelWithString: "  +\(files.count - 20) more")
+        if files.count > maxVisible {
+            let remaining = files.count - maxVisible
+            let moreLabel = NSTextField(labelWithString: "  and \(remaining) more file\(remaining == 1 ? "" : "s")")
             moreLabel.font = NSFont.monospacedSystemFont(ofSize: 10.0, weight: .regular)
             moreLabel.textColor = NSColor(white: 0.4, alpha: 1.0)
             moreLabel.isEditable = false
@@ -656,8 +658,11 @@ class AISidePanelView: NSView {
         for i in 0..<summary.file_ref_count {
             let cstr = at_surface_get_file_ref(surface, i)
             if let cstr = cstr {
-                files.append(String(cString: cstr))
+                let file = String(cString: cstr)
                 at_free_string(cstr)
+                if file != "null" && !file.isEmpty {
+                    files.append(file)
+                }
             }
         }
         updateFileRefs(files)
