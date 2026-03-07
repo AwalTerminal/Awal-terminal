@@ -7,6 +7,7 @@ struct LLMModel {
     let configPath: String?
     let installCommand: String?
     let contextWindow: Int
+    let resumeCommand: String?
 
     var hasConfig: Bool { configPath != nil }
     var storageKey: String { name.lowercased() }
@@ -29,10 +30,10 @@ struct LLMModel {
 
 enum ModelCatalog {
     static let all: [LLMModel] = [
-        LLMModel(name: "Claude",   provider: "Anthropic",       command: "claude",              configPath: "~/.claude/settings.json",       installCommand: "npm install -g @anthropic-ai/claude-code",  contextWindow: 200_000),
-        LLMModel(name: "Gemini",   provider: "Google",          command: "gemini",              configPath: "~/.config/gemini/settings.json", installCommand: "npm install -g @google/gemini-cli",        contextWindow: 1_000_000),
-        LLMModel(name: "Codex",    provider: "OpenAI",          command: "codex",               configPath: nil,                             installCommand: "npm install -g @openai/codex",             contextWindow: 200_000),
-        LLMModel(name: "Shell",    provider: "Terminal",         command: "",                    configPath: nil,                             installCommand: nil,                                        contextWindow: 0),
+        LLMModel(name: "Claude",   provider: "Anthropic",       command: "claude",              configPath: "~/.claude/settings.json",       installCommand: "npm install -g @anthropic-ai/claude-code",  contextWindow: 200_000, resumeCommand: "claude --resume"),
+        LLMModel(name: "Gemini",   provider: "Google",          command: "gemini",              configPath: "~/.config/gemini/settings.json", installCommand: "npm install -g @google/gemini-cli",        contextWindow: 1_000_000, resumeCommand: "gemini --resume"),
+        LLMModel(name: "Codex",    provider: "OpenAI",          command: "codex",               configPath: nil,                             installCommand: "npm install -g @openai/codex",             contextWindow: 200_000, resumeCommand: "codex resume"),
+        LLMModel(name: "Shell",    provider: "Terminal",         command: "",                    configPath: nil,                             installCommand: nil,                                        contextWindow: 0, resumeCommand: nil),
     ]
 
     static var configurable: [LLMModel] { all.filter { $0.hasConfig } }
