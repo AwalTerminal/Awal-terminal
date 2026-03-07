@@ -1,0 +1,1131 @@
+<!DOCTYPE html>
+<!--
+  Awal Terminal — Promotional Website
+  Single static HTML file. Zero dependencies.
+
+  GitHub Pages setup:
+  1. Go to repo Settings > Pages
+  2. Source: "Deploy from a branch"
+  3. Branch: main, folder: /website (or symlink to /docs)
+  4. Optionally configure a custom domain (e.g. awal.sh)
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Awal Terminal — The LLM-native terminal emulator</title>
+  <meta name="description" content="Built for developers who work with AI. Rust core. Metal GPU. macOS native.">
+
+  <!-- Favicons -->
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon-16.png">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Awal Terminal">
+  <meta property="og:description" content="The LLM-native terminal emulator. Built for developers who work with AI.">
+  <meta property="og:image" content="https://awalterminal.github.io/Awal-terminal/assets/social-card.png">
+  <meta name="twitter:card" content="summary_large_image">
+
+  <!-- Progressive enhancement: Inter + JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #0a0b14;
+      --bg-surface: #12132a;
+      --bg-card: #181937;
+      --text: #e8e8f0;
+      --text-muted: #6b6d8a;
+      --accent: #6366f1;
+      --accent-light: #818cf8;
+      --accent-glow: rgba(99, 102, 241, 0.35);
+      --cyan: #22d3ee;
+      --green: #34d399;
+      --pink: #f472b6;
+      --radius: 16px;
+      --mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    a { color: var(--accent-light); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .container {
+      max-width: 1040px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    section { padding: 100px 0; }
+
+    /* ── Dot Grid Background ── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: radial-gradient(rgba(99, 102, 241, 0.08) 1px, transparent 1px);
+      background-size: 32px 32px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── Noise texture overlay ── */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      opacity: 0.03;
+      background: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    section, footer { position: relative; z-index: 1; }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 32px;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 600;
+      transition: all 0.25s ease;
+      border: none;
+      cursor: pointer;
+      text-decoration: none;
+      font-family: inherit;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), #8b5cf6);
+      color: #fff;
+      box-shadow: 0 2px 20px var(--accent-glow);
+    }
+    .btn-primary:hover {
+      text-decoration: none;
+      transform: translateY(-2px);
+      box-shadow: 0 8px 40px var(--accent-glow);
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(8px);
+    }
+    .btn-secondary:hover {
+      border-color: var(--accent);
+      background: rgba(99, 102, 241, 0.08);
+      text-decoration: none;
+      transform: translateY(-2px);
+    }
+
+    /* ── Nav ── */
+    nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      padding: 16px 0;
+      background: rgba(10, 11, 20, 0.7);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    }
+
+    nav .container {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .nav-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 16px;
+      color: var(--text);
+      text-decoration: none;
+    }
+
+    .nav-brand img { width: 28px; height: 28px; }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 32px;
+      list-style: none;
+    }
+
+    .nav-links a {
+      color: var(--text-muted);
+      font-size: 14px;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--text); text-decoration: none; }
+
+    .nav-cta {
+      padding: 8px 20px !important;
+      font-size: 13px !important;
+    }
+
+    /* ── Hero ── */
+    .hero {
+      padding: 180px 0 100px;
+      text-align: center;
+      position: relative;
+      overflow: visible;
+    }
+
+    /* Animated gradient orbs */
+    .orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(80px);
+      opacity: 0.4;
+      pointer-events: none;
+      animation: float 20s ease-in-out infinite;
+    }
+
+    .orb-1 {
+      width: 500px; height: 500px;
+      background: radial-gradient(circle, var(--accent) 0%, transparent 70%);
+      top: -10%; left: 20%;
+      animation-delay: 0s;
+    }
+
+    .orb-2 {
+      width: 400px; height: 400px;
+      background: radial-gradient(circle, #8b5cf6 0%, transparent 70%);
+      top: 10%; right: 10%;
+      animation-delay: -7s;
+    }
+
+    .orb-3 {
+      width: 300px; height: 300px;
+      background: radial-gradient(circle, var(--cyan) 0%, transparent 70%);
+      bottom: 0; left: 40%;
+      opacity: 0.2;
+      animation-delay: -14s;
+    }
+
+    @keyframes float {
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      33% { transform: translate(30px, -20px) scale(1.05); }
+      66% { transform: translate(-20px, 15px) scale(0.95); }
+    }
+
+    .hero .container { position: relative; z-index: 1; }
+
+    .hero h1 {
+      font-size: clamp(42px, 7vw, 72px);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.05;
+      margin-bottom: 20px;
+      background: linear-gradient(135deg, #fff 0%, #c7d2fe 50%, var(--accent-light) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    /* ── ASCII Block Logo ── */
+    .ascii-logo {
+      display: inline-grid;
+      grid-template-columns: repeat(40, 1fr);
+      gap: 2px;
+      margin-bottom: 32px;
+      --block: clamp(6px, 1.2vw, 12px);
+    }
+
+    .ascii-logo span {
+      width: var(--block);
+      height: var(--block);
+      border-radius: 2px;
+    }
+
+    .ascii-logo .on {
+      background: linear-gradient(135deg, #c0c0c8, #8a8a96);
+    }
+
+    .ascii-logo .hi {
+      background: linear-gradient(135deg, #e8e8ec, #b0b0bc);
+    }
+
+    .ascii-logo .off {
+      background: transparent;
+    }
+
+    .hero-tagline {
+      font-family: var(--mono);
+      font-size: clamp(15px, 2.5vw, 18px);
+      color: var(--accent-light);
+      font-weight: 500;
+      margin-bottom: 16px;
+      letter-spacing: -0.01em;
+    }
+
+    .hero-tagline .typed-prefix {
+      color: var(--green);
+    }
+
+    .cursor {
+      display: inline-block;
+      width: 2px;
+      height: 1.1em;
+      background: var(--accent-light);
+      margin-left: 2px;
+      vertical-align: text-bottom;
+      animation: blink 1s step-end infinite;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+
+    .hero-sub {
+      font-size: 17px;
+      color: var(--text-muted);
+      max-width: 480px;
+      margin: 0 auto 44px;
+      line-height: 1.7;
+    }
+
+    .hero-actions {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    /* ── Live Terminal Demo ── */
+    .terminal-demo {
+      margin-top: 72px;
+      text-align: left;
+    }
+
+    .awal-window {
+      background: #1e1e2e;
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow:
+        0 8px 80px rgba(0, 0, 0, 0.6),
+        0 0 0 1px rgba(255, 255, 255, 0.08);
+    }
+
+    /* macOS titlebar */
+    .awal-titlebar {
+      display: flex;
+      align-items: center;
+      padding: 10px 14px;
+      background: #181825;
+    }
+
+    .awal-dots { display: flex; gap: 7px; }
+    .awal-dot { width: 12px; height: 12px; border-radius: 50%; }
+    .awal-dot.r { background: #ff5f57; }
+    .awal-dot.y { background: #febc2e; }
+    .awal-dot.g { background: #28c840; }
+
+    .awal-titlebar-text {
+      flex: 1;
+      text-align: center;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: #585b70;
+      margin-right: 52px;
+    }
+
+    /* Tab bar */
+    .awal-tabs {
+      display: flex;
+      align-items: stretch;
+      background: #181825;
+      border-bottom: 1px solid #2a2a3e;
+      padding: 0 8px;
+      gap: 2px;
+    }
+
+    .awal-tab {
+      padding: 6px 16px;
+      font-family: var(--mono);
+      font-size: 11.5px;
+      color: #585b70;
+      border-radius: 6px 6px 0 0;
+      position: relative;
+    }
+
+    .awal-tab.active {
+      background: #1e1e2e;
+      color: #cdd6f4;
+    }
+
+    .awal-tab-new {
+      padding: 6px 10px;
+      color: #585b70;
+      font-size: 14px;
+    }
+
+    /* Terminal body */
+    .awal-body {
+      padding: 20px 24px;
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.9;
+      min-height: 200px;
+      color: #cdd6f4;
+    }
+
+    .awal-line { opacity: 0; animation: typeLine 0.3s ease forwards; }
+    .awal-line:nth-child(1) { animation-delay: 0.3s; }
+    .awal-line:nth-child(2) { animation-delay: 1.2s; }
+    .awal-line:nth-child(3) { animation-delay: 1.5s; }
+    .awal-line:nth-child(4) { animation-delay: 1.8s; }
+    .awal-line:nth-child(5) { animation-delay: 2.1s; }
+    .awal-line:nth-child(6) { animation-delay: 2.8s; }
+    .awal-line:nth-child(7) { animation-delay: 3.2s; }
+
+    @keyframes typeLine {
+      from { opacity: 0; transform: translateY(3px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .t-prompt { color: var(--green); }
+    .t-cmd { color: #cdd6f4; }
+    .t-dim { color: #45475a; }
+    .t-accent { color: var(--accent-light); }
+    .t-cyan { color: var(--cyan); }
+    .t-output { color: #a6adc8; }
+    .t-pink { color: var(--pink); }
+    .t-yellow { color: #f9e2af; }
+
+    .fold-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .fold-indicator .bar {
+      display: inline-block;
+      width: 3px;
+      height: 14px;
+      background: var(--accent);
+      border-radius: 2px;
+      vertical-align: middle;
+    }
+
+    .fold-indicator .dots {
+      color: #45475a;
+      letter-spacing: 1px;
+    }
+
+    /* Status bar */
+    .awal-statusbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 4px 14px;
+      background: #181825;
+      border-top: 1px solid #2a2a3e;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: #585b70;
+    }
+
+    .awal-statusbar .model {
+      color: var(--accent-light);
+    }
+
+    .awal-statusbar-section {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    /* ── Screenshot Showcase ── */
+    .showcase { padding-top: 20px; }
+
+    .showcase-label {
+      font-family: var(--mono);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--accent-light);
+      text-align: center;
+      margin-bottom: 16px;
+    }
+
+    .showcase h2 {
+      text-align: center;
+      font-size: clamp(28px, 4vw, 40px);
+      font-weight: 700;
+      margin-bottom: 56px;
+      letter-spacing: -0.02em;
+    }
+
+    .screenshots-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 48px;
+    }
+
+    .screenshot-wrap {
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .screenshot-wrap img {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    .screenshot-caption {
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 13px;
+      margin-top: 16px;
+    }
+
+    /* ── Features ── */
+    .features { overflow: hidden; }
+
+    .features-label {
+      font-family: var(--mono);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--accent-light);
+      text-align: center;
+      margin-bottom: 16px;
+    }
+
+    .features h2 {
+      text-align: center;
+      font-size: clamp(28px, 4vw, 40px);
+      font-weight: 700;
+      margin-bottom: 56px;
+      letter-spacing: -0.02em;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+
+    .feature-card {
+      background: linear-gradient(135deg, rgba(18, 19, 42, 0.8), rgba(24, 25, 55, 0.6));
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      border-radius: var(--radius);
+      padding: 32px 28px;
+      transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Gradient border on hover */
+    .feature-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: var(--radius);
+      padding: 1px;
+      background: linear-gradient(135deg, transparent, transparent);
+      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      transition: background 0.35s ease;
+    }
+
+    .feature-card:hover::before {
+      background: linear-gradient(135deg, var(--accent), var(--cyan));
+    }
+
+    .feature-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 12px 40px rgba(99, 102, 241, 0.12);
+      background: linear-gradient(135deg, rgba(24, 25, 55, 0.9), rgba(30, 31, 65, 0.7));
+    }
+
+    .feature-icon-wrap {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 20px;
+      font-size: 22px;
+      position: relative;
+    }
+
+    .feature-icon-wrap.gpu { background: rgba(99, 102, 241, 0.12); color: var(--accent-light); }
+    .feature-icon-wrap.fold { background: rgba(244, 114, 182, 0.12); color: var(--pink); }
+    .feature-icon-wrap.ai { background: rgba(34, 211, 238, 0.12); color: var(--cyan); }
+    .feature-icon-wrap.tabs { background: rgba(52, 211, 153, 0.12); color: var(--green); }
+    .feature-icon-wrap.code { background: rgba(251, 191, 36, 0.12); color: #fbbf24; }
+    .feature-icon-wrap.quick { background: rgba(167, 139, 250, 0.12); color: #a78bfa; }
+    .feature-icon-wrap.voice { background: rgba(251, 113, 133, 0.12); color: #fb7185; }
+    .feature-icon-wrap.notify { background: rgba(253, 186, 116, 0.12); color: #fdba74; }
+    .feature-icon-wrap.profiles { background: rgba(147, 197, 253, 0.12); color: #93c5fd; }
+    .feature-icon-wrap.theme { background: rgba(196, 181, 253, 0.12); color: #c4b5fd; }
+    .feature-icon-wrap.git { background: rgba(248, 113, 113, 0.12); color: #f87171; }
+    .feature-icon-wrap.search { background: rgba(110, 231, 183, 0.12); color: #6ee7b7; }
+
+    .feature-card h3 {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      letter-spacing: -0.01em;
+    }
+
+    .feature-card p {
+      font-size: 14px;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    /* ── Tech Stack ── */
+    .tech {
+      text-align: center;
+      padding: 80px 0;
+      position: relative;
+    }
+
+    .tech::before {
+      content: '';
+      position: absolute;
+      left: 50%;
+      top: 0;
+      transform: translateX(-50%);
+      width: 600px;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(99, 102, 241, 0.3), transparent);
+    }
+
+    .tech::after {
+      content: '';
+      position: absolute;
+      left: 50%;
+      bottom: 0;
+      transform: translateX(-50%);
+      width: 600px;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(99, 102, 241, 0.3), transparent);
+    }
+
+    .tech-label {
+      font-family: var(--mono);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--accent-light);
+      margin-bottom: 24px;
+    }
+
+    .tech-stack {
+      display: flex;
+      gap: 32px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+    }
+
+    .tech-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .tech-icon {
+      width: 56px;
+      height: 56px;
+      border-radius: 14px;
+      background: var(--bg-card);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-family: var(--mono);
+      font-weight: 500;
+      color: var(--text);
+      transition: all 0.3s ease;
+    }
+
+    .tech-icon:hover {
+      border-color: var(--accent);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 20px rgba(99, 102, 241, 0.15);
+    }
+
+    .tech-item span:last-child {
+      font-size: 13px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .tech p {
+      color: var(--text-muted);
+      font-size: 15px;
+      margin-top: 16px;
+      max-width: 500px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    /* ── CTA / Download ── */
+    .cta {
+      text-align: center;
+      position: relative;
+    }
+
+    .cta-glow {
+      position: absolute;
+      width: 500px;
+      height: 300px;
+      background: radial-gradient(ellipse, var(--accent-glow) 0%, transparent 70%);
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      opacity: 0.25;
+      pointer-events: none;
+    }
+
+    .cta .container { position: relative; z-index: 1; }
+
+    .cta h2 {
+      font-size: clamp(32px, 5vw, 48px);
+      font-weight: 800;
+      margin-bottom: 12px;
+      letter-spacing: -0.03em;
+      background: linear-gradient(135deg, #fff 0%, var(--accent-light) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .cta p {
+      color: var(--text-muted);
+      margin-bottom: 36px;
+      font-size: 17px;
+    }
+
+    .cta-actions {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-bottom: 24px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 20px;
+      padding: 6px 16px;
+      font-size: 13px;
+      color: var(--text-muted);
+      font-family: var(--mono);
+    }
+
+    .badge svg { opacity: 0.5; }
+
+    /* ── Footer ── */
+    footer {
+      padding: 40px 0;
+      text-align: center;
+    }
+
+    footer::before {
+      content: '';
+      display: block;
+      width: 200px;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
+      margin: 0 auto 40px;
+    }
+
+    footer p { color: var(--text-muted); font-size: 13px; }
+    footer a { color: var(--text-muted); }
+    footer a:hover { color: var(--text); }
+
+    .footer-links {
+      display: flex;
+      gap: 28px;
+      justify-content: center;
+      margin-bottom: 12px;
+      font-size: 13px;
+    }
+
+    /* ── Scroll Fade-in ── */
+    .fade-in {
+      opacity: 0;
+      transform: translateY(24px);
+      transition: opacity 0.7s cubic-bezier(0.4, 0, 0.2, 1), transform 0.7s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .fade-in.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* Staggered children */
+    .stagger > .fade-in:nth-child(1) { transition-delay: 0s; }
+    .stagger > .fade-in:nth-child(2) { transition-delay: 0.06s; }
+    .stagger > .fade-in:nth-child(3) { transition-delay: 0.12s; }
+    .stagger > .fade-in:nth-child(4) { transition-delay: 0.18s; }
+    .stagger > .fade-in:nth-child(5) { transition-delay: 0.24s; }
+    .stagger > .fade-in:nth-child(6) { transition-delay: 0.30s; }
+    .stagger > .fade-in:nth-child(7) { transition-delay: 0.36s; }
+    .stagger > .fade-in:nth-child(8) { transition-delay: 0.42s; }
+    .stagger > .fade-in:nth-child(9) { transition-delay: 0.48s; }
+    .stagger > .fade-in:nth-child(10) { transition-delay: 0.54s; }
+    .stagger > .fade-in:nth-child(11) { transition-delay: 0.60s; }
+    .stagger > .fade-in:nth-child(12) { transition-delay: 0.66s; }
+
+    /* ── Responsive ── */
+    @media (max-width: 768px) {
+      section { padding: 72px 0; }
+      .hero { padding: 140px 0 72px; }
+      nav .nav-links .nav-hide { display: none; }
+
+      .features-grid { grid-template-columns: 1fr; gap: 16px; }
+
+      .hero-actions { flex-direction: column; align-items: center; }
+      .btn { width: 100%; max-width: 280px; justify-content: center; }
+
+      .orb-1 { width: 300px; height: 300px; left: 5%; }
+      .orb-2 { width: 250px; height: 250px; }
+
+      .tech-stack { gap: 20px; }
+    }
+
+    @media (min-width: 769px) and (max-width: 1024px) {
+      .features-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ════ Nav ════ -->
+  <nav>
+    <div class="container">
+      <a href="#" class="nav-brand">
+        <img src="assets/logomark-white.png" alt="Awal">
+        Awal Terminal
+      </a>
+      <div class="nav-links">
+        <a href="#features" class="nav-hide">Features</a>
+        <a href="#download" class="nav-hide">Download</a>
+        <a href="https://github.com/AwalTerminal/awal-terminal" class="btn btn-secondary nav-cta">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+          GitHub
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ════ Hero ════ -->
+  <section class="hero">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+    <div class="container">
+      <div class="ascii-logo" role="img" aria-label="AWAL" id="ascii-logo"></div>
+      <p class="hero-tagline"><span class="t-prompt">$</span> the LLM-native terminal<span class="cursor"></span></p>
+      <p class="hero-sub">Fast, native, and built for AI-first development.</p>
+      <div class="hero-actions">
+        <a href="https://github.com/AwalTerminal/awal-terminal/releases" class="btn btn-primary">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Download for macOS
+        </a>
+        <a href="https://github.com/AwalTerminal/awal-terminal" class="btn btn-secondary">
+          View on GitHub
+        </a>
+      </div>
+
+      <!-- Live terminal demo -->
+      <div class="terminal-demo">
+        <div class="awal-window">
+          <div class="awal-titlebar">
+            <div class="awal-dots">
+              <span class="awal-dot r"></span>
+              <span class="awal-dot y"></span>
+              <span class="awal-dot g"></span>
+            </div>
+            <span class="awal-titlebar-text">Claude &mdash; awal-terminal</span>
+          </div>
+          <div class="awal-tabs">
+            <div class="awal-tab active">Claude &mdash; awal-terminal</div>
+            <div class="awal-tab">Shell</div>
+            <div class="awal-tab-new">+</div>
+          </div>
+          <div class="awal-body">
+            <div class="awal-line"><span class="t-prompt">~</span> <span class="t-cmd">claude "refactor the auth module"</span></div>
+            <div class="awal-line"><span class="t-dim">  </span><span class="fold-indicator"><span class="bar"></span><span class="t-accent">Claude response</span> <span class="t-dim">(1,247 tokens)</span> <span class="dots t-dim">........................</span> <span class="t-cyan">folded</span></span></div>
+            <div class="awal-line"><span class="t-dim">    </span><span class="t-output">auth.rs &mdash; 42 lines changed</span></div>
+            <div class="awal-line"><span class="t-dim">    </span><span class="t-output">tests/  &mdash; 3 files updated</span></div>
+            <div class="awal-line"><span class="t-dim">    </span><span class="t-dim">context: 12.4k / 200k tokens</span></div>
+            <div class="awal-line">&nbsp;</div>
+            <div class="awal-line"><span class="t-prompt">~</span> <span class="cursor"></span></div>
+          </div>
+          <div class="awal-statusbar">
+            <div class="awal-statusbar-section">
+              <span class="model">Opus 4.6</span>
+              <span>~/Projects/awal-terminal</span>
+            </div>
+            <div class="awal-statusbar-section">
+              <span>80x24</span>
+              <span>12.4k ctx</span>
+              <span>2:34</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════ Screenshot Showcase ════ -->
+  <section class="showcase" id="screenshots">
+    <div class="container fade-in">
+      <p class="showcase-label">Preview</p>
+      <h2>See it in action</h2>
+      <div class="screenshots-grid">
+        <div>
+          <div class="screenshot-wrap">
+            <img src="assets/screenshot-2.png" alt="Awal Terminal — Workspace selector with multiple AI providers">
+          </div>
+          <p class="screenshot-caption">Workspace selector with Claude, Gemini, Codex &amp; Shell sessions</p>
+        </div>
+        <div>
+          <div class="screenshot-wrap">
+            <img src="assets/screenshot-1.png" alt="Awal Terminal — AI side panel with diff rendering and token tracking">
+          </div>
+          <p class="screenshot-caption">AI side panel with diff rendering, token tracking &amp; file references</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════ Features ════ -->
+  <section class="features" id="features">
+    <div class="container">
+      <p class="features-label">Features</p>
+      <h2>Built different</h2>
+      <div class="features-grid stagger">
+        <div class="feature-card fade-in">
+          <div class="feature-icon-wrap gpu">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          </div>
+          <h3>GPU-Accelerated Rendering</h3>
+          <p>Metal-powered rendering at 120fps with glyph atlas caching, triple-buffering, and ligature support.</p>
+        </div>
+        <div class="feature-card fade-in">
+          <div class="feature-icon-wrap fold">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
+          </div>
+          <h3>Smart Output Folding</h3>
+          <p>AI responses automatically fold into collapsible, labeled sections — tool calls, diffs, thinking, and more.</p>
+        </div>
+        <div class="feature-card fade-in">
+          <div class="feature-icon-wrap ai">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          </div>
+          <h3>AI Side Panel</h3>
+          <p>Live token tracking, cost estimation, file references, git changes tree, and activity stats in one panel.</p>
+        </div>
+        <div class="feature-card fade-in">
+          <div class="feature-icon-wrap profiles">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          </div>
+          <h3>LLM Profiles</h3>
+          <p>Switch between Claude, Gemini, Codex, or plain Shell. Create custom profiles with per-model config.</p>
+        </div>
+        <div class="feature-card fade-in">
+          <div class="feature-icon-wrap voice">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+          </div>
+          <h3>Voice Input</h3>
+          <p>Push-to-talk, continuous, or wake word mode. Whisper-powered transcription with voice commands.</p>
+        </div>
+        <div class="feature-card fade-in">
+          <div class="feature-icon-wrap notify">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          </div>
+          <h3>Smart Notifications</h3>
+          <p>Desktop alerts when long-running tasks finish. Never miss a completed build or AI response again.</p>
+        </div>
+        <div class="feature-card fade-in">
+          <div class="feature-icon-wrap tabs">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/></svg>
+          </div>
+          <h3>Native Tabs &amp; Split Panes</h3>
+          <p>Real macOS tabs with drag-to-reorder, nested split panes, and keyboard-driven navigation.</p>
+        </div>
+        <div class="feature-card fade-in">
+          <div class="feature-icon-wrap code">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+          </div>
+          <h3>Syntax Highlighting</h3>
+          <p>Code blocks get language-aware syntax highlighting with diff rendering and one-click copy.</p>
+        </div>
+        <div class="feature-card fade-in">
+          <div class="feature-icon-wrap quick">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="7 13 12 18 17 13"/><polyline points="7 6 12 11 17 6"/></svg>
+          </div>
+          <h3>Quick Terminal</h3>
+          <p>Quake-style dropdown terminal with a global hotkey. Available instantly, from anywhere on your Mac.</p>
+        </div>
+        <div class="feature-card fade-in">
+          <div class="feature-icon-wrap theme">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r="2.5"/><path d="M17.08 9.49a5 5 0 1 1-6.56 0"/><circle cx="12" cy="17" r="5"/></svg>
+          </div>
+          <h3>Fully Themeable</h3>
+          <p>Customize colors, fonts, keybindings, and ANSI palette. Everything lives in a single config file.</p>
+        </div>
+        <div class="feature-card fade-in">
+          <div class="feature-icon-wrap git">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg>
+          </div>
+          <h3>Git Integration</h3>
+          <p>Live git status in the status bar and side panel. See modified, added, and deleted files at a glance.</p>
+        </div>
+        <div class="feature-card fade-in">
+          <div class="feature-icon-wrap search">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          </div>
+          <h3>Find in Terminal</h3>
+          <p>Search through terminal output with real-time highlighting, match count, and keyboard navigation.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════ Tech Stack ════ -->
+  <section class="tech fade-in">
+    <div class="container">
+      <p class="tech-label">Architecture</p>
+      <div class="tech-stack">
+        <div class="tech-item">
+          <div class="tech-icon">Rs</div>
+          <span>Rust</span>
+        </div>
+        <div class="tech-item">
+          <div class="tech-icon">Sw</div>
+          <span>Swift</span>
+        </div>
+        <div class="tech-item">
+          <div class="tech-icon">Mt</div>
+          <span>Metal</span>
+        </div>
+      </div>
+      <p>High-performance terminal core in Rust. Native macOS UI in Swift. GPU rendering via Metal shaders.</p>
+    </div>
+  </section>
+
+  <!-- ════ Download CTA ════ -->
+  <section class="cta" id="download">
+    <div class="cta-glow"></div>
+    <div class="container fade-in">
+      <h2>Ready to try it?</h2>
+      <p>Free and open source. Always will be.</p>
+      <div class="cta-actions">
+        <a href="https://github.com/AwalTerminal/awal-terminal/releases" class="btn btn-primary">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Download for macOS
+        </a>
+        <a href="https://github.com/AwalTerminal/awal-terminal" class="btn btn-secondary">Build from Source</a>
+      </div>
+      <span class="badge">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        macOS 14 Sonoma+
+      </span>
+    </div>
+  </section>
+
+  <!-- ════ Footer ════ -->
+  <footer>
+    <div class="container">
+      <div class="footer-links">
+        <a href="https://github.com/AwalTerminal/awal-terminal">GitHub</a>
+        <a href="https://github.com/AwalTerminal/awal-terminal/blob/main/LICENSE">License</a>
+      </div>
+      <p>Made by Brahim</p>
+    </div>
+  </footer>
+
+  <!-- ════ Scroll Fade-in ════ -->
+  <script>
+    // ASCII block logo
+    (() => {
+      const art = [
+        "  ████    ██      ██    ████    ██      ",
+        "██    ██  ██      ██  ██    ██  ██      ",
+        "████████  ██  ██  ██  ████████  ██      ",
+        "██    ██  ██████████  ██    ██  ██      ",
+        "██    ██  ████  ████  ██    ██  ████████",
+      ];
+      // Top-row and edge blocks get 'hi' (brighter), rest get 'on'
+      const el = document.getElementById('ascii-logo');
+      art.forEach((row, r) => {
+        for (let c = 0; c < 40; c++) {
+          const span = document.createElement('span');
+          if (row[c] === '█') {
+            span.className = (r === 0 || r === art.length - 1 || c === 0 || c === 39) ? 'hi' : 'on';
+          } else {
+            span.className = 'off';
+          }
+          el.appendChild(span);
+        }
+      });
+    })();
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+
+    document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+
+    // Smooth nav scroll
+    document.querySelectorAll('nav a[href^="#"]').forEach(link => {
+      link.addEventListener('click', e => {
+        e.preventDefault();
+        const target = document.querySelector(link.getAttribute('href'));
+        if (target) target.scrollIntoView({ behavior: 'smooth' });
+      });
+    });
+  </script>
+
+</body>
+</html>

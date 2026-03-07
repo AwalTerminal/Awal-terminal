@@ -70,3 +70,7 @@ generate-icon:
 # Generate brand assets (logomark, banners, social cards, favicons)
 generate-brand:
     swift scripts/generate-brand-assets.swift
+
+# Serve the promotional website locally
+serve-website:
+    cd docs && python3 -m http.server 8000
