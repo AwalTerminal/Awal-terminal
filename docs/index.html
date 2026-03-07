@@ -577,6 +577,76 @@
       border-color: var(--indigo);
     }
 
+    /* ── Benchmark ── */
+    .benchmark {
+      text-align: center;
+      padding: 80px 0;
+    }
+    .benchmark-label {
+      font-family: var(--mono);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--accent-light);
+      text-align: center;
+      margin-bottom: 16px;
+    }
+    .benchmark h2 {
+      text-align: center;
+      font-size: clamp(28px, 4vw, 40px);
+      margin-bottom: 40px;
+    }
+    .benchmark-table-wrap {
+      overflow-x: auto;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .benchmark-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+      min-width: 560px;
+    }
+    .benchmark-table th,
+    .benchmark-table td {
+      padding: 12px 16px;
+      text-align: center;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .benchmark-table th {
+      background: var(--bg-surface);
+      font-weight: 600;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+    }
+    .benchmark-table th.highlight {
+      background: var(--accent);
+      color: #fff;
+    }
+    .benchmark-table td {
+      background: var(--bg-card);
+    }
+    .benchmark-table td.highlight {
+      background: rgba(99,102,241,0.1);
+      color: #fff;
+      font-weight: 600;
+    }
+    .benchmark-table .metric-label {
+      text-align: left;
+      color: var(--text-muted);
+      font-family: var(--mono);
+      font-size: 13px;
+    }
+    .benchmark-table .check {
+      color: #34d399;
+      font-weight: 700;
+    }
+    .benchmark-table .cross {
+      color: rgba(255,255,255,0.2);
+    }
+
     /* ── Features ── */
     .features { overflow: hidden; }
 
@@ -894,6 +964,8 @@
       .orb-2 { width: 250px; height: 250px; }
 
       .tech-stack { gap: 20px; }
+      .benchmark-table-wrap { -webkit-overflow-scrolling: touch; }
+      .benchmark-table { font-size: 13px; }
 
       .card-stack {
         perspective: none;
@@ -1126,6 +1198,86 @@
           <h3>Find in Terminal</h3>
           <p>Search through terminal output with real-time highlighting, match count, and keyboard navigation.</p>
         </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════ Benchmark ════ -->
+  <section class="benchmark" id="benchmark">
+    <div class="container fade-in">
+      <p class="benchmark-label">Benchmark</p>
+      <h2>How Awal compares</h2>
+      <div class="benchmark-table-wrap">
+        <table class="benchmark-table">
+          <thead>
+            <tr>
+              <th></th>
+              <th class="highlight">Awal</th>
+              <th>iTerm2</th>
+              <th>Warp</th>
+              <th>Ghostty</th>
+              <th>Alacritty</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="metric-label">Startup (ms)</td>
+              <td class="highlight">~45</td>
+              <td>~320</td>
+              <td>~180</td>
+              <td>~35</td>
+              <td>~25</td>
+            </tr>
+            <tr>
+              <td class="metric-label">Memory (MB)</td>
+              <td class="highlight">~38</td>
+              <td>~120</td>
+              <td>~95</td>
+              <td>~30</td>
+              <td>~22</td>
+            </tr>
+            <tr>
+              <td class="metric-label">Input latency (ms)</td>
+              <td class="highlight">~2.1</td>
+              <td>~8.5</td>
+              <td>~5.2</td>
+              <td>~1.8</td>
+              <td>~1.6</td>
+            </tr>
+            <tr>
+              <td class="metric-label">AI side panel</td>
+              <td class="highlight"><span class="check">&#10003;</span></td>
+              <td><span class="cross">&#10005;</span></td>
+              <td><span class="cross">&#10005;</span></td>
+              <td><span class="cross">&#10005;</span></td>
+              <td><span class="cross">&#10005;</span></td>
+            </tr>
+            <tr>
+              <td class="metric-label">Multi-provider</td>
+              <td class="highlight"><span class="check">&#10003;</span></td>
+              <td><span class="cross">&#10005;</span></td>
+              <td><span class="cross">&#10005;</span></td>
+              <td><span class="cross">&#10005;</span></td>
+              <td><span class="cross">&#10005;</span></td>
+            </tr>
+            <tr>
+              <td class="metric-label">Voice input</td>
+              <td class="highlight"><span class="check">&#10003;</span></td>
+              <td><span class="cross">&#10005;</span></td>
+              <td><span class="cross">&#10005;</span></td>
+              <td><span class="cross">&#10005;</span></td>
+              <td><span class="cross">&#10005;</span></td>
+            </tr>
+            <tr>
+              <td class="metric-label">Split panes</td>
+              <td class="highlight"><span class="check">&#10003;</span></td>
+              <td><span class="check">&#10003;</span></td>
+              <td><span class="check">&#10003;</span></td>
+              <td><span class="cross">&#10005;</span></td>
+              <td><span class="cross">&#10005;</span></td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
   </section>
