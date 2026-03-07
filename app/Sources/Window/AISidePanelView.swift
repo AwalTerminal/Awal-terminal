@@ -401,13 +401,21 @@ class AISidePanelView: NSView {
     func updateTokenDisplay(input: Int, output: Int) {
         guard hasTokenTracking else { return }
 
+        // input = current context usage (last turn's input tokens)
+        // output = cumulative output tokens
         inputTokensLabel.stringValue = "  Input:  \(formatTokenCount(input))"
         outputTokensLabel.stringValue = "  Output: \(formatTokenCount(output))"
         let total = input + output
         totalTokensLabel.stringValue = "  Total:  \(formatTokenCount(total))"
 
-        // Calculate cost
-        let cost = estimateCost(model: currentModel, input: input, output: output)
+        // Calculate cost using cumulative breakdown (full-rate vs cache-rate)
+        let tracker = TokenTracker.shared
+        let cost = estimateCost(
+            model: currentModel,
+            inputFull: tracker.cumulativeInputFull,
+            cacheRead: tracker.cumulativeCacheRead,
+            output: tracker.totalOutput
+        )
         if cost > 0 {
             costLabel.stringValue = "  Cost:   $\(String(format: "%.4f", cost))"
             costLabel.textColor = cost > 1.0
@@ -417,7 +425,7 @@ class AISidePanelView: NSView {
             costLabel.stringValue = "  Cost:   —"
         }
 
-        // Update context window bar
+        // Update context window bar using current context (last turn's input)
         updateContextBar(inputTokens: input)
     }
 
@@ -666,7 +674,7 @@ class AISidePanelView: NSView {
                     self.updateFromSurface(surface)
                 }
                 self.updateTokenDisplay(
-                    input: TokenTracker.shared.totalInput,
+                    input: TokenTracker.shared.currentInput,
                     output: TokenTracker.shared.totalOutput
                 )
             }
@@ -711,11 +719,12 @@ class AISidePanelView: NSView {
         }
     }
 
-    private func estimateCost(model: String, input: Int, output: Int) -> Double {
+    private func estimateCost(model: String, inputFull: Int, cacheRead: Int, output: Int) -> Double {
         guard let pricing = Self.pricing[model] else { return 0 }
-        let inputCost = Double(input) / 1_000_000.0 * pricing.inputPerM
+        let inputCost = Double(inputFull) / 1_000_000.0 * pricing.inputPerM
+        let cacheCost = Double(cacheRead) / 1_000_000.0 * pricing.cacheReadPerM
         let outputCost = Double(output) / 1_000_000.0 * pricing.outputPerM
-        return inputCost + outputCost
+        return inputCost + cacheCost + outputCost
     }
 
     private func formatTokenCount(_ n: Int) -> String {

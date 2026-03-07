@@ -4,8 +4,14 @@ class TokenTracker {
 
     static let shared = TokenTracker()
 
-    private(set) var totalInput: Int = 0
+    /// Cumulative output tokens across all turns (for cost estimation).
     private(set) var totalOutput: Int = 0
+    /// Last turn's input tokens — represents current context window usage.
+    private(set) var currentInput: Int = 0
+    /// Cumulative input tokens that were NOT cache reads (for cost: billed at full rate).
+    private(set) var cumulativeInputFull: Int = 0
+    /// Cumulative cache read tokens (for cost: billed at cache rate).
+    private(set) var cumulativeCacheRead: Int = 0
     private(set) var conversationTurns: Int = 0
     private(set) var toolCalls: [String] = []
     private(set) var modelUsed: String = ""
@@ -61,8 +67,10 @@ class TokenTracker {
         guard let data = fm.contents(atPath: latestPath),
               let text = String(data: data, encoding: .utf8) else { return }
 
-        var inputTotal = 0
         var outputTotal = 0
+        var inputFullTotal = 0   // non-cache input tokens (cumulative, for cost)
+        var cacheReadTotal = 0   // cache read tokens (cumulative, for cost)
+        var lastTurnInput = 0    // last turn's total input (= current context usage)
         var turns = 0
         var tools: [String] = []
         var model = ""
@@ -96,18 +104,20 @@ class TokenTracker {
 
                     // Extract usage
                     if let usage = message["usage"] as? [String: Any] {
-                        if let input = usage["input_tokens"] as? Int {
-                            inputTotal += input
-                        }
-                        if let output = usage["output_tokens"] as? Int {
-                            outputTotal += output
-                        }
-                        if let cacheRead = usage["cache_read_input_tokens"] as? Int {
-                            inputTotal += cacheRead
-                        }
-                        if let cacheCreate = usage["cache_creation_input_tokens"] as? Int {
-                            inputTotal += cacheCreate
-                        }
+                        let input = usage["input_tokens"] as? Int ?? 0
+                        let output = usage["output_tokens"] as? Int ?? 0
+                        let cacheRead = usage["cache_read_input_tokens"] as? Int ?? 0
+                        let cacheCreate = usage["cache_creation_input_tokens"] as? Int ?? 0
+
+                        // Current context = input + cache_read + cache_create for this turn
+                        // (each API call reports the full context size for that request)
+                        lastTurnInput = input + cacheRead + cacheCreate
+
+                        // For cost: input_tokens are billed at full rate,
+                        // cache_read at reduced rate, cache_create at full rate
+                        inputFullTotal += input + cacheCreate
+                        cacheReadTotal += cacheRead
+                        outputTotal += output
                     }
 
                     // Extract tool use from content blocks
@@ -127,7 +137,9 @@ class TokenTracker {
 
         lastFile = latestPath
         lastFileSize = fileSize
-        totalInput = inputTotal
+        currentInput = lastTurnInput
+        cumulativeInputFull = inputFullTotal
+        cumulativeCacheRead = cacheReadTotal
         totalOutput = outputTotal
         conversationTurns = turns
         toolCalls = tools
@@ -136,12 +148,14 @@ class TokenTracker {
     }
 
     var displayString: String {
-        guard totalInput > 0 || totalOutput > 0 else { return "" }
-        return "\(formatTokenCount(totalInput)) in · \(formatTokenCount(totalOutput)) out"
+        guard currentInput > 0 || totalOutput > 0 else { return "" }
+        return "\(formatTokenCount(currentInput)) ctx · \(formatTokenCount(totalOutput)) out"
     }
 
     func reset() {
-        totalInput = 0
+        currentInput = 0
+        cumulativeInputFull = 0
+        cumulativeCacheRead = 0
         totalOutput = 0
         conversationTurns = 0
         toolCalls = []

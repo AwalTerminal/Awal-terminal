@@ -369,7 +369,7 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
             tab?.aiSidePanel.updateFromSurface(terminal.surfacePointer)
             // Update token display from TokenTracker
             tab?.aiSidePanel.updateTokenDisplay(
-                input: TokenTracker.shared.totalInput,
+                input: TokenTracker.shared.currentInput,
                 output: TokenTracker.shared.totalOutput
             )
         }
