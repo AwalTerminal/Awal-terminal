@@ -509,18 +509,22 @@
       z-index: 2;
     }
 
+    /* On hover: fan out both cards so they're both visible */
+    .card-stack:hover .card-stack-item.active {
+      transform: translateX(-4%) rotateY(-6deg) scale(0.95);
+    }
+    .card-stack:hover .card-stack-item:not(.active) {
+      transform: translateX(4%) rotateY(6deg) scale(0.95);
+      opacity: 0.75;
+    }
+
     .card-stack-inner {
       border-radius: 14px;
       overflow: hidden;
-      border: 1.5px solid rgba(255, 255, 255, 0.08);
+      border: none;
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
       position: relative;
       background: rgba(15, 15, 25, 0.6);
-    }
-
-    .card-stack-item.active .card-stack-inner {
-      border-color: var(--indigo);
-      box-shadow: 0 0 30px rgba(99, 102, 241, 0.25), 0 12px 40px rgba(0, 0, 0, 0.5);
     }
 
     .screenshot-wrap {
@@ -906,9 +910,10 @@
       .card-stack-item.active {
         display: block;
       }
-      .card-stack-inner {
-        border-color: var(--indigo);
-        box-shadow: 0 0 20px rgba(99, 102, 241, 0.2);
+      .card-stack:hover .card-stack-item.active,
+      .card-stack:hover .card-stack-item:not(.active) {
+        transform: none !important;
+        opacity: 1;
       }
       .screenshot-caption {
         position: static;
