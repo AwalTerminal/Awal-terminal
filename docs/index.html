@@ -1028,7 +1028,7 @@
       <p class="hero-tagline"><span class="t-prompt">$</span> the LLM-native terminal<span class="cursor"></span></p>
       <p class="hero-sub">Fast, native, and built for AI-first development.</p>
       <div class="hero-actions">
-        <a href="AwalTerminal.zip" download class="btn btn-primary">
+        <a href="#" onclick="showDownloadModal(event)" class="btn btn-primary">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           Download for macOS
         </a>
@@ -1319,7 +1319,7 @@
       <h2>Ready to try it?</h2>
       <p>Free and open source. Always will be.</p>
       <div class="cta-actions">
-        <a href="AwalTerminal.zip" download class="btn btn-primary">
+        <a href="#" onclick="showDownloadModal(event)" class="btn btn-primary">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           Download for macOS
         </a>
@@ -1329,9 +1329,6 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
         macOS 14 Sonoma+
       </span>
-      <p style="margin-top: 1rem; font-size: 0.85rem; color: var(--text-muted); max-width: 480px; margin-left: auto; margin-right: auto;">
-        After unzipping, run <code style="background: var(--bg-surface); padding: 0.15em 0.4em; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 0.9em;">xattr -cr AwalTerminal.app</code> in Terminal before opening. The app is not yet notarized with Apple.
-      </p>
     </div>
   </section>
 
@@ -1425,6 +1422,42 @@
         if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); setActive(active - 1); }
       });
     })();
+  </script>
+
+  <!-- Download modal -->
+  <div id="downloadModal" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.7); backdrop-filter:blur(8px); align-items:center; justify-content:center;">
+    <div style="background:var(--bg-card); border:1px solid rgba(255,255,255,0.08); border-radius:16px; padding:2rem; max-width:480px; width:90%; position:relative; box-shadow:0 24px 80px rgba(0,0,0,0.5);">
+      <button onclick="closeDownloadModal()" style="position:absolute; top:1rem; right:1rem; background:none; border:none; color:var(--text-muted); font-size:1.5rem; cursor:pointer; line-height:1;">&times;</button>
+      <h3 style="color:var(--text); font-size:1.25rem; margin-bottom:0.5rem;">Almost there</h3>
+      <p style="color:var(--text-muted); font-size:0.9rem; line-height:1.6; margin-bottom:1rem;">The app is not yet notarized with Apple. After unzipping, open Terminal and run:</p>
+      <div style="position:relative;">
+        <pre style="background:var(--bg); border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:0.75rem 1rem; font-family:'JetBrains Mono',monospace; font-size:0.85rem; color:var(--green); overflow-x:auto;"><code>xattr -cr AwalTerminal.app</code></pre>
+        <button onclick="copyCommand(this)" style="position:absolute; top:0.5rem; right:0.5rem; background:var(--bg-surface); border:1px solid rgba(255,255,255,0.1); border-radius:6px; color:var(--text-muted); padding:0.3rem 0.6rem; font-size:0.75rem; cursor:pointer; font-family:'JetBrains Mono',monospace;">Copy</button>
+      </div>
+      <p style="color:var(--text-muted); font-size:0.85rem; margin-top:0.75rem; margin-bottom:1.25rem;">Then open the app normally.</p>
+      <a href="AwalTerminal.zip" download onclick="closeDownloadModal()" class="btn btn-primary" style="display:inline-flex; width:100%; justify-content:center;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download
+      </a>
+    </div>
+  </div>
+  <script>
+    function showDownloadModal(e) {
+      e.preventDefault();
+      const m = document.getElementById('downloadModal');
+      m.style.display = 'flex';
+    }
+    function closeDownloadModal() {
+      document.getElementById('downloadModal').style.display = 'none';
+    }
+    function copyCommand(btn) {
+      navigator.clipboard.writeText('xattr -cr AwalTerminal.app');
+      btn.textContent = 'Copied!';
+      setTimeout(() => btn.textContent = 'Copy', 2000);
+    }
+    document.getElementById('downloadModal').addEventListener('click', function(e) {
+      if (e.target === this) closeDownloadModal();
+    });
   </script>
 
 </body>
