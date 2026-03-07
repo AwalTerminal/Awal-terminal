@@ -158,7 +158,8 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
 
     private func reloadTabBar() {
         let titles = tabs.map { $0.title }
-        tabBar.reloadTabs(titles: titles, selectedIndex: activeTabIndex)
+        let colors = tabs.map { $0.tabColor }
+        tabBar.reloadTabs(titles: titles, selectedIndex: activeTabIndex, tabColors: colors)
     }
 
     private func updateWindowTitle() {
@@ -248,6 +249,46 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         renameItem.tag = index
         menu.addItem(renameItem)
 
+        // Tab Color submenu
+        let colorMenu = NSMenu(title: "Tab Color")
+        let palette: [(String, NSColor)] = [
+            ("Red",    NSColor(red: 0xE5/255.0, green: 0x53/255.0, blue: 0x53/255.0, alpha: 1)),
+            ("Orange", NSColor(red: 0xE8/255.0, green: 0x8A/255.0, blue: 0x3A/255.0, alpha: 1)),
+            ("Yellow", NSColor(red: 0xD4/255.0, green: 0xAC/255.0, blue: 0x0D/255.0, alpha: 1)),
+            ("Green",  NSColor(red: 0x27/255.0, green: 0xAE/255.0, blue: 0x60/255.0, alpha: 1)),
+            ("Blue",   NSColor(red: 0x34/255.0, green: 0x98/255.0, blue: 0xDB/255.0, alpha: 1)),
+            ("Purple", NSColor(red: 0x8E/255.0, green: 0x44/255.0, blue: 0xAD/255.0, alpha: 1)),
+            ("Pink",   NSColor(red: 0xE8/255.0, green: 0x43/255.0, blue: 0x93/255.0, alpha: 1)),
+            ("Teal",   NSColor(red: 0x1A/255.0, green: 0xBC/255.0, blue: 0x9C/255.0, alpha: 1)),
+        ]
+        for (name, color) in palette {
+            let item = NSMenuItem(title: name, action: #selector(contextSetTabColor(_:)), keyEquivalent: "")
+            item.target = self
+            item.tag = index
+            item.representedObject = color
+            // Color swatch
+            let swatch = NSImage(size: NSSize(width: 12, height: 12), flipped: false) { rect in
+                color.setFill()
+                NSBezierPath(roundedRect: rect, xRadius: 2, yRadius: 2).fill()
+                return true
+            }
+            item.image = swatch
+            colorMenu.addItem(item)
+        }
+        colorMenu.addItem(NSMenuItem.separator())
+        let customColorItem = NSMenuItem(title: "Custom…", action: #selector(contextCustomTabColor(_:)), keyEquivalent: "")
+        customColorItem.target = self
+        customColorItem.tag = index
+        colorMenu.addItem(customColorItem)
+        let clearColorItem = NSMenuItem(title: "Clear Color", action: #selector(contextClearTabColor(_:)), keyEquivalent: "")
+        clearColorItem.target = self
+        clearColorItem.tag = index
+        colorMenu.addItem(clearColorItem)
+
+        let colorMenuItem = NSMenuItem(title: "Tab Color", action: nil, keyEquivalent: "")
+        colorMenuItem.submenu = colorMenu
+        menu.addItem(colorMenuItem)
+
         menu.addItem(NSMenuItem.separator())
 
         let closeItem = NSMenuItem(title: "Close", action: #selector(contextClose(_:)), keyEquivalent: "")
@@ -300,6 +341,42 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         tabs = [keepTab]
         activeTabIndex = 0
         installTab(keepTab)
+        reloadTabBar()
+    }
+
+    @objc private func contextSetTabColor(_ sender: NSMenuItem) {
+        guard sender.tag >= 0 && sender.tag < tabs.count,
+              let color = sender.representedObject as? NSColor else { return }
+        tabs[sender.tag].tabColor = color
+        reloadTabBar()
+    }
+
+    @objc private func contextCustomTabColor(_ sender: NSMenuItem) {
+        guard sender.tag >= 0 && sender.tag < tabs.count else { return }
+        let tabIndex = sender.tag
+        let panel = NSColorPanel.shared
+        panel.setTarget(nil)
+        panel.setAction(nil)
+        panel.color = tabs[tabIndex].tabColor ?? AppConfig.shared.themeAccent
+        panel.showsAlpha = false
+        panel.isContinuous = true
+
+        // Use a helper to receive color changes
+        let helper = ColorPanelHelper(tabIndex: tabIndex) { [weak self] idx, color in
+            guard let self, idx >= 0, idx < self.tabs.count else { return }
+            self.tabs[idx].tabColor = color
+            self.reloadTabBar()
+        }
+        // Store reference so it isn't deallocated
+        objc_setAssociatedObject(panel, "colorHelper", helper, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        panel.setTarget(helper)
+        panel.setAction(#selector(ColorPanelHelper.colorChanged(_:)))
+        panel.orderFront(nil)
+    }
+
+    @objc private func contextClearTabColor(_ sender: NSMenuItem) {
+        guard sender.tag >= 0 && sender.tag < tabs.count else { return }
+        tabs[sender.tag].tabColor = nil
         reloadTabBar()
     }
 
@@ -664,5 +741,21 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
             guard response == .OK, let url = panel.url else { return }
             self?.switchFolder(to: url.path)
         }
+    }
+}
+
+// MARK: - Color Panel Helper
+
+private class ColorPanelHelper: NSObject {
+    let tabIndex: Int
+    let onChange: (Int, NSColor) -> Void
+
+    init(tabIndex: Int, onChange: @escaping (Int, NSColor) -> Void) {
+        self.tabIndex = tabIndex
+        self.onChange = onChange
+    }
+
+    @objc func colorChanged(_ sender: NSColorPanel) {
+        onChange(tabIndex, sender.color)
     }
 }

@@ -90,7 +90,7 @@ final class CustomTabBarView: NSView {
 
     // MARK: - Public API
 
-    func reloadTabs(titles: [String], selectedIndex: Int) {
+    func reloadTabs(titles: [String], selectedIndex: Int, tabColors: [NSColor?] = []) {
         self.selectedIndex = selectedIndex
 
         // Remove old tab views
@@ -102,12 +102,14 @@ final class CustomTabBarView: NSView {
 
         // Create new tab views
         for (i, title) in titles.enumerated() {
+            let tabColor = i < tabColors.count ? tabColors[i] : nil
             let tabItem = TabItemView(
                 title: title,
                 isSelected: i == selectedIndex,
                 selectedBgColor: selectedBgColor,
                 accentColor: accentColor,
-                bgColor: bgColor
+                bgColor: bgColor,
+                tabColor: tabColor
             )
             tabItem.index = i
             tabItem.onSelect = { [weak self] idx in
@@ -200,16 +202,26 @@ private class TabItemView: NSView {
     private let selectedBgColor: NSColor
     private let accentColor: NSColor
     private let bgColor: NSColor
+    private let tabColor: NSColor?
+    private let effectiveBgColor: NSColor
 
     private var isDragging = false
     private var dragStartPoint: NSPoint = .zero
     private let dragThreshold: CGFloat = 5.0
 
-    init(title: String, isSelected: Bool, selectedBgColor: NSColor, accentColor: NSColor, bgColor: NSColor) {
+    init(title: String, isSelected: Bool, selectedBgColor: NSColor, accentColor: NSColor, bgColor: NSColor, tabColor: NSColor? = nil) {
         self.isSelected = isSelected
         self.selectedBgColor = selectedBgColor
         self.accentColor = accentColor
         self.bgColor = bgColor
+        self.tabColor = tabColor
+        // Compute effective background with subtle color tint
+        if let tc = tabColor {
+            let base = isSelected ? selectedBgColor : bgColor
+            self.effectiveBgColor = base.blended(withFraction: 0.15, of: tc) ?? base
+        } else {
+            self.effectiveBgColor = isSelected ? selectedBgColor : bgColor
+        }
         super.init(frame: .zero)
         setup(title: title)
     }
@@ -218,12 +230,24 @@ private class TabItemView: NSView {
         fatalError("init(coder:) not implemented")
     }
 
+    private static func textColor(for bgColor: NSColor, isSelected: Bool, hasTabColor: Bool) -> NSColor {
+        guard hasTabColor else {
+            return isSelected ? NSColor(white: 0.85, alpha: 1.0) : NSColor(white: 0.5, alpha: 1.0)
+        }
+        let rgb = bgColor.usingColorSpace(.sRGB) ?? bgColor
+        let luminance = 0.299 * rgb.redComponent + 0.587 * rgb.greenComponent + 0.114 * rgb.blueComponent
+        let alpha: CGFloat = isSelected ? 0.85 : 0.6
+        return luminance > 0.5
+            ? NSColor(white: 0.0, alpha: alpha)
+            : NSColor(white: 1.0, alpha: alpha)
+    }
+
     private func setup(title: String) {
         wantsLayer = true
-        layer?.backgroundColor = isSelected ? selectedBgColor.cgColor : bgColor.cgColor
+        layer?.backgroundColor = effectiveBgColor.cgColor
 
         titleLabel.font = NSFont.systemFont(ofSize: 12, weight: .regular)
-        titleLabel.textColor = isSelected ? NSColor(white: 0.85, alpha: 1.0) : NSColor(white: 0.5, alpha: 1.0)
+        titleLabel.textColor = Self.textColor(for: effectiveBgColor, isSelected: isSelected, hasTabColor: tabColor != nil)
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.isEditable = false
         titleLabel.isBordered = false
@@ -239,7 +263,8 @@ private class TabItemView: NSView {
         addSubview(closeButton)
 
         accentLine.wantsLayer = true
-        accentLine.layer?.backgroundColor = isSelected ? accentColor.cgColor : NSColor.clear.cgColor
+        let lineColor = tabColor ?? accentColor
+        accentLine.layer?.backgroundColor = isSelected ? lineColor.cgColor : NSColor.clear.cgColor
         accentLine.translatesAutoresizingMaskIntoConstraints = false
         addSubview(accentLine)
 
@@ -318,14 +343,19 @@ private class TabItemView: NSView {
 
     override func mouseEntered(with event: NSEvent) {
         if !isSelected {
-            layer?.backgroundColor = NSColor(red: 30.0/255.0, green: 30.0/255.0, blue: 30.0/255.0, alpha: 1.0).cgColor
+            if tabColor != nil {
+                // Slightly brighten the tinted background on hover
+                layer?.backgroundColor = (effectiveBgColor.blended(withFraction: 0.1, of: .white) ?? effectiveBgColor).cgColor
+            } else {
+                layer?.backgroundColor = NSColor(red: 30.0/255.0, green: 30.0/255.0, blue: 30.0/255.0, alpha: 1.0).cgColor
+            }
         }
         closeButton.alphaValue = 1
     }
 
     override func mouseExited(with event: NSEvent) {
         if !isSelected {
-            layer?.backgroundColor = bgColor.cgColor
+            layer?.backgroundColor = effectiveBgColor.cgColor
         }
         closeButton.alphaValue = 0
     }
