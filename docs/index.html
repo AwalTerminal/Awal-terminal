@@ -325,7 +325,7 @@
     }
 
     .awal-window {
-      background: #1e1e2e;
+      background: #1e1e1e;
       border-radius: 10px;
       overflow: hidden;
       box-shadow:
@@ -338,7 +338,7 @@
       display: flex;
       align-items: center;
       padding: 10px 14px;
-      background: #181825;
+      background: #2b2b2b;
     }
 
     .awal-dots { display: flex; gap: 7px; }
@@ -352,7 +352,7 @@
       text-align: center;
       font-family: var(--mono);
       font-size: 12px;
-      color: #585b70;
+      color: #6b6b6b;
       margin-right: 52px;
     }
 
@@ -360,8 +360,8 @@
     .awal-tabs {
       display: flex;
       align-items: stretch;
-      background: #181825;
-      border-bottom: 1px solid #2a2a3e;
+      background: #2b2b2b;
+      border-bottom: 1px solid #3a3a3a;
       padding: 0 8px;
       gap: 2px;
     }
@@ -370,19 +370,19 @@
       padding: 6px 16px;
       font-family: var(--mono);
       font-size: 11.5px;
-      color: #585b70;
+      color: #6b6b6b;
       border-radius: 6px 6px 0 0;
       position: relative;
     }
 
     .awal-tab.active {
-      background: #1e1e2e;
-      color: #cdd6f4;
+      background: #3a3a3a;
+      color: #cccccc;
     }
 
     .awal-tab-new {
       padding: 6px 10px;
-      color: #585b70;
+      color: #6b6b6b;
       font-size: 14px;
     }
 
@@ -391,18 +391,36 @@
       padding: 20px 24px;
       font-family: var(--mono);
       font-size: 13px;
-      line-height: 1.9;
-      min-height: 200px;
-      color: #cdd6f4;
+      line-height: 1.7;
+      min-height: 180px;
+      color: #cccccc;
+    }
+
+    .awal-banner-box {
+      display: inline-block;
+      border: 1px solid #e8956a;
+      border-radius: 8px;
+      padding: 12px 20px;
+      margin-bottom: 4px;
+    }
+
+    .awal-banner-title {
+      font-size: 12px;
+      margin-bottom: 10px;
+    }
+
+    .awal-banner-content {
+      font-size: 13px;
+      line-height: 1.6;
     }
 
     .awal-line { opacity: 0; animation: typeLine 0.3s ease forwards; }
     .awal-line:nth-child(1) { animation-delay: 0.3s; }
-    .awal-line:nth-child(2) { animation-delay: 1.2s; }
-    .awal-line:nth-child(3) { animation-delay: 1.5s; }
-    .awal-line:nth-child(4) { animation-delay: 1.8s; }
-    .awal-line:nth-child(5) { animation-delay: 2.1s; }
-    .awal-line:nth-child(6) { animation-delay: 2.8s; }
+    .awal-line:nth-child(2) { animation-delay: 0.8s; }
+    .awal-line:nth-child(3) { animation-delay: 1.2s; }
+    .awal-line:nth-child(4) { animation-delay: 2.4s; }
+    .awal-line:nth-child(5) { animation-delay: 2.4s; }
+    .awal-line:nth-child(6) { animation-delay: 3.2s; }
     .awal-line:nth-child(7) { animation-delay: 3.2s; }
 
     @keyframes typeLine {
@@ -410,34 +428,75 @@
       to { opacity: 1; transform: translateY(0); }
     }
 
+    /* Typewriter effect */
+    .awal-typewriter {
+      display: inline-block;
+      overflow: hidden;
+      white-space: nowrap;
+      vertical-align: bottom;
+      max-width: 0;
+      animation:
+        typewrite 0.8s steps(12) 1.6s forwards,
+        blink-caret 0.6s step-end 1.6s 3;
+      border-right: 2px solid transparent;
+    }
+
+    @keyframes typewrite {
+      0% { max-width: 0; border-right-color: #cccccc; }
+      99% { max-width: 12ch; border-right-color: #cccccc; }
+      100% { max-width: 12ch; border-right-color: transparent; }
+    }
+
+    /* Response reveal */
+    .awal-reveal {
+      display: inline;
+      opacity: 0;
+      animation: revealText 0.4s ease 2.8s forwards;
+    }
+
+    @keyframes revealText {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    /* Blinking cursor */
+    @keyframes blink-caret {
+      0%, 100% { border-right-color: #cccccc; }
+      50% { border-right-color: transparent; }
+    }
+
+    .cursor {
+      display: inline-block;
+      width: 8px;
+      height: 1.1em;
+      background: #cccccc;
+      vertical-align: text-bottom;
+      animation: cursor-blink 1s step-end infinite 3.5s;
+      opacity: 0;
+    }
+
+    @keyframes cursor-blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+
     .t-prompt { color: var(--green); }
-    .t-cmd { color: #cdd6f4; }
-    .t-dim { color: #45475a; }
+    .t-cmd { color: #cccccc; }
+    .t-dim { color: #555555; }
     .t-accent { color: var(--accent-light); }
     .t-cyan { color: var(--cyan); }
     .t-output { color: #a6adc8; }
     .t-pink { color: var(--pink); }
     .t-yellow { color: #f9e2af; }
-
-    .fold-indicator {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-    }
-
-    .fold-indicator .bar {
+    .t-orange { color: #e8956a; }
+    .t-white { color: #cccccc; }
+    .t-chevron, .t-indicator {
       display: inline-block;
-      width: 3px;
-      height: 14px;
-      background: var(--accent);
-      border-radius: 2px;
-      vertical-align: middle;
+      width: 1.5ch;
+      text-align: left;
     }
-
-    .fold-indicator .dots {
-      color: #45475a;
-      letter-spacing: 1px;
-    }
+    .t-chevron { color: #cccccc; }
+    .t-response { color: #cccccc; }
 
     /* Status bar */
     .awal-statusbar {
@@ -445,11 +504,11 @@
       align-items: center;
       justify-content: space-between;
       padding: 4px 14px;
-      background: #181825;
-      border-top: 1px solid #2a2a3e;
+      background: #1e1e1e;
+      border-top: 1px solid #3a3a3a;
       font-family: var(--mono);
       font-size: 11px;
-      color: #585b70;
+      color: #6b6b6b;
     }
 
     .awal-statusbar .model {
@@ -1047,31 +1106,42 @@
               <span class="awal-dot y"></span>
               <span class="awal-dot g"></span>
             </div>
-            <span class="awal-titlebar-text">Claude &mdash; awal-terminal</span>
+            <span class="awal-titlebar-text">Claude &mdash; /</span>
           </div>
           <div class="awal-tabs">
-            <div class="awal-tab active">Claude &mdash; awal-terminal</div>
-            <div class="awal-tab">Shell</div>
+            <div class="awal-tab">Gemini &mdash; cool-project</div>
+            <div class="awal-tab">Codex &mdash; project-212</div>
+            <div class="awal-tab active">Claude &mdash; /</div>
+            <div class="awal-tab">Shell &mdash; Documents</div>
             <div class="awal-tab-new">+</div>
           </div>
           <div class="awal-body">
-            <div class="awal-line"><span class="t-prompt">~</span> <span class="t-cmd">claude "refactor the auth module"</span></div>
-            <div class="awal-line"><span class="t-dim">  </span><span class="fold-indicator"><span class="bar"></span><span class="t-accent">Claude response</span> <span class="t-dim">(1,247 tokens)</span> <span class="dots t-dim">........................</span> <span class="t-cyan">folded</span></span></div>
-            <div class="awal-line"><span class="t-dim">    </span><span class="t-output">auth.rs &mdash; 42 lines changed</span></div>
-            <div class="awal-line"><span class="t-dim">    </span><span class="t-output">tests/  &mdash; 3 files updated</span></div>
-            <div class="awal-line"><span class="t-dim">    </span><span class="t-dim">context: 12.4k / 200k tokens</span></div>
+            <div class="awal-banner-box awal-line">
+              <div class="awal-banner-title t-orange">Claude Code v2.1.70</div>
+              <div class="awal-banner-content">
+                <div class="t-white">Welcome back <span id="randomName"></span>!</div>
+                <div class="t-dim" style="margin-top: 4px;">Opus 4.6 · Claude Max</div>
+                <div class="t-dim">~/Projects/awal</div>
+              </div>
+            </div>
             <div class="awal-line">&nbsp;</div>
-            <div class="awal-line"><span class="t-prompt">~</span> <span class="cursor"></span></div>
+            <div class="awal-line"><span class="t-chevron">❯</span><span class="awal-typewriter">hello claude</span></div>
+            <div class="awal-line">&nbsp;</div>
+            <div class="awal-line"><span class="t-dim t-indicator">■</span><span class="awal-reveal"> Hello! How can I help you today?</span></div>
+            <div class="awal-line">&nbsp;</div>
+            <div class="awal-line"><span class="t-chevron">❯</span><span class="cursor"></span></div>
           </div>
           <div class="awal-statusbar">
             <div class="awal-statusbar-section">
-              <span class="model">Opus 4.6</span>
-              <span>~/Projects/awal-terminal</span>
+              <span class="model">Claude</span>
+              <span class="t-dim">MIC ·····</span>
+              <span class="t-dim">|</span>
+              <span>/</span>
             </div>
             <div class="awal-statusbar-section">
-              <span>80x24</span>
-              <span>12.4k ctx</span>
-              <span>2:34</span>
+              <span>5.6k ctx · 13 out</span>
+              <span class="t-dim">|</span>
+              <span>0:30</span>
             </div>
           </div>
         </div>
@@ -1346,6 +1416,24 @@
 
   <!-- ════ Scroll Fade-in ════ -->
   <script>
+    // Random welcome name
+    (() => {
+      const names = [
+        "Alex", "Amira", "Arun", "Bella", "Carlos",
+        "Chloe", "Daniel", "Elena", "Fatima", "Gabriel",
+        "Hana", "Hugo", "Ines", "James", "Karim",
+        "Layla", "Leo", "Luna", "Marco", "Maya",
+        "Nadia", "Noah", "Omar", "Priya", "Quinn",
+        "Rosa", "Ravi", "Samir", "Sofia", "Tariq",
+        "Uma", "Victor", "Wren", "Xena", "Yuki",
+        "Zara", "Aiden", "Dina", "Elias", "Freya",
+        "Gio", "Hector", "Isla", "Juno", "Kai",
+        "Lina", "Malik", "Noor", "Olivia", "Sami"
+      ];
+      const el = document.getElementById("randomName");
+      if (el) el.textContent = names[Math.floor(Math.random() * names.length)];
+    })();
+
     // ASCII block logo
     (() => {
       const art = [
