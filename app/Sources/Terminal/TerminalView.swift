@@ -1230,7 +1230,7 @@ class TerminalView: NSView {
 
         // Advance loading animation
         var currentLoadingPhase: Float? = nil
-        if isWaitingForOutput {
+        if isWaitingForOutput || isGenerating {
             loadingPhase += 0.012
             if loadingPhase > 2.0 { loadingPhase -= 2.0 }
             currentLoadingPhase = loadingPhase
