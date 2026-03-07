@@ -124,6 +124,11 @@ class SearchBarView: NSView, NSTextFieldDelegate {
         window?.makeFirstResponder(searchField)
     }
 
+    func setQuery(_ query: String) {
+        searchField.stringValue = query
+        onSearchChanged?(query)
+    }
+
     func updateMatchCount(current: Int, total: Int) {
         if total == 0 {
             matchLabel.stringValue = searchField.stringValue.isEmpty ? "" : "No matches"

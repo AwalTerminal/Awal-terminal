@@ -1,4 +1,5 @@
 import AppKit
+import Carbon
 import CAwalTerminal
 
 /// Centralized app icon accessor — works in both .app bundle and swift-run contexts.
@@ -51,8 +52,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         setupMainMenu()
 
-        // Register global hotkey for quick terminal (Ctrl+`)
+        // Register global hotkeys
         QuickTerminalController.shared.registerHotKey()
+        registerVoiceHotKey()
 
         let controller = TerminalWindowController(isInitialTab: true)
         TerminalWindowTracker.shared.register(controller)
@@ -62,6 +64,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     func applicationWillTerminate(_ notification: Notification) {
         QuickTerminalController.shared.unregisterHotKey()
+        unregisterVoiceHotKey()
+        VoiceInputController.shared.stop()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -84,9 +88,106 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         NotificationManager.shared.isEnabled.toggle()
     }
 
+    // MARK: - Voice Input
+
+    private var voicePTTHotKeyRef: EventHotKeyRef?
+    private var voicePTTEventHandler: EventHandlerRef?
+    private var isPTTPressed = false
+
+    @objc func toggleVoiceInput(_ sender: Any?) {
+        VoiceInputController.shared.toggle()
+    }
+
+    @objc func setVoiceModePTT(_ sender: Any?) {
+        VoiceInputController.shared.mode = .pushToTalk
+        VoiceInputController.shared.stop()
+    }
+
+    @objc func setVoiceModeContinuous(_ sender: Any?) {
+        VoiceInputController.shared.mode = .continuous
+        VoiceInputController.shared.stop()
+    }
+
+    @objc func setVoiceModeWakeWord(_ sender: Any?) {
+        VoiceInputController.shared.mode = .wakeWord
+        VoiceInputController.shared.stop()
+    }
+
+    func registerVoiceHotKey() {
+        // Ctrl+Shift+Space — keycode 49 (Space)
+        let hotKeyID = EventHotKeyID(signature: OSType(0x4156_4F43), id: 2) // "AVOC"
+        var ref: EventHotKeyRef?
+        let modifiers: UInt32 = UInt32(controlKey | shiftKey)
+
+        RegisterEventHotKey(UInt32(kVK_Space), modifiers, hotKeyID,
+                            GetApplicationEventTarget(), 0, &ref)
+        voicePTTHotKeyRef = ref
+
+        // Install handler for both press and release
+        var eventTypes = [
+            EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed)),
+            EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyReleased)),
+        ]
+        var handlerRef: EventHandlerRef?
+        let selfPtr = Unmanaged.passUnretained(self).toOpaque()
+
+        InstallEventHandler(GetApplicationEventTarget(), { _, event, userData -> OSStatus in
+            guard let userData, let event else { return OSStatus(eventNotHandledErr) }
+            let delegate = Unmanaged<AppDelegate>.fromOpaque(userData).takeUnretainedValue()
+
+            var hkID = EventHotKeyID()
+            GetEventParameter(event, EventParamName(kEventParamDirectObject),
+                              EventParamType(typeEventHotKeyID), nil,
+                              MemoryLayout<EventHotKeyID>.size, nil, &hkID)
+
+            // Only handle our voice hotkey (id=2)
+            guard hkID.id == 2 else { return OSStatus(eventNotHandledErr) }
+
+            let kind = Int(GetEventKind(event))
+            DispatchQueue.main.async {
+                if kind == kEventHotKeyPressed {
+                    guard VoiceInputController.shared.isEnabled,
+                          VoiceInputController.shared.mode == .pushToTalk else { return }
+                    delegate.isPTTPressed = true
+                    VoiceInputController.shared.startPushToTalk()
+                } else if kind == kEventHotKeyReleased {
+                    guard delegate.isPTTPressed else { return }
+                    delegate.isPTTPressed = false
+                    VoiceInputController.shared.stopPushToTalk()
+                }
+            }
+            return noErr
+        }, eventTypes.count, &eventTypes, selfPtr, &handlerRef)
+        voicePTTEventHandler = handlerRef
+    }
+
+    func unregisterVoiceHotKey() {
+        if let ref = voicePTTHotKeyRef {
+            UnregisterEventHotKey(ref)
+            voicePTTHotKeyRef = nil
+        }
+        if let handler = voicePTTEventHandler {
+            RemoveEventHandler(handler)
+            voicePTTEventHandler = nil
+        }
+    }
+
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         if menuItem.action == #selector(toggleNotifications(_:)) {
             menuItem.state = NotificationManager.shared.isEnabled ? .on : .off
+        }
+        if menuItem.action == #selector(toggleVoiceInput(_:)) {
+            menuItem.state = VoiceInputController.shared.state != .idle ? .on : .off
+        }
+        let currentMode = VoiceInputController.shared.mode
+        if menuItem.action == #selector(setVoiceModePTT(_:)) {
+            menuItem.state = currentMode == .pushToTalk ? .on : .off
+        }
+        if menuItem.action == #selector(setVoiceModeContinuous(_:)) {
+            menuItem.state = currentMode == .continuous ? .on : .off
+        }
+        if menuItem.action == #selector(setVoiceModeWakeWord(_:)) {
+            menuItem.state = currentMode == .wakeWord ? .on : .off
         }
         return true
     }
@@ -187,6 +288,30 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         viewMenuItem.submenu = viewMenu
         mainMenu.addItem(viewMenuItem)
+
+        // Voice menu
+        let voiceMenuItem = NSMenuItem()
+        let voiceMenu = NSMenu(title: "Voice")
+
+        let toggleVoiceItem = NSMenuItem(title: "Toggle Voice Input", action: #selector(toggleVoiceInput(_:)), keyEquivalent: "")
+        voiceMenu.addItem(toggleVoiceItem)
+
+        voiceMenu.addItem(NSMenuItem.separator())
+
+        let pttItem = NSMenuItem(title: "Push-to-Talk Mode", action: #selector(setVoiceModePTT(_:)), keyEquivalent: "")
+        pttItem.target = self
+        voiceMenu.addItem(pttItem)
+
+        let continuousItem = NSMenuItem(title: "Continuous Mode", action: #selector(setVoiceModeContinuous(_:)), keyEquivalent: "")
+        continuousItem.target = self
+        voiceMenu.addItem(continuousItem)
+
+        let wakeWordItem = NSMenuItem(title: "Wake Word Mode", action: #selector(setVoiceModeWakeWord(_:)), keyEquivalent: "")
+        wakeWordItem.target = self
+        voiceMenu.addItem(wakeWordItem)
+
+        voiceMenuItem.submenu = voiceMenu
+        mainMenu.addItem(voiceMenuItem)
 
         // Window menu
         let windowMenuItem = NSMenuItem()

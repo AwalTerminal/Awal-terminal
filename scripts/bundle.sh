@@ -64,6 +64,10 @@ cat > "$APP_DIR/Contents/Info.plist" << 'PLIST'
     <true/>
     <key>NSSupportsAutomaticTermination</key>
     <false/>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Awal Terminal uses the microphone for voice input and dictation.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>Awal Terminal uses speech recognition to transcribe voice input into terminal commands and text.</string>
 </dict>
 </plist>
 PLIST

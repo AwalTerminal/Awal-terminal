@@ -25,6 +25,8 @@ let package = Package(
                 .linkedFramework("AppKit"),
                 .linkedFramework("Metal"),
                 .linkedFramework("QuartzCore"),
+                .linkedFramework("AVFoundation"),
+                .linkedFramework("Speech"),
             ]
         ),
     ]

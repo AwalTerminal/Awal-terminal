@@ -67,6 +67,8 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         activeTabIndex = 0
         installTab(tab)
         reloadTabBar()
+
+        wireVoiceCallbacks()
     }
 
     required init?(coder: NSCoder) {
@@ -409,6 +411,9 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         statusBar.onGitStatusChanged = { [weak tab] changes in
             tab?.aiSidePanel.updateGitChanges(changes)
         }
+        statusBar.onVoiceToggle = {
+            VoiceInputController.shared.toggle()
+        }
     }
 
     private func handleFocusChanged(_ terminal: TerminalView, tab: TabState) {
@@ -511,6 +516,67 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         let focused = activeTab.splitContainer.focusedTerminal
         let modelName = focused.activeModelName.isEmpty ? "Claude" : focused.activeModelName
         ConfigEditorWindow.show(activeModelName: modelName)
+    }
+
+    // MARK: - Voice Input
+
+    private let voiceController = VoiceInputController.shared
+    private let voiceDispatcher = VoiceCommandDispatcher()
+    private let transcriptionOverlay = TranscriptionOverlayView()
+
+    func wireVoiceCallbacks() {
+        voiceController.onStateChanged = { [weak self] state in
+            guard let self else { return }
+            self.activeTab.statusBar.setVoiceState(state)
+        }
+
+        voiceController.onTranscription = { [weak self] result in
+            guard let self, let window = self.window else { return }
+
+            if result.isCommand, let action = result.action {
+                self.voiceDispatcher.dispatch(action, windowController: self)
+                self.transcriptionOverlay.showFinalResult(result.text, isCommand: true, in: window)
+            } else {
+                self.injectTextToFocusedTerminal(result.text)
+                self.transcriptionOverlay.showFinalResult(result.text, isCommand: false, in: window)
+            }
+        }
+
+        voiceController.onAudioLevel = { [weak self] level in
+            self?.activeTab.statusBar.setVoiceAudioLevel(level)
+        }
+
+        voiceController.onPartialTranscription = { [weak self] text in
+            guard let self, let window = self.window else { return }
+            self.transcriptionOverlay.showTranscription(text, isCommand: false, in: window)
+        }
+    }
+
+    /// Inject text into the focused terminal (used by voice dictation).
+    func injectTextToFocusedTerminal(_ text: String) {
+        let terminal = activeTab.splitContainer.focusedTerminal
+        terminal.injectText(text)
+    }
+
+    /// Inject raw bytes into the focused terminal (used by voice commands).
+    func injectBytesToFocusedTerminal(_ bytes: [UInt8]) {
+        let terminal = activeTab.splitContainer.focusedTerminal
+        guard let surface = terminal.surfacePointer else { return }
+        bytes.withUnsafeBufferPointer { ptr in
+            _ = at_surface_key_event(surface, ptr.baseAddress!, UInt32(ptr.count))
+        }
+    }
+
+    /// Scroll the focused terminal viewport.
+    func scrollFocusedTerminal(delta: Int32) {
+        let terminal = activeTab.splitContainer.focusedTerminal
+        guard let surface = terminal.surfacePointer else { return }
+        at_surface_scroll_viewport(surface, delta)
+    }
+
+    /// Set search query in focused terminal's search bar.
+    func setSearchQueryInFocusedTerminal(_ query: String) {
+        activeTab.splitContainer.focusedTerminal.setSearchQuery(query)
     }
 
     // MARK: - NSWindowDelegate

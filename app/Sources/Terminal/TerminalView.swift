@@ -1361,10 +1361,14 @@ class TerminalView: NSView {
     private func handleTerminalKey(_ event: NSEvent) {
         guard let s = surface else { return }
 
+        let modFlags = event.modifierFlags
+
+        // Let Cmd-key combos through to the menu system (Cmd+,  Cmd+Q  etc.)
+        if modFlags.contains(.command) { return }
+
         let bytes: [UInt8]
 
         if let chars = event.characters, !chars.isEmpty {
-            let modFlags = event.modifierFlags
             let hasShift = modFlags.contains(.shift)
             let hasCtrl = modFlags.contains(.control)
             let hasAlt = modFlags.contains(.option)
@@ -1782,6 +1786,30 @@ class TerminalView: NSView {
         bytes.withUnsafeBufferPointer { ptr in
             _ = at_surface_key_event(s, ptr.baseAddress!, UInt32(ptr.count))
         }
+    }
+
+    /// Inject text into the terminal as if typed (used by voice dictation).
+    func injectText(_ text: String) {
+        guard let s = surface else { return }
+
+        let bracketedPaste = at_surface_get_bracketed_paste(s)
+        var data = text
+        if bracketedPaste {
+            data = "\u{1b}[200~" + text + "\u{1b}[201~"
+        }
+
+        let bytes = Array(data.utf8)
+        bytes.withUnsafeBufferPointer { ptr in
+            _ = at_surface_key_event(s, ptr.baseAddress!, UInt32(ptr.count))
+        }
+    }
+
+    /// Set the search query in the search bar (opens search if not visible).
+    func setSearchQuery(_ query: String) {
+        if searchBar == nil {
+            toggleSearch()
+        }
+        searchBar?.setQuery(query)
     }
 
     // MARK: - Drag and Drop

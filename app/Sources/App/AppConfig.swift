@@ -23,6 +23,18 @@ struct AppConfig {
     // Keybindings: action -> key combo string (e.g. "cmd+shift+]")
     var keybindings: [String: String] = [:]
 
+    // Voice
+    var voiceEnabled: Bool = false
+    var voiceMode: String = "push_to_talk"
+    var voicePushToTalkKey: String = "ctrl+shift+space"
+    var voiceVadThreshold: Float = 0.02
+    var voiceLanguage: String = "en"
+    var voiceWhisperModel: String = "tiny.en"
+    var voiceDictationAutoEnter: Bool = false
+    var voiceDictationAutoSpace: Bool = true
+    var voiceCommandPrefix: String = ""
+    var voiceWakeWord: String = "hey terminal"
+
     /// Parse a keybinding string like "cmd+shift+d" into (keyEquivalent, modifierMask).
     static func parseKeybinding(_ combo: String) -> (String, NSEvent.ModifierFlags)? {
         let parts = combo.lowercased().split(separator: "+").map { $0.trimmingCharacters(in: .whitespaces) }
@@ -90,6 +102,18 @@ struct AppConfig {
             let action = String(key.dropFirst("keybindings.".count))
             config.keybindings[action] = value
         }
+
+        // Voice
+        if let v = parsed["voice.enabled"] { config.voiceEnabled = v == "true" }
+        if let v = parsed["voice.mode"] { config.voiceMode = v }
+        if let v = parsed["voice.push_to_talk_key"] { config.voicePushToTalkKey = v }
+        if let v = parsed["voice.vad_threshold"], let f = Float(v) { config.voiceVadThreshold = f }
+        if let v = parsed["voice.language"] { config.voiceLanguage = v }
+        if let v = parsed["voice.whisper_model"] { config.voiceWhisperModel = v }
+        if let v = parsed["voice.dictation_auto_enter"] { config.voiceDictationAutoEnter = v == "true" }
+        if let v = parsed["voice.dictation_auto_space"] { config.voiceDictationAutoSpace = v == "true" || v.isEmpty }
+        if let v = parsed["voice.command_prefix"] { config.voiceCommandPrefix = v }
+        if let v = parsed["voice.wake_word"] { config.voiceWakeWord = v }
 
         return config
     }
