@@ -25,7 +25,7 @@ class VoiceInputController {
     /// Whether voice input is enabled
     var isEnabled: Bool = false {
         didSet {
-            if !isEnabled { stop() }
+            if !isEnabled, oldValue { stop() }
         }
     }
 
