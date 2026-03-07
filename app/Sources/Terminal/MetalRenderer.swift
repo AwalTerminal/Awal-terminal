@@ -356,6 +356,7 @@ final class MetalRenderer {
 
         // Atlas — rasterize glyphs at native pixel resolution
         self.atlas = GlyphAtlas(device: device, font: font, boldFont: boldFont, cellHeight: cellHeight, scale: scale)
+        atlas.enableLigatures()
 
         // Uniform buffer
         self.uniformBuffer = device.makeBuffer(length: MemoryLayout<Uniforms>.size,
@@ -419,6 +420,7 @@ final class MetalRenderer {
         let clearB = UInt8(clearColor.blue * 255)
 
         for row in 0..<gridRows {
+            var ligatureSkip = 0
             for col in 0..<gridCols {
                 let idx = row * gridCols + col
                 let cell = cells[idx]
@@ -437,7 +439,7 @@ final class MetalRenderer {
                 } else if codeBlockRows.contains(row) {
                     bgInstances.append(BgInstance(
                         posX: Float(col), posY: Float(row),
-                        r: 40, g: 42, b: 46, a: 180
+                        r: 38, g: 40, b: 44, a: 60
                     ))
                 }
 
@@ -469,11 +471,39 @@ final class MetalRenderer {
 
                 // Glyph: skip spaces, control chars, and wide spacers
                 if isWideSpacer { continue }
+                if ligatureSkip > 0 { ligatureSkip -= 1; continue }
                 let codepoint = cell.codepoint
                 guard codepoint > 32 else { continue }
 
                 let isBold = (cell.attrs & 0x01) != 0
                 let isItalic = (cell.attrs & 0x04) != 0
+
+                // Try ligature lookup (check next 2-4 cells)
+                if atlas.ligaturesEnabled && col + 1 < gridCols {
+                    let remaining = min(4, gridCols - col)
+                    var cpBuf = [UInt32]()
+                    cpBuf.reserveCapacity(remaining)
+                    for k in 0..<remaining {
+                        cpBuf.append(cells[row * gridCols + col + k].codepoint)
+                    }
+                    if let lig = cpBuf.withUnsafeBufferPointer({ buf in
+                        atlas.lookupLigature(codepoints: buf, startIndex: 0,
+                                             bold: isBold, italic: isItalic, device: device)
+                    }) {
+                        let info = lig.glyphInfo
+                        glyphInstances.append(GlyphInstance(
+                            posX: Float(col), posY: Float(row),
+                            uvX: info.uvRect.x, uvY: info.uvRect.y,
+                            uvW: info.uvRect.z, uvH: info.uvRect.w,
+                            sizeW: info.size.x, sizeH: info.size.y,
+                            bearX: info.bearing.x, bearY: info.bearing.y,
+                            r: cell.fg_r, g: cell.fg_g, b: cell.fg_b, a: cell.fg_a
+                        ))
+                        ligatureSkip = lig.length - 1
+                        continue
+                    }
+                }
+
                 guard let info = atlas.lookup(codepoint: codepoint, bold: isBold, italic: isItalic, device: device) else {
                     continue
                 }

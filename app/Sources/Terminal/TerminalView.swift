@@ -155,6 +155,17 @@ class TerminalView: NSView {
         wantsLayer = true
 
         surface = at_surface_new(termCols, termRows)
+
+        // Push theme ANSI colors to the Rust palette so indexed colors match our theme
+        let ansiColors = AppConfig.shared.ansiColors
+        for i in 0..<min(16, ansiColors.count) {
+            let c = ansiColors[i].usingColorSpace(.sRGB) ?? ansiColors[i]
+            at_surface_set_palette_color(surface!, UInt8(i),
+                                         UInt8(c.redComponent * 255),
+                                         UInt8(c.greenComponent * 255),
+                                         UInt8(c.blueComponent * 255))
+        }
+
         cellBuffer = [CCell](repeating: CCell(), count: Int(termCols * termRows))
 
         cursorBlinkTimer = Timer.scheduledTimer(withTimeInterval: 0.6, repeats: true) { [weak self] _ in
@@ -1126,33 +1137,51 @@ class TerminalView: NSView {
             for vpRow in clippedStart...clippedEnd {
                 guard vpRow >= 0 && vpRow < rows else { continue }
 
-                // Read first non-space character from cellBuffer
                 let base = vpRow * cols
-                var firstChar: UInt32 = 0
-                var secondChar: UInt32 = 0
+
+                // Skip rows where the program already set non-default fg colors
+                // (Claude Code already colors diff output with ANSI codes)
+                var hasStyledFg = false
+                for c in 0..<cols {
+                    let idx = base + c
+                    guard idx < cellBuffer.count else { break }
+                    let cell = cellBuffer[idx]
+                    if cell.codepoint > 32 {
+                        // Check if fg is not the default (229,229,229)
+                        if cell.fg_r != 229 || cell.fg_g != 229 || cell.fg_b != 229 {
+                            hasStyledFg = true
+                        }
+                        break
+                    }
+                }
+                if hasStyledFg { continue }
+
+                // Read first few non-space characters from cellBuffer
+                var lineChars: [UInt32] = []
                 for c in 0..<cols {
                     let idx = base + c
                     guard idx < cellBuffer.count else { break }
                     let cp = cellBuffer[idx].codepoint
                     if cp > 32 {
-                        if firstChar == 0 {
-                            firstChar = cp
-                        } else if secondChar == 0 {
-                            secondChar = cp
-                            break
-                        }
+                        lineChars.append(cp)
+                        if lineChars.count >= 4 { break }
                     }
                 }
 
+                guard !lineChars.isEmpty else { continue }
+                let first = lineChars[0]
+                let second = lineChars.count > 1 ? lineChars[1] : UInt32(0)
+                let third = lineChars.count > 2 ? lineChars[2] : UInt32(0)
+
                 let color: (UInt8, UInt8, UInt8, UInt8)
-                if firstChar == 0x2B { // '+'
-                    color = (30, 60, 30, 140)
-                } else if firstChar == 0x2D { // '-'
-                    color = (60, 25, 25, 140)
-                } else if firstChar == 0x40 && secondChar == 0x40 { // '@@'
-                    color = (40, 30, 65, 140)
-                } else if firstChar == 0x64 { // 'd' (diff --git)
-                    color = (35, 35, 50, 100)
+                if first == 0x40 && second == 0x40 { // '@@'
+                    color = (40, 30, 65, 80)
+                } else if first == 0x2B && second != 0x2B && second != 0x2B { // '+' but not '+++'
+                    // Skip '+' followed by digits (e.g. "+157 lines")
+                    if second >= 0x30 && second <= 0x39 { continue }
+                    color = (30, 60, 30, 80)
+                } else if first == 0x2D && second != 0x2D { // '-' but not '---'
+                    color = (60, 25, 25, 80)
                 } else {
                     continue
                 }
@@ -1551,10 +1580,13 @@ class TerminalView: NSView {
             return
         }
 
-        // Start selection
+        // Start selection (Option+click = rectangular/block selection)
         let absRow = absoluteRow(gridRow: row)
         selectionStartAbsRow = absRow
         selectionEndAbsRow = absRow
+
+        let isRectangular = event.modifierFlags.contains(.option)
+        at_surface_set_rectangular_selection(s, isRectangular)
 
         if event.clickCount == 2 {
             // Double-click: select word
