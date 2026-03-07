@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Documentation — Awal Terminal</title>
+  <meta name="description" content="Awal Terminal documentation. Features, shortcuts, configuration, and more.">
+
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon-16.png">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #0a0b14;
+      --bg-surface: #12132a;
+      --bg-card: #181937;
+      --text: #e8e8f0;
+      --text-muted: #6b6d8a;
+      --accent: #6366f1;
+      --accent-light: #818cf8;
+      --accent-glow: rgba(99, 102, 241, 0.35);
+      --cyan: #22d3ee;
+      --green: #34d399;
+      --pink: #f472b6;
+      --radius: 16px;
+      --mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    a { color: var(--accent-light); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* Dot Grid Background */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: radial-gradient(rgba(99, 102, 241, 0.08) 1px, transparent 1px);
+      background-size: 32px 32px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      opacity: 0.03;
+      background: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Nav */
+    nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      padding: 16px 0;
+      background: rgba(10, 11, 20, 0.7);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    }
+
+    nav .container {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      max-width: 1040px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    .nav-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 16px;
+      color: var(--text);
+      text-decoration: none;
+    }
+
+    .nav-brand img { width: 28px; height: 28px; }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 32px;
+      list-style: none;
+    }
+
+    .nav-links a {
+      color: var(--text-muted);
+      font-size: 14px;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--text); text-decoration: none; }
+
+    .nav-cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 20px !important;
+      font-size: 13px !important;
+      border-radius: 10px;
+      font-weight: 600;
+      transition: all 0.25s ease;
+      cursor: pointer;
+      text-decoration: none;
+      font-family: inherit;
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(8px);
+    }
+    .nav-cta:hover {
+      border-color: var(--accent);
+      background: rgba(99, 102, 241, 0.08);
+      text-decoration: none;
+    }
+
+    /* Layout */
+    .doc-layout {
+      display: flex;
+      margin-top: 72px;
+      min-height: calc(100vh - 72px);
+      position: relative;
+      z-index: 1;
+    }
+
+    /* Sidebar */
+    .doc-sidebar {
+      position: sticky;
+      top: 72px;
+      width: 220px;
+      min-width: 220px;
+      height: calc(100vh - 72px);
+      overflow-y: auto;
+      padding: 32px 16px 32px 24px;
+      border-right: 1px solid rgba(255, 255, 255, 0.04);
+    }
+
+    .doc-sidebar h4 {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+
+    .toc-list {
+      list-style: none;
+    }
+
+    .toc-list a {
+      display: block;
+      padding: 6px 0 6px 12px;
+      font-size: 13px;
+      color: var(--text-muted);
+      border-left: 2px solid transparent;
+      transition: color 0.2s, border-color 0.2s;
+    }
+
+    .toc-list a:hover {
+      color: var(--text);
+      text-decoration: none;
+    }
+
+    .toc-list a.active {
+      color: var(--accent-light);
+      border-left-color: var(--accent);
+    }
+
+    /* Mobile TOC toggle */
+    .toc-toggle {
+      display: none;
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      z-index: 200;
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: var(--bg-surface);
+      color: var(--text);
+      font-size: 20px;
+      cursor: pointer;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+    }
+
+    /* Main content */
+    .doc-content {
+      flex: 1;
+      max-width: 760px;
+      padding: 40px 40px 80px;
+    }
+
+    .doc-content h1 {
+      font-size: 32px;
+      font-weight: 800;
+      margin-bottom: 8px;
+    }
+
+    .doc-content > .doc-lead {
+      color: var(--text-muted);
+      font-size: 15px;
+      margin-bottom: 48px;
+    }
+
+    .doc-section {
+      padding-top: 24px;
+      padding-bottom: 40px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    }
+
+    .doc-section:last-child { border-bottom: none; }
+
+    .doc-section h2 {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 16px;
+      color: var(--text);
+    }
+
+    .doc-section h3 {
+      font-size: 16px;
+      font-weight: 600;
+      margin: 24px 0 10px;
+      color: var(--text);
+    }
+
+    .doc-section p {
+      color: var(--text);
+      font-size: 14px;
+      margin-bottom: 12px;
+      opacity: 0.85;
+    }
+
+    .doc-section ul, .doc-section ol {
+      margin: 0 0 16px 20px;
+      font-size: 14px;
+      opacity: 0.85;
+    }
+
+    .doc-section li { margin-bottom: 6px; }
+
+    /* Inline code */
+    code {
+      font-family: var(--mono);
+      font-size: 13px;
+      background: rgba(99, 102, 241, 0.1);
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: var(--accent-light);
+    }
+
+    /* Code blocks */
+    pre {
+      background: var(--bg-surface);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 10px;
+      padding: 16px 20px;
+      overflow-x: auto;
+      margin-bottom: 16px;
+    }
+
+    pre code {
+      background: none;
+      padding: 0;
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
+    /* Tables */
+    .doc-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 20px;
+      font-size: 13px;
+    }
+
+    .doc-table th {
+      text-align: left;
+      padding: 10px 16px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .doc-table td {
+      padding: 10px 16px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+      color: var(--text);
+      opacity: 0.85;
+    }
+
+    .doc-table tr:last-child td { border-bottom: none; }
+
+    .doc-table tbody tr:hover { background: rgba(99, 102, 241, 0.04); }
+
+    /* Feature grid */
+    .feature-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .feature-card {
+      background: var(--bg-card);
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      border-radius: 10px;
+      padding: 16px;
+    }
+
+    .feature-card strong {
+      display: block;
+      font-size: 13px;
+      margin-bottom: 4px;
+      color: var(--accent-light);
+    }
+
+    .feature-card span {
+      font-size: 13px;
+      color: var(--text);
+      opacity: 0.75;
+    }
+
+    /* Footer */
+    footer {
+      position: relative;
+      z-index: 1;
+      padding: 40px 0;
+      text-align: center;
+    }
+
+    footer::before {
+      content: '';
+      display: block;
+      width: 200px;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
+      margin: 0 auto 40px;
+    }
+
+    footer p { color: var(--text-muted); font-size: 13px; }
+    footer a { color: var(--text-muted); }
+    footer a:hover { color: var(--text); }
+
+    .footer-links {
+      display: flex;
+      gap: 28px;
+      justify-content: center;
+      margin-bottom: 12px;
+      font-size: 13px;
+    }
+
+    .footer-container {
+      max-width: 1040px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .nav-links .nav-hide { display: none; }
+
+      .doc-sidebar {
+        position: fixed;
+        top: 72px;
+        left: 0;
+        right: 0;
+        width: 100%;
+        height: auto;
+        max-height: 60vh;
+        z-index: 50;
+        background: var(--bg);
+        border-right: none;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        transform: translateY(-100%);
+        opacity: 0;
+        pointer-events: none;
+        transition: transform 0.3s, opacity 0.3s;
+      }
+
+      .doc-sidebar.open {
+        transform: translateY(0);
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      .toc-toggle { display: flex; }
+
+      .doc-content {
+        padding: 32px 20px 80px;
+        max-width: 100%;
+      }
+
+      .feature-grid { grid-template-columns: 1fr; }
+
+      .doc-table { font-size: 12px; }
+      .doc-table th, .doc-table td { padding: 8px 10px; }
+    }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <div class="container">
+      <a href="index.html" class="nav-brand">
+        <img src="assets/logomark-white.png" alt="Awal">
+        Awal Terminal
+      </a>
+      <div class="nav-links">
+        <a href="index.html" class="nav-hide">Home</a>
+        <a href="https://github.com/AwalTerminal/awal-terminal" class="nav-cta">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+          GitHub
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="doc-layout">
+    <!-- Sidebar TOC -->
+    <aside class="doc-sidebar" id="doc-sidebar">
+      <h4>Documentation</h4>
+      <ul class="toc-list">
+        <li><a href="#getting-started">Getting Started</a></li>
+        <li><a href="#terminal-basics">Terminal Basics</a></li>
+        <li><a href="#tabs-split-panes">Tabs & Split Panes</a></li>
+        <li><a href="#quick-terminal">Quick Terminal</a></li>
+        <li><a href="#ai-features">AI Features</a></li>
+        <li><a href="#llm-integration">LLM Integration</a></li>
+        <li><a href="#voice-input">Voice Input</a></li>
+        <li><a href="#configuration">Configuration</a></li>
+        <li><a href="#keyboard-shortcuts">Keyboard Shortcuts</a></li>
+      </ul>
+    </aside>
+
+    <!-- Main content -->
+    <main class="doc-content">
+      <h1>Documentation</h1>
+      <p class="doc-lead">Everything you need to know about Awal Terminal.</p>
+
+      <!-- 1. Getting Started -->
+      <section class="doc-section" id="getting-started">
+        <h2>Getting Started</h2>
+        <h3>Installation</h3>
+        <p>Download the latest <code>.zip</code> from the releases page. After extracting, bypass macOS notarization by running:</p>
+        <pre><code>xattr -cr AwalTerminal.app</code></pre>
+        <p>Then drag the app to your <code>/Applications</code> folder.</p>
+
+        <h3>First Launch</h3>
+        <p>On first launch, Awal Terminal presents an LLM launcher menu where you can select your model: <strong>Claude</strong>, <strong>Gemini</strong>, <strong>Codex</strong>, or <strong>Shell</strong> (no AI). Pick a model and start your session.</p>
+
+        <h3>Configuration</h3>
+        <p>The main config file lives at <code>~/.config/awal/config.toml</code>. You can also open the Preferences window with <code>Cmd+,</code> for a GUI editor.</p>
+      </section>
+
+      <!-- 2. Terminal Basics -->
+      <section class="doc-section" id="terminal-basics">
+        <h2>Terminal Basics</h2>
+        <div class="feature-grid">
+          <div class="feature-card">
+            <strong>GPU-Accelerated Rendering</strong>
+            <span>Metal-powered rendering at 120fps with triple buffering for smooth, tear-free output.</span>
+          </div>
+          <div class="feature-card">
+            <strong>Scrollback Buffer</strong>
+            <span>10,000-line scrollback buffer. Scroll through your full session history.</span>
+          </div>
+          <div class="feature-card">
+            <strong>Text Selection</strong>
+            <span>Click to place cursor, double-click for word, triple-click for line, Option+drag for block/column selection.</span>
+          </div>
+          <div class="feature-card">
+            <strong>Search</strong>
+            <span>Cmd+F to open. Enter / Shift+Enter to navigate matches. Escape to close.</span>
+          </div>
+          <div class="feature-card">
+            <strong>Hyperlinks</strong>
+            <span>OSC 8 hyperlink support. Cmd+click to open links in your browser.</span>
+          </div>
+          <div class="feature-card">
+            <strong>Drag & Drop</strong>
+            <span>Drag a file into the terminal to paste its shell-escaped path.</span>
+          </div>
+          <div class="feature-card">
+            <strong>Bracketed Paste</strong>
+            <span>Bracketed paste mode support for safe multi-line pasting.</span>
+          </div>
+          <div class="feature-card">
+            <strong>Full Compatibility</strong>
+            <span>Works with vim, tmux, htop, and other full-screen terminal applications.</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. Tabs & Split Panes -->
+      <section class="doc-section" id="tabs-split-panes">
+        <h2>Tabs & Split Panes</h2>
+
+        <h3>Tabs</h3>
+        <table class="doc-table">
+          <thead><tr><th>Shortcut</th><th>Action</th></tr></thead>
+          <tbody>
+            <tr><td><code>Cmd+T</code></td><td>New tab</td></tr>
+            <tr><td><code>Cmd+W</code></td><td>Close tab</td></tr>
+            <tr><td><code>Cmd+Shift+]</code></td><td>Next tab</td></tr>
+            <tr><td><code>Cmd+Shift+[</code></td><td>Previous tab</td></tr>
+            <tr><td><code>Cmd+Shift+R</code></td><td>Rename tab</td></tr>
+            <tr><td>Drag tab</td><td>Reorder</td></tr>
+          </tbody>
+        </table>
+
+        <h3>Split Panes</h3>
+        <table class="doc-table">
+          <thead><tr><th>Shortcut</th><th>Action</th></tr></thead>
+          <tbody>
+            <tr><td><code>Cmd+D</code></td><td>Split right</td></tr>
+            <tr><td><code>Cmd+Shift+D</code></td><td>Split down</td></tr>
+            <tr><td><code>Cmd+Shift+W</code></td><td>Close pane</td></tr>
+            <tr><td><code>Cmd+]</code></td><td>Next pane</td></tr>
+            <tr><td><code>Cmd+[</code></td><td>Previous pane</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- 4. Quick Terminal -->
+      <section class="doc-section" id="quick-terminal">
+        <h2>Quick Terminal</h2>
+        <p>Press <code>Ctrl+`</code> to toggle a quake-style dropdown terminal from the top of the screen (40% height). The quick terminal is persistent across app switches &mdash; it stays available even when you focus other applications.</p>
+      </section>
+
+      <!-- 5. AI Features -->
+      <section class="doc-section" id="ai-features">
+        <h2>AI Features</h2>
+
+        <h3>Smart Output Folding</h3>
+        <p>Awal Terminal automatically detects and collapses verbose regions in AI output to keep your terminal clean:</p>
+        <ul>
+          <li>Tool use blocks (Read, Write, Edit, Bash, Glob, Grep, Agent, etc.)</li>
+          <li>Tool output (box-drawing character regions)</li>
+          <li>Code blocks (fenced with language detection)</li>
+          <li>Thinking/reasoning blocks</li>
+          <li>Diffs (git-style)</li>
+          <li>Cost summaries, separators, and prompts</li>
+        </ul>
+        <p>Click column 0 to toggle any fold open or closed.</p>
+
+        <h3>Syntax Highlighting</h3>
+        <p>Code blocks in AI output are colorized with a One Dark-inspired scheme. Supported languages: Python, Rust, Swift, JavaScript/JSX, TypeScript/TSX, Go, C/C++, Java, Shell/Bash/Zsh, and Ruby.</p>
+
+        <h3>Smart Copy</h3>
+        <p>When you copy text from within a code block, Awal strips prompt decorations and fence markers automatically.</p>
+
+        <h3>AI Side Panel</h3>
+        <p>Toggle with <code>Cmd+Shift+I</code>. The side panel displays live session metrics:</p>
+        <ul>
+          <li><strong>Token usage</strong> &mdash; input, output, and total token counts with cost estimation:
+            <ul>
+              <li>Claude: $3/M input, $15/M output</li>
+              <li>Gemini: $1.25/M input, $5/M output</li>
+              <li>Codex: $2.50/M input, $10/M output</li>
+            </ul>
+          </li>
+          <li><strong>Context window</strong> &mdash; utilization bar (green &lt;50%, yellow 50-80%, red &gt;80%)</li>
+          <li><strong>Activity metrics</strong> &mdash; tool calls, code blocks, and diffs count</li>
+          <li><strong>Files referenced</strong> &mdash; extracted from tool labels</li>
+          <li><strong>Git changes tree</strong> &mdash; with status badges (M/A/D/R/?)</li>
+          <li><strong>Elapsed time</strong> &mdash; since session start</li>
+        </ul>
+      </section>
+
+      <!-- 6. LLM Integration -->
+      <section class="doc-section" id="llm-integration">
+        <h2>LLM Integration</h2>
+        <div class="feature-grid">
+          <div class="feature-card">
+            <strong>Multi-Model Support</strong>
+            <span>Claude (Anthropic), Gemini (Google), Codex (OpenAI), and Shell mode.</span>
+          </div>
+          <div class="feature-card">
+            <strong>Model Switching</strong>
+            <span>Click the model name in the status bar to switch models on the fly.</span>
+          </div>
+          <div class="feature-card">
+            <strong>Per-Model Profiles</strong>
+            <span>Create, rename, delete, and activate profiles. Stored in <code style="font-size:12px">~/Library/Application Support/Awal Terminal/profiles/</code></span>
+          </div>
+          <div class="feature-card">
+            <strong>Session Management</strong>
+            <span>Discovers Claude Code sessions from <code style="font-size:12px">~/.claude/projects/</code>, tracks tokens, turns, and tools used.</span>
+          </div>
+          <div class="feature-card">
+            <strong>Token Tracking</strong>
+            <span>Session-scoped counting from JSONL session files (Claude only).</span>
+          </div>
+          <div class="feature-card">
+            <strong>Notifications</strong>
+            <span>Desktop alert + dock bounce when model is waiting for input (30s cooldown). Toggle via Shell menu.</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 7. Voice Input -->
+      <section class="doc-section" id="voice-input">
+        <h2>Voice Input</h2>
+        <p>Awal Terminal includes voice input powered by Apple's on-device speech recognition (SFSpeechRecognizer).</p>
+
+        <h3>Input Modes</h3>
+        <div class="feature-grid">
+          <div class="feature-card">
+            <strong>Push-to-Talk</strong>
+            <span>Hold Ctrl+Shift+Space (configurable) to record. Release to transcribe.</span>
+          </div>
+          <div class="feature-card">
+            <strong>Continuous Listening</strong>
+            <span>Always-on with Voice Activity Detection (VAD) gating.</span>
+          </div>
+          <div class="feature-card">
+            <strong>Wake Word Mode</strong>
+            <span>Configurable trigger phrase (default: "hey terminal").</span>
+          </div>
+          <div class="feature-card">
+            <strong>Dictation Mode</strong>
+            <span>Transcribed text is typed directly as terminal input.</span>
+          </div>
+        </div>
+        <p>VAD sensitivity threshold is configurable in <code>config.toml</code>.</p>
+
+        <h3>Voice Commands</h3>
+        <table class="doc-table">
+          <thead><tr><th>Command</th><th>Action</th></tr></thead>
+          <tbody>
+            <tr><td>scroll up / scroll down</td><td>Scroll terminal</td></tr>
+            <tr><td>scroll top / scroll bottom</td><td>Jump to top/bottom</td></tr>
+            <tr><td>clear</td><td>Clear terminal</td></tr>
+            <tr><td>cancel / stop / kill</td><td>Send Ctrl+C</td></tr>
+            <tr><td>new tab</td><td>Open new tab</td></tr>
+            <tr><td>close tab</td><td>Close current tab</td></tr>
+            <tr><td>next tab / previous tab</td><td>Switch tabs</td></tr>
+            <tr><td>switch tab N</td><td>Switch to tab N</td></tr>
+            <tr><td>split right / split down</td><td>Create split pane</td></tr>
+            <tr><td>close pane</td><td>Close current pane</td></tr>
+            <tr><td>toggle side panel</td><td>Toggle AI side panel</td></tr>
+            <tr><td>find [text] / search [text]</td><td>Open search</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- 8. Configuration -->
+      <section class="doc-section" id="configuration">
+        <h2>Configuration</h2>
+        <p>The config file is located at <code>~/.config/awal/config.toml</code>. You can also use the Preferences window (<code>Cmd+,</code>) which provides a GUI with structured tree and raw text editing modes.</p>
+
+        <pre><code>[font]
+family = "JetBrains Mono"
+size = 13.0
+
+[theme]
+bg = "#1e1e1e"
+fg = "#d5d5d5"
+cursor = "#cccccc"
+selection = "#6366f1"
+accent = "#6366f1"
+tab_bar_bg = "#161616"
+tab_active_bg = "#232323"
+status_bar_bg = "#161616"
+
+[colors]
+0 = "#1e1e1e"    # black
+1 = "#f7768e"    # red
+2 = "#a6e22e"    # green
+3 = "#e6c07b"    # yellow
+# ... 4-15 for remaining ANSI colors
+
+[keybindings]
+new_tab = "cmd+t"
+split_right = "cmd+d"
+# any action = "modifier+key"
+
+[voice]
+enabled = false
+mode = "push_to_talk"
+push_to_talk_key = "ctrl+shift+space"
+vad_threshold = 0.02
+language = "en"
+wake_word = "hey terminal"
+dictation_auto_enter = false
+dictation_auto_space = true</code></pre>
+
+        <h3>Theme Colors</h3>
+        <table class="doc-table">
+          <thead><tr><th>Key</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>bg</code></td><td>Terminal background color</td></tr>
+            <tr><td><code>fg</code></td><td>Default foreground/text color</td></tr>
+            <tr><td><code>cursor</code></td><td>Cursor color</td></tr>
+            <tr><td><code>selection</code></td><td>Selection highlight color</td></tr>
+            <tr><td><code>accent</code></td><td>Accent color for UI elements</td></tr>
+            <tr><td><code>tab_bar_bg</code></td><td>Tab bar background</td></tr>
+            <tr><td><code>tab_active_bg</code></td><td>Active tab background</td></tr>
+            <tr><td><code>status_bar_bg</code></td><td>Status bar background</td></tr>
+          </tbody>
+        </table>
+
+        <h3>Font Settings</h3>
+        <p>Set <code>family</code> to any installed monospace font and <code>size</code> to a float value (e.g., <code>13.0</code>).</p>
+
+        <h3>Keybindings</h3>
+        <p>Any action can be rebound with the format <code>action = "modifier+key"</code>. Available actions:</p>
+        <ul>
+          <li><code>new_tab</code>, <code>close_tab</code>, <code>next_tab</code>, <code>prev_tab</code>, <code>rename_tab</code></li>
+          <li><code>split_right</code>, <code>split_down</code>, <code>close_pane</code>, <code>next_pane</code>, <code>prev_pane</code></li>
+          <li><code>find</code>, <code>copy</code>, <code>paste</code>, <code>preferences</code>, <code>quit</code></li>
+          <li><code>toggle_side_panel</code>, <code>quick_terminal</code>, <code>push_to_talk</code></li>
+        </ul>
+
+        <h3>Voice Settings</h3>
+        <p>Enable voice input by setting <code>enabled = true</code> under <code>[voice]</code>. Configure the mode (<code>push_to_talk</code>, <code>continuous</code>, <code>wake_word</code>, <code>dictation</code>), sensitivity threshold, language, and wake word phrase.</p>
+      </section>
+
+      <!-- 9. Keyboard Shortcuts -->
+      <section class="doc-section" id="keyboard-shortcuts">
+        <h2>Keyboard Shortcuts</h2>
+        <table class="doc-table">
+          <thead><tr><th>Category</th><th>Shortcut</th><th>Action</th></tr></thead>
+          <tbody>
+            <tr><td>General</td><td><code>Cmd+,</code></td><td>Preferences</td></tr>
+            <tr><td>General</td><td><code>Cmd+Q</code></td><td>Quit</td></tr>
+            <tr><td>General</td><td><code>Cmd+F</code></td><td>Find</td></tr>
+            <tr><td>General</td><td><code>Cmd+C</code></td><td>Copy</td></tr>
+            <tr><td>General</td><td><code>Cmd+V</code></td><td>Paste</td></tr>
+            <tr><td>Tabs</td><td><code>Cmd+T</code></td><td>New tab</td></tr>
+            <tr><td>Tabs</td><td><code>Cmd+W</code></td><td>Close tab</td></tr>
+            <tr><td>Tabs</td><td><code>Cmd+Shift+]</code></td><td>Next tab</td></tr>
+            <tr><td>Tabs</td><td><code>Cmd+Shift+[</code></td><td>Previous tab</td></tr>
+            <tr><td>Tabs</td><td><code>Cmd+Shift+R</code></td><td>Rename tab</td></tr>
+            <tr><td>Panes</td><td><code>Cmd+D</code></td><td>Split right</td></tr>
+            <tr><td>Panes</td><td><code>Cmd+Shift+D</code></td><td>Split down</td></tr>
+            <tr><td>Panes</td><td><code>Cmd+Shift+W</code></td><td>Close pane</td></tr>
+            <tr><td>Panes</td><td><code>Cmd+]</code></td><td>Next pane</td></tr>
+            <tr><td>Panes</td><td><code>Cmd+[</code></td><td>Previous pane</td></tr>
+            <tr><td>AI</td><td><code>Cmd+Shift+I</code></td><td>Toggle AI side panel</td></tr>
+            <tr><td>Terminal</td><td><code>Ctrl+`</code></td><td>Quick terminal</td></tr>
+            <tr><td>Voice</td><td><code>Ctrl+Shift+Space</code></td><td>Push-to-talk</td></tr>
+            <tr><td>Search</td><td><code>Enter</code></td><td>Next match</td></tr>
+            <tr><td>Search</td><td><code>Shift+Enter</code></td><td>Previous match</td></tr>
+            <tr><td>Search</td><td><code>Escape</code></td><td>Close search</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+    </main>
+  </div>
+
+  <footer>
+    <div class="footer-container">
+      <div class="footer-links">
+        <a href="index.html">Home</a>
+        <a href="https://github.com/AwalTerminal/awal-terminal">GitHub</a>
+        <a href="https://github.com/AwalTerminal/awal-terminal/blob/main/LICENSE">License</a>
+      </div>
+      <p>Made by <a href="https://www.linkedin.com/in/brahim-guaali" target="_blank" rel="noopener">Brahim</a></p>
+    </div>
+  </footer>
+
+  <button class="toc-toggle" id="toc-toggle" aria-label="Toggle table of contents">&#9776;</button>
+
+  <script>
+    // Mobile TOC toggle
+    const toggle = document.getElementById('toc-toggle');
+    const sidebar = document.getElementById('doc-sidebar');
+    toggle.addEventListener('click', () => {
+      sidebar.classList.toggle('open');
+    });
+
+    // Close sidebar when clicking a link (mobile)
+    sidebar.querySelectorAll('a').forEach(a => {
+      a.addEventListener('click', () => {
+        if (window.innerWidth <= 768) sidebar.classList.remove('open');
+      });
+    });
+
+    // Scroll spy
+    const tocLinks = document.querySelectorAll('.toc-list a');
+    const sections = document.querySelectorAll('.doc-section');
+
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const id = entry.target.id;
+          tocLinks.forEach(link => {
+            link.classList.toggle('active', link.getAttribute('href') === '#' + id);
+          });
+        }
+      });
+    }, { rootMargin: '-80px 0px -60% 0px', threshold: 0 });
+
+    sections.forEach(section => observer.observe(section));
+  </script>
+
+</body>
+</html>
