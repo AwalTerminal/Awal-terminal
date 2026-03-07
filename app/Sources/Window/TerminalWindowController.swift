@@ -117,6 +117,7 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         tab.aiSidePanel.wantsLayer = true
         tab.aiSidePanel.layer?.masksToBounds = true
 
+        tab.sidePanelWidthConstraint?.isActive = false
         let widthConstraint = tab.aiSidePanel.widthAnchor.constraint(
             equalToConstant: tab.aiSidePanel.isPanelVisible ? AISidePanelView.defaultWidth : 0
         )
