@@ -46,6 +46,8 @@ A native macOS terminal built from scratch with Swift and Rust, designed specifi
 
 **Git Integration** — Live branch, status, and changed files displayed in the status bar and side panel. Click any changed file to view its diff inline.
 
+**Resume Sessions** — Browse and resume past AI sessions from the startup menu. Claude sessions show turn count and time ago; Codex and Gemini launch their built-in session pickers.
+
 **Smart Notifications** — Desktop alerts when long-running AI tasks complete.
 
 **Fully Configurable** — Theme colors, fonts, keybindings, and voice settings in a single config file.

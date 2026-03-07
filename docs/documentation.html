@@ -486,6 +486,9 @@
         <h3>First Launch</h3>
         <p>On first launch, Awal Terminal presents an LLM launcher menu where you can select your model: <strong>Claude</strong>, <strong>Gemini</strong>, <strong>Codex</strong>, or <strong>Shell</strong> (no AI). Pick a model and start your session.</p>
 
+        <h3>Resume Sessions</h3>
+        <p>The startup menu includes a <strong>Resume Session</strong> submenu for picking up where you left off. For Claude, it lists your most recent sessions per workspace with approximate turn counts and timestamps, then launches <code>claude --resume</code>. For Codex and Gemini, it opens their built-in session pickers (<code>codex resume</code> and <code>gemini --list-sessions</code>). Session data is loaded lazily &mdash; only when you open the submenu.</p>
+
         <h3>Configuration</h3>
         <p>The main config file lives at <code>~/.config/awal/config.toml</code>. You can also open the Preferences window with <code>Cmd+,</code> for a GUI editor.</p>
 
