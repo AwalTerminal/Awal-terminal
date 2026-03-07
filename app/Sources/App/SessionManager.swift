@@ -1,4 +1,7 @@
 import Foundation
+import os.log
+
+private let sessionLog = OSLog(subsystem: "com.awal.terminal", category: "SessionDiscovery")
 
 /// Manages session state: save/restore, JSONL session listing, and session metadata.
 class SessionManager {
@@ -172,6 +175,149 @@ class SessionManager {
             lastActiveAt: lastTimestamp,
             fileSize: session.fileSize
         )
+    }
+
+    // MARK: - Resume Session Discovery
+
+    struct ResumeEntry {
+        let modelName: String
+        let provider: String
+        let sessionId: String?
+        let projectPath: String?
+        let summary: String
+        let isInteractive: Bool
+    }
+
+    func discoverResumableSessions(for projectPath: String) -> [ResumeEntry] {
+        os_log(.debug, log: sessionLog, "discoverResumableSessions for: %{public}@", projectPath)
+        var entries: [ResumeEntry] = []
+
+        // Claude: list sessions for this project path
+        let sessions = listClaudeSessions(projectPath: projectPath)
+        os_log(.debug, log: sessionLog, "Claude sessions found: %d", sessions.count)
+        if let latest = sessions.first {
+            let approxTurns = max(1, latest.fileSize / 2048)
+            let timeAgo = relativeTimeString(latest.lastModified)
+            entries.append(ResumeEntry(
+                modelName: "Claude", provider: "Anthropic",
+                sessionId: latest.id, projectPath: projectPath,
+                summary: "~\(approxTurns) turns \u{00b7} \(timeAgo)",
+                isInteractive: false
+            ))
+        }
+
+        // Codex: show interactive resume if binary exists
+        if binaryExists("codex") {
+            entries.append(ResumeEntry(
+                modelName: "Codex", provider: "OpenAI",
+                sessionId: nil, projectPath: projectPath,
+                summary: "Resume interactive session",
+                isInteractive: true
+            ))
+        }
+
+        // Gemini: list sessions for this project path
+        os_log(.debug, log: sessionLog, "Gemini binary exists: %{public}@", binaryExists("gemini") ? "yes" : "no")
+        if binaryExists("gemini") {
+            let geminiEntries = listGeminiSessions(projectPath: projectPath)
+            os_log(.debug, log: sessionLog, "Gemini entries: %d", geminiEntries.count)
+            entries.append(contentsOf: geminiEntries)
+        }
+
+        os_log(.debug, log: sessionLog, "Total entries: %d", entries.count)
+        return entries
+    }
+
+    // MARK: - Gemini Session Discovery
+
+    func listGeminiSessions(projectPath: String?) -> [ResumeEntry] {
+        guard let bin = binaryPath("gemini") else {
+            os_log(.debug, log: sessionLog, "Gemini binary not found")
+            return []
+        }
+        os_log(.debug, log: sessionLog, "Gemini binary: %{public}@, projectPath: %{public}@", bin, projectPath ?? "nil")
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        process.arguments = ["-l", "-c", "cd \(projectPath ?? ".") && \(bin) --list-sessions 2>/dev/null"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+
+        do { try process.run() } catch {
+            os_log(.error, log: sessionLog, "Gemini process launch failed: %{public}@", error.localizedDescription)
+            return []
+        }
+
+        // Read output concurrently to avoid pipe buffer deadlock
+        var outputData = Data()
+        let readGroup = DispatchGroup()
+        readGroup.enter()
+        DispatchQueue.global().async {
+            outputData = pipe.fileHandleForReading.readDataToEndOfFile()
+            readGroup.leave()
+        }
+
+        // Timeout after 10 seconds
+        let deadline = DispatchTime.now() + .seconds(10)
+        let done = DispatchSemaphore(value: 0)
+        DispatchQueue.global().async {
+            process.waitUntilExit()
+            done.signal()
+        }
+        if done.wait(timeout: deadline) == .timedOut {
+            process.terminate()
+            os_log(.debug, log: sessionLog, "Gemini process timed out")
+            return []
+        }
+        readGroup.wait()
+
+        guard let output = String(data: outputData, encoding: .utf8) else {
+            os_log(.debug, log: sessionLog, "Gemini output not decodable")
+            return []
+        }
+        os_log(.debug, log: sessionLog, "Gemini output: %{public}@", output)
+
+        // Parse lines like: "  1. hello (4 hours ago) [uuid]"
+        var entries: [ResumeEntry] = []
+        guard let regex = try? NSRegularExpression(pattern: #"^\s*(\d+)\.\s+(.+?)\s+\((.+?)\)\s+\[(.+?)\]"#) else {
+            return []
+        }
+        for line in output.split(separator: "\n") {
+            let str = String(line)
+            guard let match = regex.firstMatch(in: str, range: NSRange(str.startIndex..., in: str)),
+                  match.numberOfRanges >= 5 else { continue }
+            let number = String(str[Range(match.range(at: 1), in: str)!])
+            let title = String(str[Range(match.range(at: 2), in: str)!])
+            let timeAgo = String(str[Range(match.range(at: 3), in: str)!])
+            entries.append(ResumeEntry(
+                modelName: "Gemini", provider: "Google",
+                sessionId: number,
+                projectPath: projectPath,
+                summary: "\(title) \u{00b7} \(timeAgo)",
+                isInteractive: false
+            ))
+        }
+        os_log(.debug, log: sessionLog, "Gemini found %d sessions", entries.count)
+        return entries
+    }
+
+    private func binaryPath(_ name: String) -> String? {
+        for dir in ["/usr/local/bin", "/opt/homebrew/bin"] {
+            let path = "\(dir)/\(name)"
+            if FileManager.default.isExecutableFile(atPath: path) { return path }
+        }
+        return nil
+    }
+
+    private func binaryExists(_ name: String) -> Bool {
+        binaryPath(name) != nil
+    }
+
+    private func relativeTimeString(_ date: Date) -> String {
+        let seconds = -date.timeIntervalSinceNow
+        if seconds < 3600 { return "\(Int(seconds / 60))m ago" }
+        if seconds < 86400 { return "\(Int(seconds / 3600))h ago" }
+        return "\(Int(seconds / 86400))d ago"
     }
 
     struct ClaudeSessionSummary {
