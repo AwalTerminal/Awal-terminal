@@ -19,12 +19,14 @@ class TerminalView: NSView {
         case separator
         case recentWorkspace(Workspace)
         case modelItem(MenuItem)
+        case recentFolder(String)
         case openFolder
     }
 
     private enum MenuPhase {
         case main
         case pickModel(String) // folder path selected via Open Folder
+        case pickFolder(LLMModel) // model selected, now pick a folder
     }
 
     private var appState: AppState = .menu
@@ -371,6 +373,25 @@ class TerminalView: NSView {
             for item in modelItems {
                 menuEntries.append(.modelItem(item))
             }
+
+        case .pickFolder:
+            let recents = WorkspaceStore.shared.recents()
+            // Deduplicate folder paths
+            var seen = Set<String>()
+            var folders: [String] = []
+            for ws in recents {
+                if seen.insert(ws.path).inserted {
+                    folders.append(ws.path)
+                }
+            }
+            if !folders.isEmpty {
+                menuEntries.append(.sectionHeader("Recent Folders"))
+                for path in folders {
+                    menuEntries.append(.recentFolder(path))
+                }
+                menuEntries.append(.separator)
+            }
+            menuEntries.append(.openFolder)
         }
     }
 
@@ -444,6 +465,8 @@ class TerminalView: NSView {
             subtitle = "Select a workspace"
         case .pickModel(let path):
             subtitle = "Select a model for \(shortenPath(path))"
+        case .pickFolder(let model):
+            subtitle = "Select a folder for \(model.name)"
         }
 
         if useArt {
@@ -513,11 +536,8 @@ class TerminalView: NSView {
                 if isPendingDelete {
                     // Red confirmation row
                     let prompt = "Delete? y/n"
-                    let pathStr = shortenPath(ws.path)
                     let maxPathLen = itemWidth - 4 - prompt.count
-                    let truncPath = pathStr.count > maxPathLen
-                        ? String(pathStr.prefix(maxPathLen - 1)) + "…"
-                        : pathStr
+                    let truncPath = compactPath(ws.path, maxLen: maxPathLen)
                     let nameField = truncPath.padding(toLength: max(maxPathLen, 1), withPad: " ", startingAt: 0)
                     out += itemPadStr
                     out += "\u{1b}[48;2;180;40;40m"  // red bg
@@ -529,16 +549,13 @@ class TerminalView: NSView {
                     out += "\u{1b}[0m"
                 } else {
                     let arrow = isSelected ? "▸" : " "
-                    let pathStr = shortenPath(ws.path)
                     let modelStr = ws.lastModel
 
                     if isSelected {
                         // Show model name + dim ⌫ hint
                         let suffix = "\(modelStr) ⌫"
                         let maxPathLen = itemWidth - 6 - suffix.count
-                        let truncPath = pathStr.count > maxPathLen
-                            ? String(pathStr.prefix(maxPathLen - 1)) + "…"
-                            : pathStr
+                        let truncPath = compactPath(ws.path, maxLen: maxPathLen)
                         let nameField = truncPath.padding(toLength: max(maxPathLen, 1), withPad: " ", startingAt: 0)
                         out += itemPadStr
                         out += "\u{1b}[48;2;79;70;229m"
@@ -553,9 +570,7 @@ class TerminalView: NSView {
                         out += "\u{1b}[0m"
                     } else {
                         let maxPathLen = itemWidth - 6 - modelStr.count
-                        let truncPath = pathStr.count > maxPathLen
-                            ? String(pathStr.prefix(maxPathLen - 1)) + "…"
-                            : pathStr
+                        let truncPath = compactPath(ws.path, maxLen: maxPathLen)
                         let nameField = truncPath.padding(toLength: max(maxPathLen, 1), withPad: " ", startingAt: 0)
                         out += itemPadStr
                         out += "\u{1b}[37m"
@@ -564,6 +579,27 @@ class TerminalView: NSView {
                         out += " \(modelStr) "
                         out += "\u{1b}[0m"
                     }
+                }
+
+            case .recentFolder(let path):
+                let isSelected = i == menuSelection
+                let arrow = isSelected ? "▸" : " "
+                let maxPathLen = itemWidth - 4
+                let truncPath = compactPath(path, maxLen: maxPathLen)
+
+                if isSelected {
+                    let nameField = truncPath.padding(toLength: max(maxPathLen, 1), withPad: " ", startingAt: 0)
+                    out += itemPadStr
+                    out += "\u{1b}[48;2;79;70;229m"
+                    out += "\u{1b}[1;37m"
+                    out += " \(arrow) \(nameField)"
+                    out += " "
+                    out += "\u{1b}[0m"
+                } else {
+                    out += itemPadStr
+                    out += "\u{1b}[37m"
+                    out += " \(arrow) \(truncPath)"
+                    out += "\u{1b}[0m"
                 }
 
             case .modelItem(let item):
@@ -624,6 +660,8 @@ class TerminalView: NSView {
             hint = "↑↓/jk Navigate  ⏎ Select  ⌫ Delete  o Open  Esc Shell"
         case .pickModel:
             hint = "↑↓/jk Navigate  ⏎ Select  Esc Back"
+        case .pickFolder:
+            hint = "↑↓/jk Navigate  ⏎ Select  o Open  Esc Back"
         }
         let hintPad = max(0, (cols - hint.count) / 2)
         let hintRow = startRow + titleLines + menuEntries.count + 1
@@ -655,9 +693,25 @@ class TerminalView: NSView {
         case .modelItem(let item):
             switch menuPhase {
             case .main:
-                launchSession(model: item, workingDir: nil)
+                if item.command.isEmpty {
+                    // Shell → launch immediately
+                    launchSession(model: item, workingDir: nil)
+                } else {
+                    // LLM → pick a folder first
+                    menuPhase = .pickFolder(item)
+                    buildMenuEntries()
+                    moveToFirstSelectable()
+                    renderMenu()
+                }
             case .pickModel(let folder):
                 launchSession(model: item, workingDir: folder)
+            case .pickFolder:
+                break
+            }
+
+        case .recentFolder(let path):
+            if case .pickFolder(let model) = menuPhase {
+                launchSession(model: model, workingDir: path)
             }
 
         case .openFolder:
@@ -751,10 +805,14 @@ class TerminalView: NSView {
         guard let window = self.window else { return }
         panel.beginSheetModal(for: window) { [weak self] response in
             guard response == .OK, let url = panel.url else { return }
-            self?.menuPhase = .pickModel(url.path)
-            self?.buildMenuEntries()
-            self?.moveToFirstSelectable()
-            self?.renderMenu()
+            if case .pickFolder(let model) = self?.menuPhase {
+                self?.launchSession(model: model, workingDir: url.path)
+            } else {
+                self?.menuPhase = .pickModel(url.path)
+                self?.buildMenuEntries()
+                self?.moveToFirstSelectable()
+                self?.renderMenu()
+            }
         }
     }
 
@@ -773,6 +831,48 @@ class TerminalView: NSView {
             return "~" + path.dropFirst(home.count)
         }
         return path
+    }
+
+    /// Compact path: abbreviates intermediate directories to fit within `maxLen`.
+    /// Example: ~/Projects/Workspace/Code/awal-terminal → ~/P…/W…/Code/awal-terminal
+    private func compactPath(_ path: String, maxLen: Int) -> String {
+        let shortened = shortenPath(path)
+        if shortened.count <= maxLen { return shortened }
+
+        var components = shortened.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+        guard components.count > 2 else {
+            // Just prefix/last — truncate the end
+            return String(shortened.prefix(maxLen - 1)) + "…"
+        }
+
+        // Keep first (~ or root) and last component intact, abbreviate middle ones
+        let first = components.removeFirst()
+        let last = components.removeLast()
+
+        // Progressively shorten middle components from the left
+        var middle = components
+        for i in 0..<middle.count {
+            let current = ([first] + middle + [last]).joined(separator: "/")
+            if current.count <= maxLen { return current }
+            // Abbreviate this component to first char + …
+            if middle[i].count > 2 {
+                middle[i] = String(middle[i].prefix(1)) + "…"
+            }
+        }
+
+        // Still too long — drop middle components
+        var result = ([first] + middle + [last]).joined(separator: "/")
+        while result.count > maxLen && !middle.isEmpty {
+            middle.removeFirst()
+            result = ([first] + ["…"] + middle + [last]).joined(separator: "/")
+        }
+        if result.count > maxLen {
+            result = first + "/…/" + last
+        }
+        if result.count > maxLen {
+            return String(result.prefix(maxLen - 1)) + "…"
+        }
+        return result
     }
 
     // MARK: - Shell & PTY
@@ -1363,7 +1463,7 @@ class TerminalView: NSView {
                 // Launch Shell directly
                 let shellItem = modelItems.last!
                 launchSession(model: shellItem, workingDir: nil)
-            case .pickModel:
+            case .pickModel, .pickFolder:
                 // Go back to main menu
                 menuPhase = .main
                 buildMenuEntries()
@@ -1380,8 +1480,11 @@ class TerminalView: NSView {
                     moveSelection(by: -1)
                     renderMenu()
                 case "o":
-                    if case .main = menuPhase {
+                    switch menuPhase {
+                    case .main, .pickFolder:
                         showFolderPicker()
+                    default:
+                        break
                     }
                 default:
                     break
