@@ -345,6 +345,7 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
     private func wireTerminalCallbacks(_ terminal: TerminalView, tab: TabState) {
         terminal.onSessionChanged = { [weak self, weak tab] model, provider, cols, rows in
             guard let self, let tab else { return }
+            tab.hasSession = true
             TokenTracker.shared.reset()
             tab.statusBar.resetSession()
             tab.statusBar.update(model: model, provider: provider, cols: cols, rows: rows)
@@ -355,6 +356,7 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
             if let surface = terminal.surfacePointer {
                 at_surface_set_ai_analysis(surface, isAI)
             }
+            tab.statusBar.setVoiceVisible(true)
             self.reloadTabBar()
             self.updateWindowTitle()
         }
@@ -498,6 +500,7 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
 
     @objc func toggleAISidePanel(_ sender: Any?) {
         let tab = activeTab
+        guard tab.hasSession else { return }
         tab.aiSidePanel.toggle()
 
         let targetWidth: CGFloat = tab.aiSidePanel.isPanelVisible ? AISidePanelView.defaultWidth : 0

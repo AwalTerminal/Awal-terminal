@@ -5,6 +5,7 @@ class TabState {
     let statusBar: StatusBarView
     let aiSidePanel: AISidePanelView
     var customTitle: String?
+    var hasSession = false
 
     /// Stored constraint for animating side panel width.
     var sidePanelWidthConstraint: NSLayoutConstraint?

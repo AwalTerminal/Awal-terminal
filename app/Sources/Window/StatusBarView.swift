@@ -208,7 +208,8 @@ class StatusBarView: NSView {
         generatingWidthConstraint = generatingLabel.widthAnchor.constraint(equalToConstant: 0)
         generatingWidthConstraint.isActive = true
 
-        // Voice waveform starts hidden
+        // Voice controls start hidden until a session is opened
+        voiceLabel.isHidden = true
         voiceWaveform.isHidden = true
 
         modelButton.title = "Awal Terminal"
@@ -481,6 +482,11 @@ class StatusBarView: NSView {
             voiceWaveform.stopAnimating()
             voiceWaveform.isHidden = true
         }
+    }
+
+    func setVoiceVisible(_ visible: Bool) {
+        voiceLabel.isHidden = !visible
+        voiceWaveform.isHidden = !visible
     }
 
     func setVoiceAudioLevel(_ level: Float) {
