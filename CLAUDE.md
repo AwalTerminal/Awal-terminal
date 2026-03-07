@@ -11,9 +11,18 @@
 - Never mention AI, Claude, or LLM in commit messages
 - Do not include the `Co-Authored-By` trailer
 
-## Distribution
+## Releasing
 
-- App is distributed via GitHub Releases: `gh release create <tag> docs/AwalTerminal.zip --title "<tag>" --notes "..."`
+The release script `scripts/release.sh <tag>` handles build, bundle, zip, tag, and GitHub release — but it has an interactive prompt, so run the steps manually when automating:
+
+1. Build: `cd app && swift build -c release --arch arm64 --arch x86_64`
+2. Bundle: `scripts/bundle.sh universal`
+3. Zip: `rm -f docs/AwalTerminal.zip && cd build && zip -r ../docs/AwalTerminal.zip AwalTerminal.app`
+4. Commit the updated `docs/AwalTerminal.zip`
+5. Tag: `git tag <tag>`
+6. Push: `git push origin main && git push origin <tag>`
+7. Release: `gh release create <tag> docs/AwalTerminal.zip --title "<tag>" --generate-notes`
+
 - Website download link (`docs/index.html`) uses `/releases/latest/download/AwalTerminal.zip` — auto-resolves to newest release
 - Check download counts: `gh api repos/AwalTerminal/Awal-terminal/releases -q '.[].assets[] | "\(.name): \(.download_count) downloads"'`
 
