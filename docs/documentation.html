@@ -146,6 +146,10 @@
       min-height: calc(100vh - 72px);
       position: relative;
       z-index: 1;
+      max-width: 1040px;
+      margin-left: auto;
+      margin-right: auto;
+      padding: 0 24px;
     }
 
     /* Sidebar */
@@ -215,9 +219,8 @@
     /* Main content */
     .doc-content {
       flex: 1;
-      max-width: 860px;
-      padding: 40px 48px 80px;
-      margin: 0 auto;
+      min-width: 0;
+      padding: 40px 0 80px 48px;
     }
 
     .doc-content h1 {
@@ -485,6 +488,17 @@
 
         <h3>Configuration</h3>
         <p>The main config file lives at <code>~/.config/awal/config.toml</code>. You can also open the Preferences window with <code>Cmd+,</code> for a GUI editor.</p>
+
+        <h3>Permissions</h3>
+        <p>Awal Terminal may request the following macOS permissions:</p>
+        <table class="doc-table">
+          <thead><tr><th>Permission</th><th>Why</th><th>When</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Microphone</strong></td><td>Captures audio for voice input and dictation</td><td>First time you enable voice input</td></tr>
+            <tr><td><strong>Speech Recognition</strong></td><td>Transcribes voice audio into text using Apple's on-device SFSpeechRecognizer</td><td>First time you enable voice input</td></tr>
+          </tbody>
+        </table>
+        <p>Both permissions can be managed in <strong>System Settings &gt; Privacy &amp; Security</strong>. Voice features are fully disabled by default and no permission prompts appear unless you opt in.</p>
       </section>
 
       <!-- 2. Terminal Basics -->
