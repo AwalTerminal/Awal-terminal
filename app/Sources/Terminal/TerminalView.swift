@@ -21,12 +21,16 @@ class TerminalView: NSView {
         case modelItem(MenuItem)
         case recentFolder(String)
         case openFolder
+        case resumeSessionsLink
+        case resumeSession(SessionManager.ResumeEntry)
+        case loadingIndicator(String)
     }
 
     private enum MenuPhase {
         case main
         case pickModel(String) // folder path selected via Open Folder
         case pickFolder(LLMModel) // model selected, now pick a folder
+        case resumeSessions // browsing past sessions submenu
     }
 
     private var appState: AppState = .menu
@@ -91,6 +95,7 @@ class TerminalView: NSView {
     private var idleTimer: Timer?
     private var hadRecentOutput: Bool = false
     private var isWaitingForOutput: Bool = false
+    private var isLoadingResumeSessions: Bool = false
     private var loadingPhase: Float = 0
 
     // MARK: - Metal Properties
@@ -367,6 +372,8 @@ class TerminalView: NSView {
                 menuEntries.append(.modelItem(item))
             }
             menuEntries.append(.separator)
+            menuEntries.append(.resumeSessionsLink)
+            menuEntries.append(.separator)
             menuEntries.append(.openFolder)
 
         case .pickModel:
@@ -392,12 +399,16 @@ class TerminalView: NSView {
                 menuEntries.append(.separator)
             }
             menuEntries.append(.openFolder)
+
+        case .resumeSessions:
+            menuEntries.append(.sectionHeader("Resume Session"))
+            menuEntries.append(.loadingIndicator("Loading sessions..."))
         }
     }
 
     private func isSelectable(_ entry: MenuEntry) -> Bool {
         switch entry {
-        case .sectionHeader, .separator:
+        case .sectionHeader, .separator, .loadingIndicator:
             return false
         default:
             return true
@@ -467,6 +478,8 @@ class TerminalView: NSView {
             subtitle = "Select a model for \(shortenPath(path))"
         case .pickFolder(let model):
             subtitle = "Select a folder for \(model.name)"
+        case .resumeSessions:
+            subtitle = "Resume a previous session"
         }
 
         if useArt {
@@ -650,6 +663,63 @@ class TerminalView: NSView {
                     out += " \(arrow) \(text)"
                     out += "\u{1b}[0m"
                 }
+
+            case .resumeSessionsLink:
+                let isSelected = i == menuSelection
+                let arrow = isSelected ? "▸" : " "
+                let text = "Resume Session"
+                let suffix = "▸"
+
+                if isSelected {
+                    let pad = itemWidth - 4 - text.count - suffix.count
+                    out += itemPadStr
+                    out += "\u{1b}[48;2;79;70;229m"
+                    out += "\u{1b}[1;37m"
+                    out += " \(arrow) \(text)"
+                    out += String(repeating: " ", count: max(1, pad))
+                    out += suffix + " "
+                    out += "\u{1b}[0m"
+                } else {
+                    out += itemPadStr
+                    out += "\u{1b}[37m"
+                    out += " \(arrow) \(text)"
+                    let pad = itemWidth - 4 - text.count - suffix.count
+                    out += String(repeating: " ", count: max(1, pad))
+                    out += "\u{1b}[90m\(suffix)"
+                    out += "\u{1b}[0m"
+                }
+
+            case .resumeSession(let entry):
+                let isSelected = i == menuSelection
+                let arrow = isSelected ? "▸" : " "
+                let modelField = entry.modelName.padding(toLength: 8, withPad: " ", startingAt: 0)
+                let summaryStr = entry.summary
+
+                if isSelected {
+                    let pad = itemWidth - 4 - 8 - summaryStr.count
+                    out += itemPadStr
+                    out += "\u{1b}[48;2;79;70;229m"
+                    out += "\u{1b}[1;37m"
+                    out += " \(arrow) \(modelField)"
+                    out += "\u{1b}[0;37m\u{1b}[48;2;79;70;229m"
+                    out += summaryStr
+                    out += String(repeating: " ", count: max(1, pad))
+                    out += " "
+                    out += "\u{1b}[0m"
+                } else {
+                    out += itemPadStr
+                    out += "\u{1b}[37m"
+                    out += " \(arrow) \(modelField)"
+                    out += "\u{1b}[90m"
+                    out += summaryStr
+                    out += "\u{1b}[0m"
+                }
+
+            case .loadingIndicator(let text):
+                out += itemPadStr
+                out += "\u{1b}[90m"
+                out += " \(text)"
+                out += "\u{1b}[0m"
             }
         }
 
@@ -662,6 +732,8 @@ class TerminalView: NSView {
             hint = "↑↓/jk Navigate  ⏎ Select  Esc Back"
         case .pickFolder:
             hint = "↑↓/jk Navigate  ⏎ Select  o Open  Esc Back"
+        case .resumeSessions:
+            hint = "↑↓/jk Navigate  ⏎ Select  Esc Back"
         }
         let hintPad = max(0, (cols - hint.count) / 2)
         let hintRow = startRow + titleLines + menuEntries.count + 1
@@ -705,7 +777,7 @@ class TerminalView: NSView {
                 }
             case .pickModel(let folder):
                 launchSession(model: item, workingDir: folder)
-            case .pickFolder:
+            case .pickFolder, .resumeSessions:
                 break
             }
 
@@ -717,12 +789,73 @@ class TerminalView: NSView {
         case .openFolder:
             showFolderPicker()
 
+        case .resumeSessionsLink:
+            showResumeSessionFolderPicker()
+
+        case .resumeSession(let entry):
+            launchResumeSession(entry)
+
         default:
             break
         }
     }
 
-    private func launchSession(model: MenuItem, workingDir: String?) {
+    private func showResumeSessionFolderPicker() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Select"
+        panel.message = "Select a project folder to find sessions"
+
+        let response = panel.runModal()
+        guard response == .OK, let url = panel.url else { return }
+        menuPhase = .resumeSessions
+        isLoadingResumeSessions = true
+        loadingPhase = 0
+        buildMenuEntries()
+        renderMenu()
+        loadResumableSessionsAsync(projectPath: url.path)
+    }
+
+    private func loadResumableSessionsAsync(projectPath: String) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let entries = SessionManager.shared.discoverResumableSessions(for: projectPath)
+            DispatchQueue.main.async {
+                guard let self = self, case .resumeSessions = self.menuPhase else { return }
+                self.isLoadingResumeSessions = false
+                self.menuEntries.removeAll()
+                if entries.isEmpty {
+                    self.menuEntries.append(.sectionHeader("No sessions found"))
+                } else {
+                    let headerPath = self.compactPath(projectPath, maxLen: 30)
+                    self.menuEntries.append(.sectionHeader("Resume Session · \(headerPath)"))
+                    for entry in entries {
+                        self.menuEntries.append(.resumeSession(entry))
+                    }
+                }
+                self.moveToFirstSelectable()
+                self.renderMenu()
+            }
+        }
+    }
+
+    private func launchResumeSession(_ entry: SessionManager.ResumeEntry) {
+        guard let model = modelItems.first(where: { $0.name == entry.modelName }) else { return }
+
+        let cmd: String
+        if entry.isInteractive {
+            cmd = model.resumeCommand ?? model.command
+        } else if let sid = entry.sessionId, let resumeCmd = model.resumeCommand {
+            cmd = "\(resumeCmd) \(sid)"
+        } else {
+            cmd = model.command
+        }
+
+        launchSession(model: model, workingDir: entry.projectPath, commandOverride: cmd)
+    }
+
+    private func launchSession(model: MenuItem, workingDir: String?, commandOverride: String? = nil) {
         guard let s = surface else { return }
 
         activeModelName = model.name
@@ -749,8 +882,8 @@ class TerminalView: NSView {
         }
 
         // Build the full command to execute
-        var modelCmd = model.command
-        if !modelCmd.isEmpty, let bin = model.binaryName, let install = model.installCommand {
+        var modelCmd = commandOverride ?? model.command
+        if commandOverride == nil, !modelCmd.isEmpty, let bin = model.binaryName, let install = model.installCommand {
             modelCmd = "command -v \(bin) >/dev/null 2>&1 || { echo \"Installing \(model.name)...\"; \(install); } && \(model.command)"
         }
 
@@ -1330,7 +1463,7 @@ class TerminalView: NSView {
 
         // Advance loading animation
         var currentLoadingPhase: Float? = nil
-        if isWaitingForOutput || isGenerating {
+        if isWaitingForOutput || isGenerating || isLoadingResumeSessions {
             loadingPhase += 0.012
             if loadingPhase > 2.0 { loadingPhase -= 2.0 }
             currentLoadingPhase = loadingPhase
@@ -1463,7 +1596,7 @@ class TerminalView: NSView {
                 // Launch Shell directly
                 let shellItem = modelItems.last!
                 launchSession(model: shellItem, workingDir: nil)
-            case .pickModel, .pickFolder:
+            case .pickModel, .pickFolder, .resumeSessions:
                 // Go back to main menu
                 menuPhase = .main
                 buildMenuEntries()
