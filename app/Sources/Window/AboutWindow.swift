@@ -58,7 +58,7 @@ class AboutWindow: NSWindowController {
         root.addSubview(tagline)
 
         // --- Version pill ---
-        let versionText = "v0.1.0"
+        let versionText = "v0.2.0"
         let versionPill = makePill(versionText, color: Theme.accent)
         root.addSubview(versionPill)
 
