@@ -166,6 +166,20 @@ class TerminalView: NSView {
                                          UInt8(c.blueComponent * 255))
         }
 
+        // Push theme default fg/bg to Rust so Color::Default resolves to configured colors
+        if let fg = AppConfig.shared.themeFg.usingColorSpace(.sRGB) {
+            at_surface_set_default_fg(surface!,
+                                      UInt8(fg.redComponent * 255),
+                                      UInt8(fg.greenComponent * 255),
+                                      UInt8(fg.blueComponent * 255))
+        }
+        if let bg = AppConfig.shared.themeBg.usingColorSpace(.sRGB) {
+            at_surface_set_default_bg(surface!,
+                                      UInt8(bg.redComponent * 255),
+                                      UInt8(bg.greenComponent * 255),
+                                      UInt8(bg.blueComponent * 255))
+        }
+
         cellBuffer = [CCell](repeating: CCell(), count: Int(termCols * termRows))
 
         cursorBlinkTimer = Timer.scheduledTimer(withTimeInterval: 0.6, repeats: true) { [weak self] _ in

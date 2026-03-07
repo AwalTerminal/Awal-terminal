@@ -16,6 +16,8 @@ pub struct ATSurface {
     read_buf: Vec<u8>,
     palette: [Color; 256],
     analyzer: AiAnalyzer,
+    default_fg: (u8, u8, u8),
+    default_bg: (u8, u8, u8),
 }
 
 /// Helper: safely convert a nullable const pointer to a reference, returning $default on null.
@@ -64,6 +66,8 @@ pub extern "C" fn at_surface_new(cols: u32, rows: u32) -> *mut ATSurface {
         read_buf: vec![0u8; 65536],
         palette: default_palette(),
         analyzer: AiAnalyzer::new(),
+        default_fg: (229, 229, 229),
+        default_bg: (30, 30, 30),
     });
     Box::into_raw(surface)
 }
@@ -262,12 +266,8 @@ pub extern "C" fn at_surface_read_cells(
             let has_inverse = cell.attrs.contains(CellAttrs::INVERSE);
             let has_hidden = cell.attrs.contains(CellAttrs::HIDDEN);
 
-            let (mut fg_r, mut fg_g, mut fg_b) = cell.fg.to_rgb(palette);
-            let (mut bg_r, mut bg_g, mut bg_b) = if cell.bg == Color::Default {
-                Color::default_bg_rgb()
-            } else {
-                cell.bg.to_rgb(palette)
-            };
+            let (mut fg_r, mut fg_g, mut fg_b) = cell.fg.to_rgb_with_default(palette, surface.default_fg);
+            let (mut bg_r, mut bg_g, mut bg_b) = cell.bg.to_rgb_with_default(palette, surface.default_bg);
 
             if has_inverse {
                 std::mem::swap(&mut fg_r, &mut bg_r);
@@ -396,6 +396,22 @@ pub extern "C" fn at_init_logging() {
 pub extern "C" fn at_surface_set_palette_color(surface: *mut ATSurface, index: u8, r: u8, g: u8, b: u8) {
     let surface = mut_ref_or!(surface);
     surface.palette[index as usize] = Color::Rgb(r, g, b);
+}
+
+// --- Default Colors ---
+
+/// Set the default foreground color used when a cell has Color::Default.
+#[no_mangle]
+pub extern "C" fn at_surface_set_default_fg(surface: *mut ATSurface, r: u8, g: u8, b: u8) {
+    let surface = mut_ref_or!(surface);
+    surface.default_fg = (r, g, b);
+}
+
+/// Set the default background color used when a cell has Color::Default.
+#[no_mangle]
+pub extern "C" fn at_surface_set_default_bg(surface: *mut ATSurface, r: u8, g: u8, b: u8) {
+    let surface = mut_ref_or!(surface);
+    surface.default_bg = (r, g, b);
 }
 
 // --- Scrollback ---

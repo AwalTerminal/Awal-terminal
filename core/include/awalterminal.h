@@ -168,6 +168,22 @@ void at_surface_set_palette_color(struct ATSurface *surface,
                                   uint8_t b);
 
 /**
+ * Set the default foreground color used when a cell has Color::Default.
+ */
+void at_surface_set_default_fg(struct ATSurface *surface,
+                               uint8_t r,
+                               uint8_t g,
+                               uint8_t b);
+
+/**
+ * Set the default background color used when a cell has Color::Default.
+ */
+void at_surface_set_default_bg(struct ATSurface *surface,
+                               uint8_t r,
+                               uint8_t g,
+                               uint8_t b);
+
+/**
  * Scroll the viewport by delta lines. Positive = scroll up (into history).
  */
 void at_surface_scroll_viewport(struct ATSurface *surface,

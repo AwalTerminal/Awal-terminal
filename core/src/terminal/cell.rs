@@ -132,4 +132,12 @@ impl Color {
     pub fn default_bg_rgb() -> (u8, u8, u8) {
         (30, 30, 30)
     }
+
+    /// Resolve to RGB, using the provided default for Color::Default instead of the hardcoded value.
+    pub fn to_rgb_with_default(&self, palette: &[Color; 256], default: (u8, u8, u8)) -> (u8, u8, u8) {
+        match self {
+            Color::Default => default,
+            other => other.to_rgb(palette),
+        }
+    }
 }
