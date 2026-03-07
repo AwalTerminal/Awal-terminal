@@ -18,6 +18,7 @@ let package = Package(
             exclude: ["CAwalTerminal", "App/Resources"],
             linkerSettings: [
                 .unsafeFlags([
+                    "-L", "../core/target/universal-release",
                     "-L", "../core/target/debug",
                     "-L", "../core/target/release",
                     "-lawalterminal",

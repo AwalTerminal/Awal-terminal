@@ -31,6 +31,7 @@ app/.claude/
 
 # Local docs
 docs/plan.md
+docs-local/
 
 # Generated (tracked in repo for convenience, but can be regenerated)
 # core/include/awalterminal.h

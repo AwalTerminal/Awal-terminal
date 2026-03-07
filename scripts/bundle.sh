@@ -4,11 +4,15 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP_DIR="$ROOT/build/AwalTerminal.app"
-BUILD_DIR="$ROOT/app/.build/arm64-apple-macosx/release"
 
-# Fallback to generic release path
-if [ ! -d "$BUILD_DIR" ]; then
-    BUILD_DIR="$ROOT/app/.build/release"
+if [ "${1:-}" = "universal" ]; then
+    BUILD_DIR="$ROOT/app/.build/apple/Products/Release"
+else
+    BUILD_DIR="$ROOT/app/.build/arm64-apple-macosx/release"
+    # Fallback to generic release path
+    if [ ! -d "$BUILD_DIR" ]; then
+        BUILD_DIR="$ROOT/app/.build/release"
+    fi
 fi
 
 BINARY="$BUILD_DIR/AwalTerminal"

@@ -59,9 +59,27 @@ fmt:
 lint:
     cd {{core_dir}} && cargo clippy -- -W warnings
 
+# Build the Rust core library for both architectures (universal)
+build-core-universal:
+    cd {{core_dir}} && cargo build --release --target aarch64-apple-darwin
+    cd {{core_dir}} && cargo build --release --target x86_64-apple-darwin
+    mkdir -p {{core_dir}}/target/universal-release
+    lipo -create \
+        {{core_dir}}/target/aarch64-apple-darwin/release/libawalterminal.a \
+        {{core_dir}}/target/x86_64-apple-darwin/release/libawalterminal.a \
+        -output {{core_dir}}/target/universal-release/libawalterminal.a
+
+# Build the Swift app as universal binary
+build-app-universal: build-core-universal
+    cd {{app_dir}} && swift build -c release --arch arm64 --arch x86_64
+
 # Package as .app bundle (release)
 bundle: build
     scripts/bundle.sh
+
+# Package as universal .app bundle
+bundle-universal: build-app-universal
+    scripts/bundle.sh universal
 
 # Generate app icon from source PNG
 generate-icon:
