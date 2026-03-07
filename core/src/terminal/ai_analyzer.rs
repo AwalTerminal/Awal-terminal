@@ -462,6 +462,12 @@ impl AiAnalyzer {
 
     /// Extract file path from a tool label like "Read(src/main.rs)".
     fn extract_file_ref(label: &str) -> Option<String> {
+        // Only extract from file-oriented tools, skip Bash/shell commands
+        let file_tools = ["Read", "Write", "Edit", "Glob", "Grep"];
+        let is_file_tool = file_tools.iter().any(|t| label.starts_with(t));
+        if !is_file_tool {
+            return None;
+        }
         // Look for patterns like: Read(file_path) or Edit(file_path, ...)
         if let Some(paren_start) = label.find('(') {
             let inner = &label[paren_start + 1..];
