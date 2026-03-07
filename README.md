@@ -11,7 +11,7 @@
 
 <p align="center">
   <a href="https://awalterminal.github.io/Awal-terminal/">Website</a> &middot;
-  <a href="https://awalterminal.github.io/Awal-terminal/AwalTerminal.zip">Download</a>
+  <a href="https://github.com/AwalTerminal/Awal-terminal/releases/latest/download/AwalTerminal.zip">Download</a>
 </p>
 
 ---
@@ -54,7 +54,7 @@ A native macOS terminal built from scratch with Swift and Rust, designed specifi
 
 ### Download
 
-Grab the latest build from the [website](https://awalterminal.github.io/Awal-terminal/).
+Grab the latest build from [GitHub Releases](https://github.com/AwalTerminal/Awal-terminal/releases/latest).
 
 Since the app is not yet notarized with Apple, macOS will block it on first launch. After unzipping, run:
 
@@ -77,6 +77,9 @@ just run
 
 # Build release .app bundle
 just bundle
+
+# Create a new release
+scripts/release.sh v0.2.0
 ```
 
 ### Configuration
@@ -104,6 +107,7 @@ whisper_model = "tiny.en"
 ```
 core/       Rust — terminal emulation, ANSI parsing, AI output analysis
 app/        Swift — macOS UI, Metal rendering, voice input, AI side panel
+scripts/    Build and release scripts
 build/      Release artifacts
 docs/       Promotional website (GitHub Pages)
 ```
