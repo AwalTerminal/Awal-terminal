@@ -113,9 +113,6 @@ class SplitContainerView: NSView, NSSplitViewDelegate {
             splitView.addSubview(firstView)
             splitView.addSubview(secondView)
 
-            // Set initial equal sizing
-            splitView.adjustSubviews()
-
             return splitView
         }
     }
@@ -128,6 +125,26 @@ class SplitContainerView: NSView, NSSplitViewDelegate {
 
     func splitView(_ splitView: NSSplitView, constrainMaxCoordinate proposedMaximumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
         return proposedMaximumPosition - 100
+    }
+
+    func splitView(_ splitView: NSSplitView, resizeSubviewsWithOldSize oldSize: NSSize) {
+        let subviews = splitView.subviews
+        guard subviews.count == 2 else {
+            splitView.adjustSubviews()
+            return
+        }
+        let dividerThickness = splitView.dividerThickness
+        let total = splitView.isVertical ? splitView.bounds.width : splitView.bounds.height
+        let available = total - dividerThickness
+        let half = floor(available / 2)
+
+        if splitView.isVertical {
+            subviews[0].frame = NSRect(x: 0, y: 0, width: half, height: splitView.bounds.height)
+            subviews[1].frame = NSRect(x: half + dividerThickness, y: 0, width: available - half, height: splitView.bounds.height)
+        } else {
+            subviews[0].frame = NSRect(x: 0, y: 0, width: splitView.bounds.width, height: half)
+            subviews[1].frame = NSRect(x: 0, y: half + dividerThickness, width: splitView.bounds.width, height: available - half)
+        }
     }
 
     func splitView(_ splitView: NSSplitView, shouldAdjustSizeOfSubview view: NSView) -> Bool {
