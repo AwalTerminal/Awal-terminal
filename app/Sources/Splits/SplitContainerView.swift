@@ -68,8 +68,9 @@ class SplitContainerView: NSView, NSSplitViewDelegate {
         let old = focusedTerminal
         focusedTerminal = terminal
 
+        let showBorder = rootNode.allLeaves().count > 1
         old.setFocused(false)
-        terminal.setFocused(true)
+        terminal.setFocused(showBorder)
 
         window?.makeFirstResponder(terminal)
         onFocusChanged?(terminal)
