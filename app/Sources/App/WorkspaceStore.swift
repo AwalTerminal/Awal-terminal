@@ -28,8 +28,8 @@ class WorkspaceStore {
     }
 
     func save(path: String, model: String) {
-        // Remove existing entry for this path
-        workspaces.removeAll { $0.path == path }
+        // Remove existing entry for this path + model combo
+        workspaces.removeAll { $0.path == path && $0.lastModel == model }
 
         // Insert at front
         let entry = Workspace(path: path, lastModel: model, lastUsed: Date())
@@ -43,8 +43,8 @@ class WorkspaceStore {
         persist()
     }
 
-    func remove(path: String) {
-        workspaces.removeAll { $0.path == path }
+    func remove(path: String, model: String) {
+        workspaces.removeAll { $0.path == path && $0.lastModel == model }
         persist()
     }
 

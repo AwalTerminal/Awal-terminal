@@ -1290,7 +1290,7 @@ class TerminalView: NSView {
                 // Confirm deletion
                 if let idx = pendingDeleteIndex, idx < menuEntries.count,
                    case .recentWorkspace(let ws) = menuEntries[idx] {
-                    WorkspaceStore.shared.remove(path: ws.path)
+                    WorkspaceStore.shared.remove(path: ws.path, model: ws.lastModel)
                     pendingDeleteIndex = nil
                     buildMenuEntries()
                     // Adjust selection if it's now out of bounds

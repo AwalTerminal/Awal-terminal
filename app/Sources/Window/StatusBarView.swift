@@ -262,7 +262,8 @@ class StatusBarView: NSView {
 
         let recents = WorkspaceStore.shared.recents()
         for ws in recents {
-            let item = NSMenuItem(title: shortenPath(ws.path), action: #selector(recentFolderSelected(_:)), keyEquivalent: "")
+            let title = "\(shortenPath(ws.path)) — \(ws.lastModel)"
+            let item = NSMenuItem(title: title, action: #selector(recentFolderSelected(_:)), keyEquivalent: "")
             item.target = self
             item.representedObject = ws.path
             menu.addItem(item)
