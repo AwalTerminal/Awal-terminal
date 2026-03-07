@@ -159,6 +159,15 @@ void at_surface_feed_bytes(struct ATSurface *surface,
 void at_init_logging(void);
 
 /**
+ * Set a palette color (index 0-255) to an RGB value.
+ */
+void at_surface_set_palette_color(struct ATSurface *surface,
+                                  uint8_t index,
+                                  uint8_t r,
+                                  uint8_t g,
+                                  uint8_t b);
+
+/**
  * Scroll the viewport by delta lines. Positive = scroll up (into history).
  */
 void at_surface_scroll_viewport(struct ATSurface *surface,
@@ -187,6 +196,12 @@ void at_surface_start_selection(struct ATSurface *surface,
 void at_surface_update_selection(struct ATSurface *surface,
                                  uint32_t col,
                                  int32_t row);
+
+/**
+ * Set rectangular (block) selection mode.
+ */
+void at_surface_set_rectangular_selection(struct ATSurface *surface,
+                                          bool rectangular);
 
 /**
  * Clear the selection.

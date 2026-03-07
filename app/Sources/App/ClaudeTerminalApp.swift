@@ -51,10 +51,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         setupMainMenu()
 
+        // Register global hotkey for quick terminal (Ctrl+`)
+        QuickTerminalController.shared.registerHotKey()
+
         let controller = TerminalWindowController(isInitialTab: true)
         TerminalWindowTracker.shared.register(controller)
         controller.showWindow(nil)
         controller.window?.makeKeyAndOrderFront(nil)
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        QuickTerminalController.shared.unregisterHotKey()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -63,6 +70,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     @objc func showAboutPanel(_ sender: Any?) {
         AboutWindow.show()
+    }
+
+    @objc func showPreferences(_ sender: Any?) {
+        PreferencesWindow.show()
+    }
+
+    @objc func toggleQuickTerminal(_ sender: Any?) {
+        QuickTerminalController.shared.toggle()
     }
 
     @objc func toggleNotifications(_ sender: Any?) {
@@ -91,7 +106,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         hideOthers.keyEquivalentModifierMask = [.command, .option]
         appMenu.addItem(withTitle: "Show All", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
         appMenu.addItem(NSMenuItem.separator())
-        appMenu.addItem(withTitle: "Settings…", action: #selector(TerminalWindowController.openSettings(_:)), keyEquivalent: ",")
+        appMenu.addItem(withTitle: "Preferences…", action: #selector(showPreferences(_:)), keyEquivalent: ",")
+        appMenu.addItem(withTitle: "Model Settings…", action: #selector(TerminalWindowController.openSettings(_:)), keyEquivalent: "")
         appMenu.addItem(NSMenuItem.separator())
         appMenu.addItem(withTitle: "Quit Awal Terminal", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appMenuItem.submenu = appMenu
@@ -149,6 +165,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         shellMenu.addItem(NSMenuItem.separator())
 
+        let quickTermItem = NSMenuItem(title: "Quick Terminal", action: #selector(toggleQuickTerminal(_:)), keyEquivalent: "`")
+        quickTermItem.keyEquivalentModifierMask = [.control]
+        shellMenu.addItem(quickTermItem)
+
+        shellMenu.addItem(NSMenuItem.separator())
+
         let notifItem = NSMenuItem(title: "Notifications", action: #selector(toggleNotifications(_:)), keyEquivalent: "")
         shellMenu.addItem(notifItem)
 
@@ -176,6 +198,50 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         NSApplication.shared.mainMenu = mainMenu
         NSApplication.shared.windowsMenu = windowMenu
+
+        // Apply user-configured keybindings from TOML config
+        applyKeybindings(mainMenu)
+    }
+
+    /// Map of action names to their menu item titles for keybinding lookup.
+    private static let actionTitles: [String: String] = [
+        "new_tab": "New Tab",
+        "close_tab": "Close Tab",
+        "next_tab": "Next Tab",
+        "prev_tab": "Previous Tab",
+        "rename_tab": "Rename Tab…",
+        "find": "Find…",
+        "split_right": "Split Right",
+        "split_down": "Split Down",
+        "close_pane": "Close Pane",
+        "next_pane": "Next Pane",
+        "prev_pane": "Previous Pane",
+        "toggle_side_panel": "AI Side Panel",
+        "quick_terminal": "Quick Terminal",
+        "settings": "Preferences…",
+    ]
+
+    private func applyKeybindings(_ menu: NSMenu) {
+        let bindings = AppConfig.shared.keybindings
+        guard !bindings.isEmpty else { return }
+
+        // Build a flat lookup of title -> menu item
+        var itemsByTitle: [String: NSMenuItem] = [:]
+        func collect(_ menu: NSMenu) {
+            for item in menu.items {
+                itemsByTitle[item.title] = item
+                if let sub = item.submenu { collect(sub) }
+            }
+        }
+        collect(menu)
+
+        for (action, combo) in bindings {
+            guard let title = Self.actionTitles[action],
+                  let item = itemsByTitle[title],
+                  let (key, mods) = AppConfig.parseKeybinding(combo) else { continue }
+            item.keyEquivalent = key
+            item.keyEquivalentModifierMask = mods
+        }
     }
 }
 

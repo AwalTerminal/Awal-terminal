@@ -9,6 +9,18 @@ struct GlyphKey: Hashable {
     let italic: Bool
 }
 
+/// Key for multi-codepoint ligature glyphs.
+struct LigatureKey: Hashable {
+    let codepoints: [UInt32]
+    let bold: Bool
+    let italic: Bool
+}
+
+struct LigatureInfo {
+    let glyphInfo: GlyphInfo
+    let length: Int // number of cells the ligature spans
+}
+
 struct GlyphInfo {
     let uvRect: SIMD4<Float>    // x, y, w, h in normalized atlas coords
     let size: SIMD2<Float>      // glyph bitmap size in pixels (native resolution)
@@ -22,6 +34,8 @@ final class GlyphAtlas {
     private let atlasHeight: Int = 4096
 
     private var cache: [GlyphKey: GlyphInfo] = [:]
+    private var ligatureCache: [LigatureKey: LigatureInfo] = [:]
+    private(set) var ligaturesEnabled: Bool = false
 
     // Row-based packing state
     private var cursorX: Int = 0
@@ -250,5 +264,165 @@ final class GlyphAtlas {
         let chars = Array(ch.utf16)
         var glyphs = [CGGlyph](repeating: 0, count: chars.count)
         return CTFontGetGlyphsForCharacters(ctFont, chars, &glyphs, chars.count) && glyphs[0] != 0
+    }
+
+    // MARK: - Ligature Support
+
+    /// Enable ligature rendering. Call after init if the font supports ligatures.
+    func enableLigatures() {
+        // Check if the primary font has ligature tables by testing a common ligature
+        let testStr = NSAttributedString(string: "->", attributes: [
+            .font: font as NSFont,
+            NSAttributedString.Key(kCTLigatureAttributeName as String): 2,
+        ])
+        let line = CTLineCreateWithAttributedString(testStr)
+        let runs = CTLineGetGlyphRuns(line) as! [CTRun]
+
+        // If CoreText merged 2 chars into fewer glyphs, the font supports ligatures
+        var totalGlyphs = 0
+        for run in runs { totalGlyphs += CTRunGetGlyphCount(run) }
+        ligaturesEnabled = totalGlyphs < 2
+    }
+
+    /// Try to look up a ligature starting at the given position in a cell row.
+    /// Returns (LigatureInfo, length) if a ligature was formed, nil otherwise.
+    func lookupLigature(codepoints: UnsafeBufferPointer<UInt32>, startIndex: Int,
+                        bold: Bool, italic: Bool, device: MTLDevice) -> LigatureInfo? {
+        guard ligaturesEnabled else { return nil }
+
+        // Try sequences of decreasing length (max 4 chars)
+        let maxLen = min(4, codepoints.count - startIndex)
+        guard maxLen >= 2 else { return nil }
+
+        for len in stride(from: maxLen, through: 2, by: -1) {
+            let seq = Array(codepoints[startIndex..<startIndex + len])
+
+            // Skip if any codepoint is a space or control
+            if seq.contains(where: { $0 <= 32 }) { continue }
+
+            let key = LigatureKey(codepoints: seq, bold: bold, italic: italic)
+            if let cached = ligatureCache[key] {
+                return cached
+            }
+
+            // Try to rasterize this sequence as a ligature
+            if let info = rasterizeLigature(key: key, length: len) {
+                return info
+            }
+        }
+        return nil
+    }
+
+    private func rasterizeLigature(key: LigatureKey, length: Int) -> LigatureInfo? {
+        // Build the string from codepoints
+        let str = String(key.codepoints.compactMap { Unicode.Scalar($0).map(Character.init) })
+        guard str.count == length else { return nil }
+
+        let ctFont: CTFont
+        if key.bold && key.italic {
+            ctFont = boldItalicFont
+        } else if key.bold {
+            ctFont = boldFont
+        } else if key.italic {
+            ctFont = italicFont
+        } else {
+            ctFont = font
+        }
+
+        // Create attributed string with ligatures enabled
+        let attrStr = NSAttributedString(string: str, attributes: [
+            .font: ctFont as NSFont,
+            .foregroundColor: NSColor.white,
+            NSAttributedString.Key(kCTLigatureAttributeName as String): 2,
+        ])
+        let line = CTLineCreateWithAttributedString(attrStr)
+
+        // Check if CoreText actually formed a ligature (fewer glyphs than chars)
+        let runs = CTLineGetGlyphRuns(line) as! [CTRun]
+        var totalGlyphs = 0
+        for run in runs { totalGlyphs += CTRunGetGlyphCount(run) }
+        if totalGlyphs >= length {
+            // No ligature formed — cache as nil
+            ligatureCache[key] = nil
+            return nil
+        }
+
+        // Rasterize the ligature glyph spanning multiple cells
+        var ascent: CGFloat = 0
+        var descent: CGFloat = 0
+        var leading: CGFloat = 0
+        let width = CGFloat(CTLineGetTypographicBounds(line, &ascent, &descent, &leading))
+
+        let bitmapW = Int(ceil(width * scale)) + 2
+        let bitmapH = Int(ceil((ascent + descent) * scale)) + 2
+        guard bitmapW > 0, bitmapH > 0 else { return nil }
+
+        // Row packing
+        if cursorX + bitmapW > atlasWidth {
+            cursorX = 0
+            cursorY += rowHeight
+            rowHeight = 0
+        }
+        if cursorY + bitmapH > atlasHeight { return nil }
+
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        let bitmapInfo = CGBitmapInfo.byteOrder32Little.rawValue | CGImageAlphaInfo.premultipliedFirst.rawValue
+        guard let ctx = CGContext(
+            data: nil, width: bitmapW, height: bitmapH,
+            bitsPerComponent: 8, bytesPerRow: 0,
+            space: colorSpace, bitmapInfo: bitmapInfo
+        ) else { return nil }
+
+        ctx.clear(CGRect(x: 0, y: 0, width: bitmapW, height: bitmapH))
+        ctx.scaleBy(x: scale, y: scale)
+        ctx.setShouldAntialias(true)
+        ctx.setShouldSmoothFonts(false)
+        ctx.setShouldSubpixelPositionFonts(true)
+
+        let drawX: CGFloat = 1.0 / scale
+        let drawY: CGFloat = 1.0 / scale + descent
+        ctx.textPosition = CGPoint(x: drawX, y: drawY)
+        CTLineDraw(line, ctx)
+
+        guard let data = ctx.data else { return nil }
+        let bytes = data.assumingMemoryBound(to: UInt8.self)
+        let actualBytesPerRow = ctx.bytesPerRow
+        let alphaData = UnsafeMutablePointer<UInt8>.allocate(capacity: bitmapW * bitmapH)
+        for y in 0..<bitmapH {
+            for x in 0..<bitmapW {
+                let offset = y * actualBytesPerRow + x * 4
+                alphaData[y * bitmapW + x] = max(bytes[offset], max(bytes[offset+1], max(bytes[offset+2], bytes[offset+3])))
+            }
+        }
+
+        let region = MTLRegion(
+            origin: MTLOrigin(x: cursorX, y: cursorY, z: 0),
+            size: MTLSize(width: bitmapW, height: bitmapH, depth: 1)
+        )
+        texture.replace(region: region, mipmapLevel: 0, withBytes: alphaData, bytesPerRow: bitmapW)
+        alphaData.deallocate()
+
+        let uvX = Float(cursorX) / Float(atlasWidth)
+        let uvY = Float(cursorY) / Float(atlasHeight)
+        let uvW = Float(bitmapW) / Float(atlasWidth)
+        let uvH = Float(bitmapH) / Float(atlasHeight)
+
+        let fontAscent = CTFontGetAscent(font)
+        let bearingX = Float(1.0)
+        let cellHeightPx = cellHeight * scale
+        let bearingY = Float((cellHeightPx - CGFloat(bitmapH)) / 2.0) + Float((fontAscent - ascent) * scale)
+
+        let glyphInfo = GlyphInfo(
+            uvRect: SIMD4<Float>(uvX, uvY, uvW, uvH),
+            size: SIMD2<Float>(Float(bitmapW), Float(bitmapH)),
+            bearing: SIMD2<Float>(bearingX, bearingY)
+        )
+
+        cursorX += bitmapW
+        rowHeight = max(rowHeight, bitmapH)
+
+        let info = LigatureInfo(glyphInfo: glyphInfo, length: length)
+        ligatureCache[key] = info
+        return info
     }
 }

@@ -20,8 +20,30 @@ struct AppConfig {
     // ANSI colors (0-15)
     var ansiColors: [NSColor] = defaultAnsiColors
 
-    // Keybindings: action -> key combo string
+    // Keybindings: action -> key combo string (e.g. "cmd+shift+]")
     var keybindings: [String: String] = [:]
+
+    /// Parse a keybinding string like "cmd+shift+d" into (keyEquivalent, modifierMask).
+    static func parseKeybinding(_ combo: String) -> (String, NSEvent.ModifierFlags)? {
+        let parts = combo.lowercased().split(separator: "+").map { $0.trimmingCharacters(in: .whitespaces) }
+        guard !parts.isEmpty else { return nil }
+
+        var mods: NSEvent.ModifierFlags = []
+        var key = ""
+
+        for part in parts {
+            switch part {
+            case "cmd", "command": mods.insert(.command)
+            case "shift": mods.insert(.shift)
+            case "opt", "option", "alt": mods.insert(.option)
+            case "ctrl", "control": mods.insert(.control)
+            default: key = part
+            }
+        }
+
+        guard !key.isEmpty else { return nil }
+        return (key, mods)
+    }
 
     static let shared = load()
 

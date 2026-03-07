@@ -380,9 +380,8 @@ impl AiAnalyzer {
 
     fn is_prompt_line(&self, text: &str) -> bool {
         text.starts_with('❯')
-            || text.starts_with('>')
-                && text.len() < 4
             || text.ends_with(" ❯")
+            || (text.starts_with("> ") && text.len() < 4)
     }
 
     fn is_cost_line(&self, text: &str) -> bool {
@@ -394,13 +393,22 @@ impl AiAnalyzer {
     }
 
     fn is_diff_line(&self, text: &str) -> bool {
-        // Unified diff patterns
-        (text.starts_with('+') && !text.starts_with("+++"))
-            || (text.starts_with('-') && !text.starts_with("---"))
-            || text.starts_with("@@")
-            || text.starts_with("+++")
-            || text.starts_with("---")
-            || text.starts_with("diff --git")
+        // Only match diff lines when we're already in a diff context,
+        // or for unambiguous diff headers.
+        if text.starts_with("diff --git") || text.starts_with("@@") {
+            return true;
+        }
+        if text.starts_with("+++") || text.starts_with("---") {
+            // Must look like a diff header (e.g. "+++ a/file" or "--- b/file")
+            return text.len() > 4 && text.as_bytes().get(3) == Some(&b' ');
+        }
+        // Single +/- lines only count as diff if we're already in a diff region
+        if let Some((RegionType::Diff, _, _)) = &self.current_region {
+            if text.starts_with('+') || text.starts_with('-') {
+                return true;
+            }
+        }
+        false
     }
 
     fn is_separator_line(&self, text: &str) -> bool {

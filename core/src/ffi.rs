@@ -389,6 +389,15 @@ pub extern "C" fn at_init_logging() {
     let _ = env_logger::try_init();
 }
 
+// --- Palette ---
+
+/// Set a palette color (index 0-255) to an RGB value.
+#[no_mangle]
+pub extern "C" fn at_surface_set_palette_color(surface: *mut ATSurface, index: u8, r: u8, g: u8, b: u8) {
+    let surface = mut_ref_or!(surface);
+    surface.palette[index as usize] = Color::Rgb(r, g, b);
+}
+
 // --- Scrollback ---
 
 /// Scroll the viewport by delta lines. Positive = scroll up (into history).
@@ -434,6 +443,14 @@ pub extern "C" fn at_surface_update_selection(surface: *mut ATSurface, col: u32,
     let sel = &mut surface.screen.selection;
     sel.end_col = col as usize;
     sel.end_row = row as i64;
+    surface.screen.dirty = true;
+}
+
+/// Set rectangular (block) selection mode.
+#[no_mangle]
+pub extern "C" fn at_surface_set_rectangular_selection(surface: *mut ATSurface, rectangular: bool) {
+    let surface = mut_ref_or!(surface);
+    surface.screen.selection.rectangular = rectangular;
     surface.screen.dirty = true;
 }
 

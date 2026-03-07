@@ -97,6 +97,7 @@ pub struct Selection {
     pub end_col: usize,
     pub end_row: i64,
     pub active: bool,
+    pub rectangular: bool, // block/column selection mode
 }
 
 impl Selection {
@@ -107,6 +108,7 @@ impl Selection {
             end_col: 0,
             end_row: 0,
             active: false,
+            rectangular: false,
         }
     }
 
@@ -128,6 +130,12 @@ impl Selection {
         let ((sc, sr), (ec, er)) = self.ordered();
         if row < sr || row > er {
             return false;
+        }
+        if self.rectangular {
+            // Block selection: same column range on every row
+            let left = sc.min(ec);
+            let right = sc.max(ec);
+            return col >= left && col <= right;
         }
         if row == sr && row == er {
             return col >= sc && col <= ec;
@@ -574,28 +582,49 @@ impl Screen {
         let ((sc, sr), (ec, er)) = self.selection.ordered();
         let mut result = String::new();
 
-        for row in sr..=er {
-            let row_start = if row == sr { sc } else { 0 };
-            let row_end = if row == er { ec } else { self.cols.saturating_sub(1) };
-
-            for col in row_start..=row_end {
-                let cell = self.get_cell_at_absolute(col, row);
-                if cell.attrs.contains(CellAttrs::WIDE_SPACER) {
-                    continue;
+        if self.selection.rectangular {
+            // Block selection: same column range per row
+            let left = sc.min(ec);
+            let right = sc.max(ec);
+            for row in sr..=er {
+                let mut line = String::new();
+                for col in left..=right {
+                    let cell = self.get_cell_at_absolute(col, row);
+                    if cell.attrs.contains(CellAttrs::WIDE_SPACER) {
+                        continue;
+                    }
+                    line.push(cell.ch);
                 }
-                result.push(cell.ch);
+                let trimmed = line.trim_end();
+                result.push_str(trimmed);
+                if row < er {
+                    result.push('\n');
+                }
             }
+        } else {
+            for row in sr..=er {
+                let row_start = if row == sr { sc } else { 0 };
+                let row_end = if row == er { ec } else { self.cols.saturating_sub(1) };
 
-            // Trim trailing spaces on each line
-            if row < er {
-                let trimmed = result.trim_end_matches(' ');
-                result = trimmed.to_string();
-                result.push('\n');
+                for col in row_start..=row_end {
+                    let cell = self.get_cell_at_absolute(col, row);
+                    if cell.attrs.contains(CellAttrs::WIDE_SPACER) {
+                        continue;
+                    }
+                    result.push(cell.ch);
+                }
+
+                // Trim trailing spaces on each line
+                if row < er {
+                    let trimmed = result.trim_end_matches(' ');
+                    result = trimmed.to_string();
+                    result.push('\n');
+                }
             }
-        }
-        // Trim trailing spaces on last line
-        while result.ends_with(' ') {
-            result.pop();
+            // Trim trailing spaces on last line
+            while result.ends_with(' ') {
+                result.pop();
+            }
         }
         result
     }
