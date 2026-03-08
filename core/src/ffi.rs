@@ -1,4 +1,5 @@
 use crate::io::pty::Pty;
+use crate::io::write_queue::WriteQueue;
 use crate::terminal::ai_analyzer::AiAnalyzer;
 use crate::terminal::cell::{CCell, CellAttrs, Color, default_palette};
 use crate::terminal::parser::Parser;
@@ -18,6 +19,7 @@ pub struct ATSurface {
     analyzer: AiAnalyzer,
     default_fg: (u8, u8, u8),
     default_bg: (u8, u8, u8),
+    write_queue: WriteQueue,
 }
 
 /// Helper: safely convert a nullable const pointer to a reference, returning $default on null.
@@ -68,6 +70,7 @@ pub extern "C" fn at_surface_new(cols: u32, rows: u32) -> *mut ATSurface {
         analyzer: AiAnalyzer::new(),
         default_fg: (229, 229, 229),
         default_bg: (30, 30, 30),
+        write_queue: WriteQueue::new(),
     });
     Box::into_raw(surface)
 }
@@ -206,6 +209,41 @@ pub extern "C" fn at_surface_key_event(
         Ok(n) => n as i32,
         Err(_) => -1,
     }
+}
+
+/// Queue data for asynchronous writing to the PTY.
+/// Returns 0 on success, -1 if surface/data is invalid.
+#[no_mangle]
+pub extern "C" fn at_surface_queue_write(
+    surface: *mut ATSurface,
+    data: *const u8,
+    len: u32,
+) -> i32 {
+    let surface = mut_ref_or!(surface, -1);
+    if data.is_null() || len == 0 {
+        return -1;
+    }
+    let bytes = unsafe { slice::from_raw_parts(data, len as usize) };
+    surface.write_queue.push(bytes);
+    0
+}
+
+/// Drain pending writes to the PTY. Returns bytes written, 0 if nothing pending, -1 on error.
+#[no_mangle]
+pub extern "C" fn at_surface_drain_writes(surface: *mut ATSurface) -> i32 {
+    let surface = mut_ref_or!(surface, -1);
+    let fd = match &surface.pty {
+        Some(p) => p.master_fd(),
+        None => return -1,
+    };
+    surface.write_queue.drain(fd)
+}
+
+/// Check if there are pending writes in the queue.
+#[no_mangle]
+pub extern "C" fn at_surface_has_pending_writes(surface: *const ATSurface) -> bool {
+    let surface = ref_or!(surface, false);
+    surface.write_queue.has_pending()
 }
 
 /// Get the screen dimensions.

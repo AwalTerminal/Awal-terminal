@@ -110,6 +110,24 @@ int32_t at_surface_key_event(struct ATSurface *surface,
                              uint32_t len);
 
 /**
+ * Queue data for asynchronous writing to the PTY.
+ * Returns 0 on success, -1 if surface/data is invalid.
+ */
+int32_t at_surface_queue_write(struct ATSurface *surface,
+                               const uint8_t *data,
+                               uint32_t len);
+
+/**
+ * Drain pending writes to the PTY. Returns bytes written, 0 if nothing pending, -1 on error.
+ */
+int32_t at_surface_drain_writes(struct ATSurface *surface);
+
+/**
+ * Check if there are pending writes in the queue.
+ */
+bool at_surface_has_pending_writes(const struct ATSurface *surface);
+
+/**
  * Get the screen dimensions.
  */
 void at_surface_get_size(const struct ATSurface *surface,
