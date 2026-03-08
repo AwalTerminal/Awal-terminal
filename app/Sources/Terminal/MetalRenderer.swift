@@ -78,6 +78,11 @@ final class MetalRenderer {
     private var lineBufferCapacity: Int = 0
     private var uniformBuffer: MTLBuffer
 
+    // Persistent instance arrays (reused across frames to avoid per-frame allocations)
+    private var bgInstances: [BgInstance] = []
+    private var glyphInstances: [GlyphInstance] = []
+    private var lineInstances: [LineInstance] = []
+
     private let cellWidth: CGFloat
     private let cellHeight: CGFloat
 
@@ -408,12 +413,10 @@ final class MetalRenderer {
             return
         }
 
-        // Pre-allocate instance arrays
-        var bgInstances: [BgInstance] = []
-        bgInstances.reserveCapacity(totalCells)
-        var glyphInstances: [GlyphInstance] = []
-        glyphInstances.reserveCapacity(totalCells)
-        var lineInstances: [LineInstance] = []
+        // Reuse persistent instance arrays
+        bgInstances.removeAll(keepingCapacity: true)
+        glyphInstances.removeAll(keepingCapacity: true)
+        lineInstances.removeAll(keepingCapacity: true)
 
         // Hoist clear color comparison values out of the inner loop
         let clearR = UInt8(clearColor.red * 255)
