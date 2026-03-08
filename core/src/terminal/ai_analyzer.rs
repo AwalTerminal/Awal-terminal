@@ -312,9 +312,17 @@ impl AiAnalyzer {
         }
     }
 
+    /// Maximum number of tracked regions to prevent unbounded memory growth.
+    const MAX_REGIONS: usize = 1000;
+
     fn close_current_region(&mut self, end_row: i64) {
         if let Some((region_type, start_row, label)) = self.current_region.take() {
             let actual_end = end_row.max(start_row);
+            // Drop oldest regions if we've hit the cap
+            if self.regions.len() >= Self::MAX_REGIONS {
+                let drain_count = self.regions.len() - Self::MAX_REGIONS + 1;
+                self.regions.drain(..drain_count);
+            }
             self.regions.push(OutputRegion {
                 start_row,
                 end_row: actual_end,
