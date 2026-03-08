@@ -494,6 +494,20 @@ class StatusBarView: NSView {
         voiceWaveform.audioLevel = level
     }
 
+    private var flashTimer: Timer?
+    private var savedDimsText: String = ""
+
+    func showFlash(_ message: String) {
+        flashTimer?.invalidate()
+        savedDimsText = dimsLabel.stringValue
+        dimsLabel.stringValue = message
+        dimsLabel.textColor = NSColor(red: 120/255, green: 220/255, blue: 120/255, alpha: 1.0)
+        flashTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { [weak self] _ in
+            self?.dimsLabel.stringValue = self?.savedDimsText ?? ""
+            self?.dimsLabel.textColor = NSColor(white: 0.45, alpha: 1.0)
+        }
+    }
+
     func setGenerating(_ generating: Bool) {
         if generating {
             generatingDotCount = 0

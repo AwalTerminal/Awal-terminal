@@ -444,6 +444,9 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         terminal.onFocused = { [weak tab] tv in
             tab?.splitContainer.setFocused(tv)
         }
+        terminal.onCopied = { [weak tab] in
+            tab?.statusBar.showFlash("Copied!")
+        }
         terminal.onTerminalIdle = { [weak terminal, weak tab] in
             guard let terminal else { return }
             NotificationManager.shared.notifyIdleIfNeeded(modelName: terminal.activeModelName)
