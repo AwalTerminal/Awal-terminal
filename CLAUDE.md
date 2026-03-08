@@ -21,7 +21,8 @@ The release script `scripts/release.sh <tag>` handles build, bundle, zip, tag, a
 4. Commit the updated `docs/AwalTerminal.zip`
 5. Tag: `git tag <tag>`
 6. Push: `git push origin main && git push origin <tag>`
-7. Release: `gh release create <tag> docs/AwalTerminal.zip --title "<tag>" --generate-notes`
+7. Generate changelog: review all commits since the previous tag (`git log <prev-tag>..HEAD --oneline`) and write a human-readable changelog grouped by category (Features, Fixes, Improvements). Include it in the release notes.
+8. Release: `gh release create <tag> docs/AwalTerminal.zip --title "<tag>" --notes-file <changelog>`
 
 - Website download link (`docs/index.html`) uses `/releases/latest/download/AwalTerminal.zip` — auto-resolves to newest release
 - Check download counts: `gh api repos/AwalTerminal/Awal-terminal/releases -q '.[].assets[] | "\(.name): \(.download_count) downloads"'`
