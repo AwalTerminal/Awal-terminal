@@ -95,6 +95,7 @@ class TerminalView: NSView {
     private var cursorBlinkTimer: Timer?
 
     private var idleTimer: Timer?
+    private var ptyResizeTimer: Timer?
     private var hadRecentOutput: Bool = false
     private var isSuspendedForSleep: Bool = false
     private var isWaitingForOutput: Bool = false
@@ -284,6 +285,14 @@ class TerminalView: NSView {
         layer.framebufferOnly = true
         layer.contentsScale = NSScreen.main?.backingScaleFactor ?? 2.0
         layer.backgroundColor = AppConfig.shared.themeBg.cgColor
+        // Prevent implicit CA animations from stretching the drawable during layout animations.
+        layer.actions = [
+            "bounds": NSNull(),
+            "position": NSNull(),
+            "frame": NSNull(),
+            "contents": NSNull(),
+            "contentsScale": NSNull(),
+        ]
 
         self.metalLayer = layer
         let scale = NSScreen.main?.backingScaleFactor ?? 2.0
@@ -377,6 +386,15 @@ class TerminalView: NSView {
         }
     }
 
+    override func layout() {
+        super.layout()
+        updateMetalLayerSize()
+        recalculateGridSize()
+        if appState == .menu {
+            renderMenu()
+        }
+    }
+
     private func updateBackingScale() {
         let scale = window?.backingScaleFactor ?? 2.0
         metalLayer?.contentsScale = scale
@@ -402,8 +420,13 @@ class TerminalView: NSView {
         guard let layer = metalLayer else { return }
         let size = bounds.size
         guard size.width > 0 && size.height > 0 else { return }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.frame = bounds
+        CATransaction.commit()
         let scale = window?.backingScaleFactor ?? layer.contentsScale
         layer.drawableSize = CGSize(width: size.width * scale, height: size.height * scale)
+        contentDirty = true
         needsRender = true
     }
 
@@ -1200,19 +1223,32 @@ class TerminalView: NSView {
     // MARK: - Grid Size
 
     private func recalculateGridSize() {
-        guard let s = surface else { return }
+        guard surface != nil else { return }
 
         let newCols = max(1, UInt32(bounds.width / cellWidth))
         let newRows = max(1, UInt32(bounds.height / cellHeight))
 
         if newCols != termCols || newRows != termRows {
-            termCols = newCols
-            termRows = newRows
-            at_surface_resize(s, termCols, termRows)
-            updateCellBuffer()
+            // Don't update termCols/termRows yet — the renderer uses them as
+            // the row stride for cellBuffer, which still holds old-size data.
+            // Debounce the full resize (grid + PTY) so the child sees one
+            // consistent resize after the animation settles.
             needsRender = true
-            if appState == .terminal {
-                onSessionChanged?(activeModelName, activeProvider, Int(termCols), Int(termRows))
+            ptyResizeTimer?.invalidate()
+            ptyResizeTimer = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: false) { [weak self] _ in
+                guard let self = self, let s = self.surface else { return }
+                self.termCols = max(1, UInt32(self.bounds.width / self.cellWidth))
+                self.termRows = max(1, UInt32(self.bounds.height / self.cellHeight))
+                at_surface_resize(s, self.termCols, self.termRows)
+                self.userScrolledUp = false
+                self.updateCellBuffer()
+                self.needsRender = true
+                if self.appState == .terminal {
+                    self.onSessionChanged?(self.activeModelName, self.activeProvider,
+                                           Int(self.termCols), Int(self.termRows))
+                } else if self.appState == .menu {
+                    self.renderMenu()
+                }
             }
         }
     }
