@@ -119,6 +119,8 @@ class TerminalView: NSView {
     /// True when the user has manually scrolled up; suppresses auto-snap to bottom.
     private var userScrolledUp: Bool = false
     private var scrollAccumulator: CGFloat = 0.0
+    private var autoScrollTimer: Timer?
+    private var autoScrollDelta: Int = 0  // -1 = scroll up, +1 = scroll down
 
     // MARK: - Search State
 
@@ -2045,6 +2047,37 @@ class TerminalView: NSView {
         needsRender = true
     }
 
+    private func startAutoScroll(delta: Int) {
+        guard autoScrollDelta != delta else { return }
+        stopAutoScroll()
+        autoScrollDelta = delta
+        autoScrollTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+            self?.autoScrollTick()
+        }
+    }
+
+    private func stopAutoScroll() {
+        autoScrollTimer?.invalidate()
+        autoScrollTimer = nil
+        autoScrollDelta = 0
+    }
+
+    private func autoScrollTick() {
+        guard let s = surface, autoScrollDelta != 0 else { return }
+        at_surface_scroll_viewport(s, Int32(autoScrollDelta))
+        let offset = at_surface_get_viewport_offset(s)
+        userScrolledUp = offset > 0
+
+        // Extend selection to the edge row
+        let edgeRow = autoScrollDelta < 0 ? Int(termRows) - 1 : 0
+        let edgeCol = autoScrollDelta < 0 ? Int(termCols) - 1 : 0
+        let absRow = absoluteRow(gridRow: edgeRow)
+        selectionEndAbsRow = absRow
+        at_surface_update_selection(s, UInt32(edgeCol), absRow)
+        updateCellBuffer()
+        needsRender = true
+    }
+
     override func mouseDragged(with event: NSEvent) {
         guard appState == .terminal, let s = surface else { return }
 
@@ -2058,6 +2091,16 @@ class TerminalView: NSView {
         }
 
         if mouseMode == 0 {
+            let location = convert(event.locationInWindow, from: nil)
+            if location.y < 0 {
+                // Mouse below view — scroll down
+                startAutoScroll(delta: -1)
+            } else if location.y > bounds.height {
+                // Mouse above view — scroll up
+                startAutoScroll(delta: 1)
+            } else {
+                stopAutoScroll()
+            }
             let absRow = absoluteRow(gridRow: row)
             selectionEndAbsRow = absRow
             at_surface_update_selection(s, UInt32(col), absRow)
@@ -2067,6 +2110,7 @@ class TerminalView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
+        stopAutoScroll()
         guard appState == .terminal, let s = surface else { return }
 
         let (col, row) = gridPosition(for: event)
