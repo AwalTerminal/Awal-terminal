@@ -118,6 +118,7 @@ class TerminalView: NSView {
 
     /// True when the user has manually scrolled up; suppresses auto-snap to bottom.
     private var userScrolledUp: Bool = false
+    private var scrollAccumulator: CGFloat = 0.0
 
     // MARK: - Search State
 
@@ -1867,6 +1868,14 @@ class TerminalView: NSView {
     override func scrollWheel(with event: NSEvent) {
         guard let s = surface, appState == .terminal else { return }
 
+        let delta = event.scrollingDeltaY
+        let precise = event.hasPreciseScrollingDeltas
+
+        // Reset accumulator at the start of a new trackpad gesture
+        if precise && event.phase == .began {
+            scrollAccumulator = 0.0
+        }
+
         let mouseMode = at_surface_get_mouse_mode(s)
         if mouseMode > 0 {
             // Mouse reporting enabled — send scroll as mouse button 4/5 (up/down)
@@ -1875,10 +1884,21 @@ class TerminalView: NSView {
             let row = Int(location.y / cellHeight) + 1  // Will be flipped below
             let flippedRow = Int(termRows) - row + 1
 
+            let lines: Int
+            if precise {
+                scrollAccumulator += delta / cellHeight
+                lines = Int(scrollAccumulator)
+                scrollAccumulator -= CGFloat(lines)
+            } else {
+                lines = max(1, Int(abs(delta) / 3.0 + 0.5)) * (delta > 0 ? 1 : -1)
+            }
+
+            let absLines = abs(lines)
+            guard absLines > 0 else { return }
+
             let sgrMode = at_surface_get_sgr_mouse(s)
-            let lines = max(1, Int(abs(event.scrollingDeltaY) / 3.0 + 0.5))
-            for _ in 0..<lines {
-                let button = event.scrollingDeltaY > 0 ? 64 : 65 // scroll up : scroll down
+            for _ in 0..<absLines {
+                let button = lines > 0 ? 64 : 65 // scroll up : scroll down
                 let seq: [UInt8]
                 if sgrMode {
                     let str = "\u{1b}[\(button);\(col);\(flippedRow)M"
@@ -1898,8 +1918,14 @@ class TerminalView: NSView {
         }
 
         // Normal scrollback
-        let delta = event.scrollingDeltaY
-        let lines = Int(delta / 3.0)
+        let lines: Int
+        if precise {
+            scrollAccumulator += delta / cellHeight
+            lines = Int(scrollAccumulator)
+            scrollAccumulator -= CGFloat(lines)
+        } else {
+            lines = Int(delta / 3.0)
+        }
         if lines != 0 {
             at_surface_scroll_viewport(s, Int32(lines))
             let offset = at_surface_get_viewport_offset(s)
