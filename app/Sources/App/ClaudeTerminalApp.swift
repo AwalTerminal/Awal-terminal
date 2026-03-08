@@ -56,6 +56,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         QuickTerminalController.shared.registerHotKey()
         registerVoiceHotKey()
 
+        // Stop voice input on sleep to release audio hardware
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.willSleepNotification, object: nil, queue: .main
+        ) { _ in
+            VoiceInputController.shared.stop()
+        }
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.screensDidSleepNotification, object: nil, queue: .main
+        ) { _ in
+            VoiceInputController.shared.stop()
+        }
+
         let controller = TerminalWindowController(isInitialTab: true)
         TerminalWindowTracker.shared.register(controller)
         controller.showWindow(nil)
