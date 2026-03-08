@@ -39,6 +39,8 @@ class TerminalView: NSView {
     private var menuRendered: Bool = false
     private var menuEntries: [MenuEntry] = []
     private var pendingDeleteIndex: Int? = nil
+    private var menuRenderPending = true
+    private var deferredMenuRender: DispatchWorkItem?
 
     private(set) var activeModelName: String = ""
     private(set) var activeProvider: String = ""
@@ -319,6 +321,7 @@ class TerminalView: NSView {
         view.pendingLaunchModel = model
         view.pendingLaunchDir = workingDir
         view.appState = .terminal
+        view.menuRenderPending = false
         return view
     }
 
@@ -353,7 +356,6 @@ class TerminalView: NSView {
         if appState == .menu && !menuRendered {
             buildMenuEntries()
             moveToFirstSelectable()
-            renderMenu()
         }
         // Deferred launch happens in setFrameSize once we have real dimensions
         if window != nil {
@@ -372,8 +374,40 @@ class TerminalView: NSView {
         super.setFrameSize(newSize)
         updateMetalLayerSize()
         recalculateGridSize()
-        if appState == .menu {
-            renderMenu()
+        if appState == .menu && newSize.width > 0 && newSize.height > 0 {
+            if menuRenderPending {
+                // Debounce: cancel any previously scheduled render and reschedule.
+                // This ensures we only render once layout has settled (no more
+                // setFrameSize calls), avoiding the menu flicker/jump on new tabs.
+                deferredMenuRender?.cancel()
+                let work = DispatchWorkItem { [weak self] in
+                    guard let self = self, let s = self.surface, self.appState == .menu else { return }
+                    // Force any pending layout to complete so we get final dimensions
+                    self.superview?.layoutSubtreeIfNeeded()
+                    // Update grid dimensions immediately from current bounds,
+                    // bypassing the debounced recalculateGridSize() which defers
+                    // the termCols/termRows update behind a 150ms timer.
+                    let newCols = max(1, UInt32(self.bounds.width / self.cellWidth))
+                    let newRows = max(1, UInt32(self.bounds.height / self.cellHeight))
+                    if newCols != self.termCols || newRows != self.termRows {
+                        self.termCols = newCols
+                        self.termRows = newRows
+                        at_surface_resize(s, newCols, newRows)
+                        self.updateCellBuffer()
+                    }
+                    self.ptyResizeTimer?.invalidate()
+                    self.menuRenderPending = false
+                    self.deferredMenuRender = nil
+                    self.renderMenu()
+                }
+                deferredMenuRender = work
+                // Delay long enough for Auto Layout to fully settle.
+                // renderFrame() suppresses Metal presentation while menuRenderPending
+                // is true, so the delay is imperceptible.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: work)
+            } else {
+                renderMenu()
+            }
         }
         // Deferred launch: wait until we have real dimensions so the PTY gets the correct size.
         // Post to next run loop iteration to ensure layout is fully complete.
@@ -393,9 +427,6 @@ class TerminalView: NSView {
         super.layout()
         updateMetalLayerSize()
         recalculateGridSize()
-        if appState == .menu {
-            renderMenu()
-        }
     }
 
     private func updateBackingScale() {
@@ -524,7 +555,6 @@ class TerminalView: NSView {
 
     private func renderMenu() {
         guard let s = surface else { return }
-
         let cols = Int(termCols)
         let rows = Int(termRows)
 
@@ -943,6 +973,9 @@ class TerminalView: NSView {
         activeModelName = model.name
         activeProvider = model.provider
         appState = .terminal
+        menuRenderPending = false
+        deferredMenuRender?.cancel()
+        deferredMenuRender = nil
 
         // Clear screen, show cursor, reset
         let reset = "\u{1b}[2J\u{1b}[H\u{1b}[?25h\u{1b}[0m"
@@ -1590,6 +1623,9 @@ class TerminalView: NSView {
 
     private func renderFrame() {
         guard needsRender else { return }
+        // Don't present any frame to screen while the menu is still
+        // waiting for layout to settle — Metal drawables bypass view alpha.
+        guard !menuRenderPending else { return }
         guard let layer = metalLayer else { return }
         let drawableSize = layer.drawableSize
         guard drawableSize.width > 0 && drawableSize.height > 0 else { return }
@@ -1652,6 +1688,7 @@ class TerminalView: NSView {
                 loadingPhase: currentLoadingPhase
             )
         }
+
     }
 
     private func startDisplayLink() {
