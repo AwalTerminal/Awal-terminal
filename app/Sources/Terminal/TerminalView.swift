@@ -62,6 +62,7 @@ class TerminalView: NSView {
     var onShellSpawned: ((_ pid: pid_t) -> Void)?
     var onFocused: ((_ terminal: TerminalView) -> Void)?
     var onTerminalIdle: (() -> Void)?
+    var onCopied: (() -> Void)?
     var onGeneratingChanged: ((_ isGenerating: Bool) -> Void)?
 
     // Deferred launch for new panes (set before adding to window)
@@ -74,6 +75,7 @@ class TerminalView: NSView {
 
     private var surface: OpaquePointer?
     private var readSource: DispatchSourceRead?
+    private var writeSource: DispatchSourceWrite?
     private var displayLink: CVDisplayLink?
 
     private let cellWidth: CGFloat
@@ -94,15 +96,23 @@ class TerminalView: NSView {
 
     private var idleTimer: Timer?
     private var hadRecentOutput: Bool = false
+    private var isSuspendedForSleep: Bool = false
     private var isWaitingForOutput: Bool = false
     private var isLoadingResumeSessions: Bool = false
     private var loadingPhase: Float = 0
+    private var lastLoadingRenderTime: CFTimeInterval = 0
 
     // MARK: - Metal Properties
 
     private var metalLayer: CAMetalLayer!
     private var renderer: MetalRenderer!
     private var needsRender: Bool = true
+    private var contentDirty: Bool = true
+    private var lastOverlayComputeTime: CFTimeInterval = 0
+    private var cachedSearchHighlights: (cells: [(col: Int, row: Int, len: Int)], currentIndex: Int) = ([], -1)
+    private var cachedFoldIndicators: [FoldIndicator] = []
+    private var cachedCodeBlockRows: Set<Int> = []
+    private var cachedDiffRowColors: [Int: (UInt8, UInt8, UInt8, UInt8)] = [:]
     private var currentScale: CGFloat = NSScreen.main?.backingScaleFactor ?? 2.0
 
     /// True when the user has manually scrolled up; suppresses auto-snap to bottom.
@@ -197,6 +207,17 @@ class TerminalView: NSView {
         }
 
         setupDragAndDrop()
+
+        // Observe sleep/wake to suspend background activity
+        let wsc = NSWorkspace.shared.notificationCenter
+        wsc.addObserver(self, selector: #selector(handleSleep),
+                        name: NSWorkspace.willSleepNotification, object: nil)
+        wsc.addObserver(self, selector: #selector(handleWake),
+                        name: NSWorkspace.didWakeNotification, object: nil)
+        wsc.addObserver(self, selector: #selector(handleSleep),
+                        name: NSWorkspace.screensDidSleepNotification, object: nil)
+        wsc.addObserver(self, selector: #selector(handleWake),
+                        name: NSWorkspace.screensDidWakeNotification, object: nil)
     }
 
     required init?(coder: NSCoder) {
@@ -204,15 +225,50 @@ class TerminalView: NSView {
     }
 
     deinit {
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
         cursorBlinkTimer?.invalidate()
         idleTimer?.invalidate()
         stopDisplayLink()
         if let source = readSource {
             source.cancel()
         }
+        if let source = writeSource {
+            source.cancel()
+        }
         if let s = surface {
             at_surface_destroy(s)
         }
+    }
+
+    // MARK: - Sleep/Wake
+
+    @objc private func handleSleep() {
+        guard !isSuspendedForSleep else { return }
+        isSuspendedForSleep = true
+
+        stopDisplayLink()
+        readSource?.suspend()
+        writeSource?.suspend()
+        cursorBlinkTimer?.invalidate()
+        cursorBlinkTimer = nil
+        idleTimer?.invalidate()
+        idleTimer = nil
+    }
+
+    @objc private func handleWake() {
+        guard isSuspendedForSleep else { return }
+        isSuspendedForSleep = false
+
+        if window != nil {
+            startDisplayLink()
+        }
+        readSource?.resume()
+        writeSource?.resume()
+        cursorBlinkTimer = Timer.scheduledTimer(withTimeInterval: 0.6, repeats: true) { [weak self] _ in
+            self?.cursorBlinkOn.toggle()
+            self?.needsRender = true
+        }
+        needsRender = true
     }
 
     // MARK: - Layer Setup (Metal)
@@ -1049,16 +1105,59 @@ class TerminalView: NSView {
         }
     }
 
+    /// Activate the write source to drain queued PTY writes when the fd is writable.
+    private func activateWriteSource() {
+        guard writeSource == nil, let s = surface else { return }
+        let fd = at_surface_get_fd(s)
+        if fd < 0 { return }
+
+        let source = DispatchSource.makeWriteSource(fileDescriptor: fd, queue: .main)
+        source.setEventHandler { [weak self] in
+            self?.drainWriteQueue()
+        }
+        source.setCancelHandler { }
+        source.resume()
+        self.writeSource = source
+    }
+
+    /// Drain queued writes; suspend write source when done.
+    private func drainWriteQueue() {
+        guard let s = surface else { return }
+        let result = at_surface_drain_writes(s)
+        if result < 0 {
+            // Error — stop trying
+            writeSource?.cancel()
+            writeSource = nil
+            return
+        }
+        if !at_surface_has_pending_writes(s) {
+            writeSource?.cancel()
+            writeSource = nil
+        }
+    }
+
+    /// Queue data for writing to the PTY (non-blocking).
+    private func queuePtyWrite(_ bytes: [UInt8]) {
+        guard let s = surface else { return }
+        bytes.withUnsafeBufferPointer { ptr in
+            guard let base = ptr.baseAddress else { return }
+            at_surface_queue_write(s, base, UInt32(ptr.count))
+        }
+        activateWriteSource()
+    }
+
     private func readPTY() {
         guard let s = surface else { return }
 
         var totalRead: Int32 = 0
         var iterations = 0
-        while iterations < 64 {
+        let deadline = CACurrentMediaTime() + 0.008 // 8ms cap
+        while iterations < 16 {
             let n = at_surface_process_pty(s)
             if n <= 0 { break }
             totalRead += n
             iterations += 1
+            if CACurrentMediaTime() >= deadline { break }
         }
 
         if totalRead > 0 {
@@ -1110,7 +1209,6 @@ class TerminalView: NSView {
             termCols = newCols
             termRows = newRows
             at_surface_resize(s, termCols, termRows)
-            cellBuffer = [CCell](repeating: CCell(), count: Int(termCols * termRows))
             updateCellBuffer()
             needsRender = true
             if appState == .terminal {
@@ -1126,6 +1224,7 @@ class TerminalView: NSView {
         if cellBuffer.count < needed {
             cellBuffer = [CCell](repeating: CCell(), count: needed)
         }
+        contentDirty = true
 
         cellBuffer.withUnsafeMutableBufferPointer { ptr in
             _ = at_surface_read_cells(s, ptr.baseAddress!, UInt32(needed))
@@ -1461,26 +1560,36 @@ class TerminalView: NSView {
 
         let viewportSize = layer.drawableSize
 
-        // Advance loading animation
+        // Advance loading animation (throttled to ~30fps to avoid starving scroll events)
         var currentLoadingPhase: Float? = nil
         if isWaitingForOutput || isGenerating || isLoadingResumeSessions {
-            loadingPhase += 0.012
-            if loadingPhase > 2.0 { loadingPhase -= 2.0 }
+            let now = CACurrentMediaTime()
+            let elapsed = now - lastLoadingRenderTime
+            if elapsed >= 0.033 {
+                loadingPhase += 0.024
+                if loadingPhase > 2.0 { loadingPhase -= 2.0 }
+                lastLoadingRenderTime = now
+                // Schedule next loading frame after interval instead of continuous rendering
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.033) { [weak self] in
+                    guard let self, self.isWaitingForOutput || self.isGenerating || self.isLoadingResumeSessions else { return }
+                    self.needsRender = true
+                }
+            }
             currentLoadingPhase = loadingPhase
-            needsRender = true
         }
 
-        // Compute visible search highlights
-        let highlights = computeVisibleSearchHighlights()
-
-        // Compute fold indicators
-        let foldIndicators = computeFoldIndicators()
-
-        // Apply syntax highlighting to code blocks (mutates cellBuffer, returns rows for bg tint)
-        let codeBlockRows = applySyntaxHighlighting()
-
-        // Apply diff highlighting (colored backgrounds for +/-/@@ lines)
-        let diffRowColors = applyDiffHighlighting()
+        // Only recompute visual overlays when content has changed, debounced to 100ms
+        if contentDirty {
+            let now = CACurrentMediaTime()
+            if now - lastOverlayComputeTime >= 0.1 {
+                cachedSearchHighlights = computeVisibleSearchHighlights()
+                cachedFoldIndicators = computeFoldIndicators()
+                cachedCodeBlockRows = applySyntaxHighlighting()
+                cachedDiffRowColors = applyDiffHighlighting()
+                lastOverlayComputeTime = now
+                contentDirty = false
+            }
+        }
 
         cellBuffer.withUnsafeBufferPointer { ptr in
             guard let baseAddress = ptr.baseAddress else { return }
@@ -1496,11 +1605,11 @@ class TerminalView: NSView {
                 drawable: drawable,
                 viewportSize: CGSize(width: viewportSize.width, height: viewportSize.height),
                 scale: layer.contentsScale,
-                searchHighlights: highlights.cells,
-                currentHighlight: highlights.currentIndex,
-                foldIndicators: foldIndicators,
-                codeBlockRows: codeBlockRows,
-                diffRowColors: diffRowColors,
+                searchHighlights: cachedSearchHighlights.cells,
+                currentHighlight: cachedSearchHighlights.currentIndex,
+                foldIndicators: cachedFoldIndicators,
+                codeBlockRows: cachedCodeBlockRows,
+                diffRowColors: cachedDiffRowColors,
                 loadingPhase: currentLoadingPhase
             )
         }
@@ -2004,10 +2113,7 @@ class TerminalView: NSView {
         pb.clearContents()
         pb.setString(text, forType: .string)
 
-        // Clear selection after copy
-        at_surface_clear_selection(s)
-        updateCellBuffer()
-        needsRender = true
+        onCopied?()
         return true
     }
 
@@ -2041,35 +2147,29 @@ class TerminalView: NSView {
     }
 
     private func pasteFromClipboard() {
-        guard let s = surface else { return }
+        guard let _ = surface else { return }
         guard let text = NSPasteboard.general.string(forType: .string) else { return }
 
-        let bracketedPaste = at_surface_get_bracketed_paste(s)
+        let bracketedPaste = at_surface_get_bracketed_paste(surface)
         var pasteData = text
         if bracketedPaste {
             pasteData = "\u{1b}[200~" + text + "\u{1b}[201~"
         }
 
-        let bytes = Array(pasteData.utf8)
-        bytes.withUnsafeBufferPointer { ptr in
-            _ = at_surface_key_event(s, ptr.baseAddress!, UInt32(ptr.count))
-        }
+        queuePtyWrite(Array(pasteData.utf8))
     }
 
     /// Inject text into the terminal as if typed (used by voice dictation).
     func injectText(_ text: String) {
-        guard let s = surface else { return }
+        guard let _ = surface else { return }
 
-        let bracketedPaste = at_surface_get_bracketed_paste(s)
+        let bracketedPaste = at_surface_get_bracketed_paste(surface)
         var data = text
         if bracketedPaste {
             data = "\u{1b}[200~" + text + "\u{1b}[201~"
         }
 
-        let bytes = Array(data.utf8)
-        bytes.withUnsafeBufferPointer { ptr in
-            _ = at_surface_key_event(s, ptr.baseAddress!, UInt32(ptr.count))
-        }
+        queuePtyWrite(Array(data.utf8))
     }
 
     /// Set the search query in the search bar (opens search if not visible).
@@ -2105,10 +2205,7 @@ class TerminalView: NSView {
             shellEscape(url.path)
         }
         let joined = paths.joined(separator: " ")
-        let bytes = Array(joined.utf8)
-        bytes.withUnsafeBufferPointer { ptr in
-            _ = at_surface_key_event(s, ptr.baseAddress!, UInt32(ptr.count))
-        }
+        queuePtyWrite(Array(joined.utf8))
         return true
     }
 
@@ -2171,6 +2268,7 @@ class TerminalView: NSView {
         searchResults = []
         currentSearchIndex = 0
         searchQueryLength = query.count
+        contentDirty = true
 
         if query.isEmpty {
             searchBar?.updateMatchCount(current: 0, total: 0)
