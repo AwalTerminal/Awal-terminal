@@ -151,7 +151,17 @@ final class GlyphAtlas {
             rowHeight = 0
         }
         if cursorY + bitmapH > atlasHeight {
-            return nil
+            // Atlas full — clear and rebuild instead of returning nil
+            resetAtlas()
+            // Re-check after reset (cursor is at 0,0 now)
+            if cursorX + bitmapW > atlasWidth {
+                cursorX = 0
+                cursorY += rowHeight
+                rowHeight = 0
+            }
+            if cursorY + bitmapH > atlasHeight {
+                return nil // Glyph too large even for empty atlas
+            }
         }
 
         // Rasterize at native pixel resolution
@@ -238,6 +248,27 @@ final class GlyphAtlas {
     }
 
     var cachedCount: Int { cache.count }
+
+    /// Clear the atlas texture and all caches, resetting the packing cursor.
+    /// Visible glyphs re-rasterize lazily on subsequent lookup() calls.
+    private func resetAtlas() {
+        cursorX = 0
+        cursorY = 0
+        rowHeight = 0
+        cache.removeAll(keepingCapacity: true)
+        ligatureCache.removeAll(keepingCapacity: true)
+
+        // Zero the atlas texture
+        let zeroData = [UInt8](repeating: 0, count: atlasWidth * atlasHeight)
+        zeroData.withUnsafeBytes { ptr in
+            texture.replace(
+                region: MTLRegion(origin: MTLOrigin(), size: MTLSize(width: atlasWidth, height: atlasHeight, depth: 1)),
+                mipmapLevel: 0,
+                withBytes: ptr.baseAddress!,
+                bytesPerRow: atlasWidth
+            )
+        }
+    }
 
     /// Search installed fonts for a Nerd Font (by name) that has Powerline glyphs.
     private static func findNerdFont(size: CGFloat) -> CTFont? {
@@ -363,7 +394,15 @@ final class GlyphAtlas {
             cursorY += rowHeight
             rowHeight = 0
         }
-        if cursorY + bitmapH > atlasHeight { return nil }
+        if cursorY + bitmapH > atlasHeight {
+            resetAtlas()
+            if cursorX + bitmapW > atlasWidth {
+                cursorX = 0
+                cursorY += rowHeight
+                rowHeight = 0
+            }
+            if cursorY + bitmapH > atlasHeight { return nil }
+        }
 
         let colorSpace = CGColorSpaceCreateDeviceRGB()
         let bitmapInfo = CGBitmapInfo.byteOrder32Little.rawValue | CGImageAlphaInfo.premultipliedFirst.rawValue
