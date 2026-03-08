@@ -135,7 +135,7 @@ void at_surface_get_size(const struct ATSurface *surface,
                          uint32_t *rows);
 
 /**
- * Resize the terminal surface.
+ * Resize the terminal surface (screen grid + PTY).
  */
 void at_surface_resize(struct ATSurface *surface,
                        uint32_t cols,

@@ -260,7 +260,7 @@ pub extern "C" fn at_surface_get_size(
     }
 }
 
-/// Resize the terminal surface.
+/// Resize the terminal surface (screen grid + PTY).
 #[no_mangle]
 pub extern "C" fn at_surface_resize(surface: *mut ATSurface, cols: u32, rows: u32) {
     let surface = mut_ref_or!(surface);
@@ -608,19 +608,19 @@ pub extern "C" fn at_surface_get_hyperlink(
 
     // Determine which hyperlink storage to query based on viewport position
     let url = if screen.viewport_offset == 0 || screen.modes.alternate_screen {
-        // Reading from active grid
-        screen.active_grid().hyperlinks.get(&(row, col))
+        // Reading from active grid (physical row keys handled by accessor)
+        screen.active_grid().get_hyperlink(row, col)
     } else {
         let scrollback_len = screen.scrollback.len();
         let viewport_start = scrollback_len.saturating_sub(screen.viewport_offset);
         let abs_row = viewport_start + row;
         if abs_row < scrollback_len {
-            // Reading from scrollback
-            screen.scrollback_hyperlinks.get(&(abs_row, col))
+            // Reading from scrollback (absolute key = base + deque index)
+            screen.scrollback_hyperlinks.get(&(screen.scrollback_hyperlink_base + abs_row, col))
         } else {
             // Reading from active grid
             let grid_row = abs_row - scrollback_len;
-            screen.active_grid().hyperlinks.get(&(grid_row, col))
+            screen.active_grid().get_hyperlink(grid_row, col)
         }
     };
 
