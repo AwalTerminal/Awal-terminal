@@ -93,7 +93,7 @@ class AISidePanelView: NSView {
 
     private func setup() {
         wantsLayer = true
-        layer?.backgroundColor = NSColor(red: 22/255, green: 22/255, blue: 22/255, alpha: 1).cgColor
+        layer?.backgroundColor = NSColor(red: 22.0/255.0, green: 22.0/255.0, blue: 22.0/255.0, alpha: 1).cgColor
 
         let monoFont = NSFont.monospacedSystemFont(ofSize: 11.0, weight: .regular)
         let monoFontSmall = NSFont.monospacedSystemFont(ofSize: 10.0, weight: .regular)
@@ -147,7 +147,7 @@ class AISidePanelView: NSView {
         addSubview(contextBarBackground)
 
         contextBarFill.wantsLayer = true
-        contextBarFill.layer?.backgroundColor = NSColor(red: 80/255, green: 200/255, blue: 120/255, alpha: 1.0).cgColor
+        contextBarFill.layer?.backgroundColor = NSColor(red: 80.0/255.0, green: 200.0/255.0, blue: 120.0/255.0, alpha: 1.0).cgColor
         contextBarFill.layer?.cornerRadius = 3
         contextBarFill.translatesAutoresizingMaskIntoConstraints = false
         contextBarBackground.addSubview(contextBarFill)
@@ -170,7 +170,7 @@ class AISidePanelView: NSView {
 
         // Phase label (generating indicator)
         phaseLabel.font = monoFont
-        phaseLabel.textColor = NSColor(red: 120/255, green: 220/255, blue: 120/255, alpha: 1.0)
+        phaseLabel.textColor = NSColor(red: 120.0/255.0, green: 220.0/255.0, blue: 120.0/255.0, alpha: 1.0)
         phaseLabel.isHidden = true
         configureLabel(phaseLabel)
 
@@ -453,11 +453,11 @@ class AISidePanelView: NSView {
         // Color coding
         let barColor: NSColor
         if fraction < 0.5 {
-            barColor = NSColor(red: 80/255, green: 200/255, blue: 120/255, alpha: 1.0)
+            barColor = NSColor(red: 80.0/255.0, green: 200.0/255.0, blue: 120.0/255.0, alpha: 1.0)
         } else if fraction < 0.8 {
-            barColor = NSColor(red: 240/255, green: 200/255, blue: 60/255, alpha: 1.0)
+            barColor = NSColor(red: 240.0/255.0, green: 200.0/255.0, blue: 60.0/255.0, alpha: 1.0)
         } else {
-            barColor = NSColor(red: 240/255, green: 100/255, blue: 70/255, alpha: 1.0)
+            barColor = NSColor(red: 240.0/255.0, green: 100.0/255.0, blue: 70.0/255.0, alpha: 1.0)
         }
         contextBarFill.layer?.backgroundColor = barColor.cgColor
         contextPercentLabel.textColor = barColor
@@ -498,7 +498,7 @@ class AISidePanelView: NSView {
         for file in files.prefix(maxVisible) {
             let label = NSTextField(labelWithString: "  \(shortenPath(file))")
             label.font = NSFont.monospacedSystemFont(ofSize: 10.0, weight: .regular)
-            label.textColor = NSColor(red: 130/255, green: 170/255, blue: 255/255, alpha: 1.0)
+            label.textColor = NSColor(red: 130.0/255.0, green: 170.0/255.0, blue: 255.0/255.0, alpha: 1.0)
             label.isEditable = false
             label.isBordered = false
             label.drawsBackground = false
@@ -873,7 +873,7 @@ extension AISidePanelView: NSOutlineViewDataSource, NSOutlineViewDelegate {
         if node.isDirectory {
             let img = NSImage(systemSymbolName: "folder.fill", accessibilityDescription: nil)
             cellView.imageView?.image = img
-            cellView.imageView?.contentTintColor = NSColor(red: 130/255, green: 170/255, blue: 255/255, alpha: 1.0)
+            cellView.imageView?.contentTintColor = NSColor(red: 130.0/255.0, green: 170.0/255.0, blue: 255.0/255.0, alpha: 1.0)
             cellView.textField?.stringValue = "\(node.name)/"
             cellView.textField?.font = monoFont
             cellView.textField?.textColor = NSColor(white: 0.55, alpha: 1.0)

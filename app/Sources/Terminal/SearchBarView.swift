@@ -66,7 +66,7 @@ class SearchBarView: NSView, NSTextFieldDelegate {
 
     private func setup() {
         wantsLayer = true
-        layer?.backgroundColor = NSColor(red: 30/255, green: 30/255, blue: 30/255, alpha: 0.95).cgColor
+        layer?.backgroundColor = NSColor(red: 30.0/255.0, green: 30.0/255.0, blue: 30.0/255.0, alpha: 0.95).cgColor
         layer?.borderColor = NSColor(white: 1.0, alpha: 0.1).cgColor
         layer?.borderWidth = 1
         layer?.cornerRadius = 6

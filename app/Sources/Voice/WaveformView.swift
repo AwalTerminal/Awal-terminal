@@ -7,7 +7,7 @@ class WaveformView: NSView {
     var barCount: Int = 5
 
     /// Bar color
-    var barColor: NSColor = NSColor(red: 120/255, green: 220/255, blue: 120/255, alpha: 1.0)
+    var barColor: NSColor = NSColor(red: 120.0/255.0, green: 220.0/255.0, blue: 120.0/255.0, alpha: 1.0)
 
     /// Current audio level (0.0 - 1.0)
     var audioLevel: Float = 0 {

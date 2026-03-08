@@ -14,10 +14,10 @@ struct GitFileChange: Equatable {
 
         var color: NSColor {
             switch self {
-            case .modified:  return NSColor(red: 230/255, green: 180/255, blue: 60/255, alpha: 1.0)
-            case .added:     return NSColor(red: 80/255, green: 200/255, blue: 80/255, alpha: 1.0)
-            case .deleted:   return NSColor(red: 220/255, green: 80/255, blue: 80/255, alpha: 1.0)
-            case .renamed:   return NSColor(red: 100/255, green: 150/255, blue: 255/255, alpha: 1.0)
+            case .modified:  return NSColor(red: 230.0/255.0, green: 180.0/255.0, blue: 60.0/255.0, alpha: 1.0)
+            case .added:     return NSColor(red: 80.0/255.0, green: 200.0/255.0, blue: 80.0/255.0, alpha: 1.0)
+            case .deleted:   return NSColor(red: 220.0/255.0, green: 80.0/255.0, blue: 80.0/255.0, alpha: 1.0)
+            case .renamed:   return NSColor(red: 100.0/255.0, green: 150.0/255.0, blue: 255.0/255.0, alpha: 1.0)
             case .untracked: return NSColor(white: 0.5, alpha: 1.0)
             }
         }

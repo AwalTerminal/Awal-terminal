@@ -20,8 +20,8 @@ class TranscriptionOverlayView {
 
         prefixLabel.stringValue = isCommand ? "[Command]" : "[Dictation]"
         prefixLabel.textColor = isCommand
-            ? NSColor(red: 120/255, green: 220/255, blue: 120/255, alpha: 1.0)
-            : NSColor(red: 180/255, green: 180/255, blue: 255/255, alpha: 1.0)
+            ? NSColor(red: 120.0/255.0, green: 220.0/255.0, blue: 120.0/255.0, alpha: 1.0)
+            : NSColor(red: 180.0/255.0, green: 180.0/255.0, blue: 255.0/255.0, alpha: 1.0)
 
         label.stringValue = text
 

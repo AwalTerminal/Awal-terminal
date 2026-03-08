@@ -30,7 +30,7 @@ class ProfileBar: NSView {
 
         activeLabel = NSTextField(labelWithString: "(active)")
         activeLabel.font = Theme.barFont
-        activeLabel.textColor = NSColor(red: 79/255, green: 70/255, blue: 229/255, alpha: 1)
+        activeLabel.textColor = NSColor(red: 79.0/255.0, green: 70.0/255.0, blue: 229.0/255.0, alpha: 1)
         activeLabel.translatesAutoresizingMaskIntoConstraints = false
 
         newButton = ProfileBar.makeButton(title: "New", image: "plus")

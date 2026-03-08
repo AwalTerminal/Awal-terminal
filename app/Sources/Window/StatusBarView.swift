@@ -103,7 +103,7 @@ class StatusBarView: NSView {
 
         // Generating indicator (fixed-width, between model and sep1)
         generatingLabel.font = monoFont
-        generatingLabel.textColor = NSColor(red: 120/255, green: 220/255, blue: 120/255, alpha: 1.0)
+        generatingLabel.textColor = NSColor(red: 120.0/255.0, green: 220.0/255.0, blue: 120.0/255.0, alpha: 1.0)
         generatingLabel.isEditable = false
         generatingLabel.isBordered = false
         generatingLabel.drawsBackground = false
@@ -469,17 +469,17 @@ class StatusBarView: NSView {
             voiceWaveform.isHidden = true
         case .listening:
             voiceLabel.stringValue = "MIC"
-            voiceLabel.textColor = NSColor(red: 120/255, green: 220/255, blue: 120/255, alpha: 1.0)
+            voiceLabel.textColor = NSColor(red: 120.0/255.0, green: 220.0/255.0, blue: 120.0/255.0, alpha: 1.0)
             voiceWaveform.isHidden = true
             voiceWaveform.stopAnimating()
         case .recording:
             voiceLabel.stringValue = "REC"
-            voiceLabel.textColor = NSColor(red: 255/255, green: 80/255, blue: 80/255, alpha: 1.0)
+            voiceLabel.textColor = NSColor(red: 255.0/255.0, green: 80.0/255.0, blue: 80.0/255.0, alpha: 1.0)
             voiceWaveform.isHidden = false
             voiceWaveform.startAnimating()
         case .processing:
             voiceLabel.stringValue = "..."
-            voiceLabel.textColor = NSColor(red: 255/255, green: 200/255, blue: 50/255, alpha: 1.0)
+            voiceLabel.textColor = NSColor(red: 255.0/255.0, green: 200.0/255.0, blue: 50.0/255.0, alpha: 1.0)
             voiceWaveform.stopAnimating()
             voiceWaveform.isHidden = true
         }
@@ -501,7 +501,7 @@ class StatusBarView: NSView {
         flashTimer?.invalidate()
         savedDimsText = dimsLabel.stringValue
         dimsLabel.stringValue = message
-        dimsLabel.textColor = NSColor(red: 120/255, green: 220/255, blue: 120/255, alpha: 1.0)
+        dimsLabel.textColor = NSColor(red: 120.0/255.0, green: 220.0/255.0, blue: 120.0/255.0, alpha: 1.0)
         flashTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { [weak self] _ in
             self?.dimsLabel.stringValue = self?.savedDimsText ?? ""
             self?.dimsLabel.textColor = NSColor(white: 0.45, alpha: 1.0)

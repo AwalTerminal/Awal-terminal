@@ -282,7 +282,7 @@ final class MetalRenderer {
 
         // Theme colors — convert to sRGB to safely access r/g/b components
         let bg = (bgColor ?? AppConfig.shared.themeBg).usingColorSpace(.sRGB)
-            ?? NSColor(red: 30/255, green: 30/255, blue: 30/255, alpha: 1)
+            ?? NSColor(red: 30.0/255.0, green: 30.0/255.0, blue: 30.0/255.0, alpha: 1)
         self.clearColor = MTLClearColor(
             red: Double(bg.redComponent),
             green: Double(bg.greenComponent),

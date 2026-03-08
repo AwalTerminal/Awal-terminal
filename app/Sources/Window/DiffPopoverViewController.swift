@@ -41,7 +41,7 @@ class DiffPopoverViewController: NSViewController {
 
         textView.isEditable = false
         textView.isSelectable = true
-        textView.backgroundColor = NSColor(red: 30/255, green: 30/255, blue: 30/255, alpha: 1.0)
+        textView.backgroundColor = NSColor(red: 30.0/255.0, green: 30.0/255.0, blue: 30.0/255.0, alpha: 1.0)
         textView.textContainerInset = NSSize(width: 6, height: 4)
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
@@ -155,11 +155,11 @@ class DiffPopoverViewController: NSViewController {
         let attributed = NSMutableAttributedString()
         let lines = text.components(separatedBy: "\n")
 
-        let greenBg = NSColor(red: 40/255, green: 80/255, blue: 40/255, alpha: 0.4)
-        let redBg = NSColor(red: 100/255, green: 30/255, blue: 30/255, alpha: 0.4)
-        let greenText = NSColor(red: 120/255, green: 220/255, blue: 120/255, alpha: 1.0)
-        let redText = NSColor(red: 240/255, green: 100/255, blue: 100/255, alpha: 1.0)
-        let hunkText = NSColor(red: 100/255, green: 150/255, blue: 220/255, alpha: 1.0)
+        let greenBg = NSColor(red: 40.0/255.0, green: 80.0/255.0, blue: 40.0/255.0, alpha: 0.4)
+        let redBg = NSColor(red: 100.0/255.0, green: 30.0/255.0, blue: 30.0/255.0, alpha: 0.4)
+        let greenText = NSColor(red: 120.0/255.0, green: 220.0/255.0, blue: 120.0/255.0, alpha: 1.0)
+        let redText = NSColor(red: 240.0/255.0, green: 100.0/255.0, blue: 100.0/255.0, alpha: 1.0)
+        let hunkText = NSColor(red: 100.0/255.0, green: 150.0/255.0, blue: 220.0/255.0, alpha: 1.0)
         let defaultText = NSColor(white: 0.7, alpha: 1.0)
 
         var maxLineWidth: CGFloat = 0

@@ -8,14 +8,14 @@ struct AppConfig {
     var fontSize: CGFloat = 13.0
 
     // Theme colors
-    var themeBg: NSColor = NSColor(red: 30/255, green: 30/255, blue: 30/255, alpha: 1)
+    var themeBg: NSColor = NSColor(red: 30.0/255.0, green: 30.0/255.0, blue: 30.0/255.0, alpha: 1)
     var themeFg: NSColor = NSColor(white: 0.85, alpha: 1)
     var themeCursor: NSColor = NSColor(red: 0.8, green: 0.8, blue: 0.8, alpha: 0.7)
-    var themeSelection: NSColor = NSColor(red: 99/255, green: 102/255, blue: 241/255, alpha: 0.3)
-    var themeAccent: NSColor = NSColor(red: 99/255, green: 102/255, blue: 241/255, alpha: 1)
-    var themeTabBarBg: NSColor = NSColor(red: 22/255, green: 22/255, blue: 22/255, alpha: 1)
-    var themeTabActiveBg: NSColor = NSColor(red: 35/255, green: 35/255, blue: 35/255, alpha: 1)
-    var themeStatusBarBg: NSColor = NSColor(red: 22/255, green: 22/255, blue: 22/255, alpha: 1)
+    var themeSelection: NSColor = NSColor(red: 99.0/255.0, green: 102.0/255.0, blue: 241.0/255.0, alpha: 0.3)
+    var themeAccent: NSColor = NSColor(red: 99.0/255.0, green: 102.0/255.0, blue: 241.0/255.0, alpha: 1)
+    var themeTabBarBg: NSColor = NSColor(red: 22.0/255.0, green: 22.0/255.0, blue: 22.0/255.0, alpha: 1)
+    var themeTabActiveBg: NSColor = NSColor(red: 35.0/255.0, green: 35.0/255.0, blue: 35.0/255.0, alpha: 1)
+    var themeStatusBarBg: NSColor = NSColor(red: 22.0/255.0, green: 22.0/255.0, blue: 22.0/255.0, alpha: 1)
 
     // ANSI colors (0-15)
     var ansiColors: [NSColor] = defaultAnsiColors
@@ -206,22 +206,22 @@ struct AppConfig {
 
     private static let defaultAnsiColors: [NSColor] = [
         // Standard 0-7
-        NSColor(red: 0x1e/255, green: 0x1e/255, blue: 0x1e/255, alpha: 1), // 0 black
-        NSColor(red: 0xf7/255, green: 0x76/255, blue: 0x8e/255, alpha: 1), // 1 red
-        NSColor(red: 0xa6/255, green: 0xe2/255, blue: 0x2e/255, alpha: 1), // 2 green
-        NSColor(red: 0xe6/255, green: 0xdb/255, blue: 0x74/255, alpha: 1), // 3 yellow
-        NSColor(red: 0x66/255, green: 0xd9/255, blue: 0xef/255, alpha: 1), // 4 blue
-        NSColor(red: 0xae/255, green: 0x81/255, blue: 0xff/255, alpha: 1), // 5 magenta
-        NSColor(red: 0xa1/255, green: 0xef/255, blue: 0xe4/255, alpha: 1), // 6 cyan
-        NSColor(red: 0xf8/255, green: 0xf8/255, blue: 0xf2/255, alpha: 1), // 7 white
+        NSColor(red: 0x1e/255.0, green: 0x1e/255.0, blue: 0x1e/255.0, alpha: 1), // 0 black
+        NSColor(red: 0xf7/255.0, green: 0x76/255.0, blue: 0x8e/255.0, alpha: 1), // 1 red
+        NSColor(red: 0xa6/255.0, green: 0xe2/255.0, blue: 0x2e/255.0, alpha: 1), // 2 green
+        NSColor(red: 0xe6/255.0, green: 0xdb/255.0, blue: 0x74/255.0, alpha: 1), // 3 yellow
+        NSColor(red: 0x66/255.0, green: 0xd9/255.0, blue: 0xef/255.0, alpha: 1), // 4 blue
+        NSColor(red: 0xae/255.0, green: 0x81/255.0, blue: 0xff/255.0, alpha: 1), // 5 magenta
+        NSColor(red: 0xa1/255.0, green: 0xef/255.0, blue: 0xe4/255.0, alpha: 1), // 6 cyan
+        NSColor(red: 0xf8/255.0, green: 0xf8/255.0, blue: 0xf2/255.0, alpha: 1), // 7 white
         // Bright 8-15
-        NSColor(red: 0x75/255, green: 0x71/255, blue: 0x5e/255, alpha: 1), // 8 bright black
-        NSColor(red: 0xf7/255, green: 0x76/255, blue: 0x8e/255, alpha: 1), // 9 bright red
-        NSColor(red: 0xa6/255, green: 0xe2/255, blue: 0x2e/255, alpha: 1), // 10 bright green
-        NSColor(red: 0xe6/255, green: 0xdb/255, blue: 0x74/255, alpha: 1), // 11 bright yellow
-        NSColor(red: 0x66/255, green: 0xd9/255, blue: 0xef/255, alpha: 1), // 12 bright blue
-        NSColor(red: 0xae/255, green: 0x81/255, blue: 0xff/255, alpha: 1), // 13 bright magenta
-        NSColor(red: 0xa1/255, green: 0xef/255, blue: 0xe4/255, alpha: 1), // 14 bright cyan
-        NSColor(red: 0xf9/255, green: 0xf8/255, blue: 0xf5/255, alpha: 1), // 15 bright white
+        NSColor(red: 0x75/255.0, green: 0x71/255.0, blue: 0x5e/255.0, alpha: 1), // 8 bright black
+        NSColor(red: 0xf7/255.0, green: 0x76/255.0, blue: 0x8e/255.0, alpha: 1), // 9 bright red
+        NSColor(red: 0xa6/255.0, green: 0xe2/255.0, blue: 0x2e/255.0, alpha: 1), // 10 bright green
+        NSColor(red: 0xe6/255.0, green: 0xdb/255.0, blue: 0x74/255.0, alpha: 1), // 11 bright yellow
+        NSColor(red: 0x66/255.0, green: 0xd9/255.0, blue: 0xef/255.0, alpha: 1), // 12 bright blue
+        NSColor(red: 0xae/255.0, green: 0x81/255.0, blue: 0xff/255.0, alpha: 1), // 13 bright magenta
+        NSColor(red: 0xa1/255.0, green: 0xef/255.0, blue: 0xe4/255.0, alpha: 1), // 14 bright cyan
+        NSColor(red: 0xf9/255.0, green: 0xf8/255.0, blue: 0xf5/255.0, alpha: 1), // 15 bright white
     ]
 }
