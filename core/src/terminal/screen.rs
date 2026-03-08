@@ -32,6 +32,9 @@ pub struct Grid {
     pub cells: Vec<Vec<Cell>>,
     base: usize, // ring buffer offset for O(1) full-screen scrolling
     pub hyperlinks: HashMap<(usize, usize), String>,
+    /// Tracks whether row `i` was soft-wrapped (auto-wrap at column boundary).
+    /// Indexed via `(base + row) % rows`, same as cells.
+    pub wrapped: Vec<bool>,
 }
 
 impl Grid {
@@ -39,7 +42,8 @@ impl Grid {
         let cells = (0..rows)
             .map(|_| (0..cols).map(|_| Cell::default()).collect())
             .collect();
-        Self { cols, rows, cells, base: 0, hyperlinks: HashMap::new() }
+        let wrapped = vec![false; rows];
+        Self { cols, rows, cells, base: 0, hyperlinks: HashMap::new(), wrapped }
     }
 
     pub fn cell(&self, row: usize, col: usize) -> &Cell {
@@ -59,9 +63,30 @@ impl Grid {
         }
         self.base = 0;
         self.hyperlinks.clear();
+        for w in &mut self.wrapped {
+            *w = false;
+        }
     }
 
-    pub fn scroll_up(&mut self, top: usize, bottom: usize) -> Option<Vec<Cell>> {
+    /// Get the physical row index for a logical row.
+    pub fn physical_row(&self, row: usize) -> usize {
+        (self.base + row) % self.rows
+    }
+
+    pub fn get_hyperlink(&self, row: usize, col: usize) -> Option<&String> {
+        self.hyperlinks.get(&(self.physical_row(row), col))
+    }
+
+    pub fn set_hyperlink(&mut self, row: usize, col: usize, url: String) {
+        self.hyperlinks.insert((self.physical_row(row), col), url);
+    }
+
+    pub fn remove_hyperlink(&mut self, row: usize, col: usize) {
+        self.hyperlinks.remove(&(self.physical_row(row), col));
+    }
+
+    /// Scroll up within a region. Returns the removed row and its wrapped flag.
+    pub fn scroll_up(&mut self, top: usize, bottom: usize) -> Option<(Vec<Cell>, bool)> {
         if top + 1 >= bottom || bottom > self.rows {
             return None;
         }
@@ -73,30 +98,22 @@ impl Grid {
                 &mut self.cells[physical],
                 (0..self.cols).map(|_| Cell::default()).collect(),
             );
-            // Migrate hyperlinks: remove row 0's, shift others down
-            let mut migrated = Vec::new();
-            self.hyperlinks.retain(|&(r, c), v| {
-                if r == 0 {
-                    migrated.push((c, v.clone()));
-                    false
-                } else {
-                    true
-                }
-            });
-            // Shift remaining hyperlink row keys down by 1
-            let old: Vec<_> = self.hyperlinks.drain().collect();
-            for ((r, c), v) in old {
-                self.hyperlinks.insert((r - 1, c), v);
-            }
+            let was_wrapped = std::mem::replace(&mut self.wrapped[physical], false);
+            // Remove hyperlinks for the recycled physical row (logical row 0)
+            let phys_row0 = self.base % self.rows;
+            self.hyperlinks.retain(|&(r, _), _| r != phys_row0);
+            // No key shifting needed — physical keys remain valid after base rotation
             self.base = (self.base + 1) % self.rows;
-            return Some(removed);
+            return Some((removed, was_wrapped));
         }
 
         // Partial scroll region: linearize then use remove/insert
         self.linearize();
         let removed = self.cells.remove(top);
+        let was_wrapped = self.wrapped.remove(top);
         let blank = (0..self.cols).map(|_| Cell::default()).collect();
         self.cells.insert(bottom - 1, blank);
+        self.wrapped.insert(bottom - 1, false);
         // Remove hyperlinks for the removed row, shift affected rows
         self.hyperlinks.retain(|&(r, _), _| r != top);
         let old: Vec<_> = self.hyperlinks.drain().collect();
@@ -107,7 +124,7 @@ impl Grid {
                 self.hyperlinks.insert((r, c), v);
             }
         }
-        Some(removed)
+        Some((removed, was_wrapped))
     }
 
     pub fn scroll_down(&mut self, top: usize, bottom: usize) {
@@ -116,8 +133,10 @@ impl Grid {
         }
         self.linearize();
         self.cells.remove(bottom - 1);
+        self.wrapped.remove(bottom - 1);
         let blank = (0..self.cols).map(|_| Cell::default()).collect();
         self.cells.insert(top, blank);
+        self.wrapped.insert(top, false);
         // Remove hyperlinks for the removed bottom row, shift affected rows up
         self.hyperlinks.retain(|&(r, _), _| r != bottom - 1);
         let old: Vec<_> = self.hyperlinks.drain().collect();
@@ -135,8 +154,10 @@ impl Grid {
         while self.cells.len() < new_rows {
             self.cells
                 .push((0..new_cols).map(|_| Cell::default()).collect());
+            self.wrapped.push(false);
         }
         self.cells.truncate(new_rows);
+        self.wrapped.truncate(new_rows);
         for row in &mut self.cells {
             row.resize(new_cols, Cell::default());
         }
@@ -153,6 +174,13 @@ impl Grid {
         }
         let physical_base = self.base % self.rows;
         self.cells.rotate_left(physical_base);
+        self.wrapped.rotate_left(physical_base);
+        // Remap hyperlink keys from old physical indices to new (logical, since base becomes 0)
+        let old: Vec<_> = self.hyperlinks.drain().collect();
+        for ((p, c), v) in old {
+            let new_p = (p + self.rows - physical_base) % self.rows;
+            self.hyperlinks.insert((new_p, c), v);
+        }
         self.base = 0;
     }
 }
@@ -237,8 +265,16 @@ pub struct Screen {
     pub title: String,
     pub working_directory: String,
     pub current_hyperlink: Option<String>,
-    /// Sparse hyperlink storage for scrollback lines, keyed by (scrollback_index, col).
+    /// Sparse hyperlink storage for scrollback lines, keyed by (scrollback_hyperlink_base + index, col).
     pub scrollback_hyperlinks: HashMap<(usize, usize), String>,
+    /// Base offset for scrollback hyperlink keys, incremented on eviction to avoid O(n) key shifting.
+    pub(crate) scrollback_hyperlink_base: usize,
+    /// Wrapped flags parallel to scrollback — true if row was soft-wrapped.
+    pub scrollback_wrapped: VecDeque<bool>,
+    /// After resize, the child process replays content already in scrollback.
+    /// This counter tracks how many scroll-up events to suppress (don't add
+    /// to scrollback) to avoid duplication. Decremented in do_scroll_up.
+    scrollback_replay_remaining: usize,
 }
 
 impl Screen {
@@ -267,6 +303,9 @@ impl Screen {
             working_directory: String::new(),
             current_hyperlink: None,
             scrollback_hyperlinks: HashMap::new(),
+            scrollback_hyperlink_base: 0,
+            scrollback_wrapped: VecDeque::new(),
+            scrollback_replay_remaining: 0,
         }
     }
 
@@ -303,6 +342,10 @@ impl Screen {
 
         if self.cursor.col >= self.cols {
             if self.modes.auto_wrap {
+                // Mark the current row as soft-wrapped
+                let wrap_row = self.cursor.row;
+                let phys = self.active_grid().physical_row(wrap_row);
+                self.active_grid_mut().wrapped[phys] = true;
                 self.cursor.col = 0;
                 self.cursor.row += 1;
                 if self.cursor.row >= self.scroll_bottom {
@@ -330,9 +373,9 @@ impl Screen {
         cell.bg = bg;
         cell.attrs = attrs;
         if let Some(url) = self.current_hyperlink.clone() {
-            self.active_grid_mut().hyperlinks.insert((row, col), url);
+            self.active_grid_mut().set_hyperlink(row, col, url);
         } else {
-            self.active_grid_mut().hyperlinks.remove(&(row, col));
+            self.active_grid_mut().remove_hyperlink(row, col);
         }
         self.cursor.col += 1;
 
@@ -351,6 +394,12 @@ impl Screen {
     }
 
     pub fn newline(&mut self) {
+        // Mark current row as NOT wrapped (hard newline)
+        {
+            let row = self.cursor.row;
+            let phys = self.active_grid().physical_row(row);
+            self.active_grid_mut().wrapped[phys] = false;
+        }
         self.cursor.row += 1;
         if self.cursor.row >= self.scroll_bottom {
             self.cursor.row = self.scroll_bottom - 1;
@@ -401,10 +450,12 @@ impl Screen {
             0 => {
                 for c in col..grid.cols {
                     grid.cell_mut(row, c).reset();
+                    grid.remove_hyperlink(row, c);
                 }
                 for r in (row + 1)..grid.rows {
                     for c in 0..grid.cols {
                         grid.cell_mut(r, c).reset();
+                        grid.remove_hyperlink(r, c);
                     }
                 }
             }
@@ -412,10 +463,12 @@ impl Screen {
                 for r in 0..row {
                     for c in 0..grid.cols {
                         grid.cell_mut(r, c).reset();
+                        grid.remove_hyperlink(r, c);
                     }
                 }
                 for c in 0..=col.min(grid.cols - 1) {
                     grid.cell_mut(row, c).reset();
+                    grid.remove_hyperlink(row, c);
                 }
             }
             2 | 3 => {
@@ -433,16 +486,19 @@ impl Screen {
             0 => {
                 for c in col..grid.cols {
                     grid.cell_mut(row, c).reset();
+                    grid.remove_hyperlink(row, c);
                 }
             }
             1 => {
                 for c in 0..=col.min(grid.cols - 1) {
                     grid.cell_mut(row, c).reset();
+                    grid.remove_hyperlink(row, c);
                 }
             }
             2 => {
                 for c in 0..grid.cols {
                     grid.cell_mut(row, c).reset();
+                    grid.remove_hyperlink(row, c);
                 }
             }
             _ => {}
@@ -479,14 +535,33 @@ impl Screen {
         let col = self.cursor.col;
         let grid = self.active_grid_mut();
         let cols = grid.cols;
+        let phys = grid.physical_row(row);
 
+        // Collect hyperlinks that survive the shift (from c+count → c)
+        let mut shifted_links = Vec::new();
         for c in col..cols {
             if c + count < cols {
-                grid.cells[row][c] = grid.cells[row][c + count].clone();
-            } else {
-                grid.cells[row][c].reset();
+                if let Some(url) = grid.hyperlinks.get(&(phys, c + count)) {
+                    shifted_links.push((c, url.clone()));
+                }
             }
         }
+
+        // Shift cells left and clear hyperlinks in affected range
+        for c in col..cols {
+            if c + count < cols {
+                grid.cells[phys][c] = grid.cells[phys][c + count].clone();
+            } else {
+                grid.cells[phys][c].reset();
+            }
+            grid.hyperlinks.remove(&(phys, c));
+        }
+
+        // Re-insert shifted hyperlinks
+        for (c, url) in shifted_links {
+            grid.hyperlinks.insert((phys, c), url);
+        }
+
         self.dirty = true;
     }
 
@@ -497,6 +572,7 @@ impl Screen {
         let end = (col + count).min(grid.cols);
         for c in col..end {
             grid.cell_mut(row, c).reset();
+            grid.remove_hyperlink(row, c);
         }
         self.dirty = true;
     }
@@ -506,15 +582,33 @@ impl Screen {
         let col = self.cursor.col;
         let grid = self.active_grid_mut();
         let cols = grid.cols;
+        let phys = grid.physical_row(row);
 
-        // Shift characters right
-        for c in (col..cols).rev() {
-            if c >= col + count {
-                grid.cells[row][c] = grid.cells[row][c - count].clone();
-            } else {
-                grid.cells[row][c].reset();
+        // Collect hyperlinks that survive the shift (from c → c+count)
+        let mut shifted_links = Vec::new();
+        for c in col..cols {
+            if c + count < cols {
+                if let Some(url) = grid.hyperlinks.get(&(phys, c)) {
+                    shifted_links.push((c + count, url.clone()));
+                }
             }
         }
+
+        // Shift characters right and clear hyperlinks in affected range
+        for c in (col..cols).rev() {
+            if c >= col + count {
+                grid.cells[phys][c] = grid.cells[phys][c - count].clone();
+            } else {
+                grid.cells[phys][c].reset();
+            }
+            grid.hyperlinks.remove(&(phys, c));
+        }
+
+        // Re-insert shifted hyperlinks
+        for (c, url) in shifted_links {
+            grid.hyperlinks.insert((phys, c), url);
+        }
+
         self.dirty = true;
     }
 
@@ -523,13 +617,113 @@ impl Screen {
         self.cursor.col = col.min(self.cols - 1);
     }
 
+    /// Reflow scrollback lines to a new column width.
+    /// Joins consecutive soft-wrapped rows into logical lines, then re-wraps
+    /// each logical line to `new_cols`.
+    fn reflow_scrollback(&mut self, new_cols: usize) {
+        if self.scrollback.is_empty() {
+            return;
+        }
+
+        let old_sb: Vec<Vec<Cell>> = self.scrollback.drain(..).collect();
+        let old_wrapped: Vec<bool> = self.scrollback_wrapped.drain(..).collect();
+
+        // Build logical lines by joining consecutive wrapped rows
+        let mut logical_lines: Vec<Vec<Cell>> = Vec::new();
+        let mut current_line: Vec<Cell> = Vec::new();
+
+        for (i, row) in old_sb.into_iter().enumerate() {
+            // Trim trailing spaces from this row before appending
+            let mut trimmed = row;
+            while trimmed.last().map_or(false, |c| c.ch == ' ' && c.fg == Color::Default && c.bg == Color::Default && c.attrs == CellAttrs::empty()) {
+                trimmed.pop();
+            }
+            current_line.extend(trimmed);
+
+            let was_wrapped = old_wrapped.get(i).copied().unwrap_or(false);
+            if !was_wrapped {
+                // Hard break — end of logical line
+                logical_lines.push(std::mem::take(&mut current_line));
+            }
+        }
+        // Don't forget the last line if it was wrapped (no hard break at end)
+        if !current_line.is_empty() {
+            logical_lines.push(current_line);
+        }
+
+        // Re-wrap each logical line to new_cols
+        for line in logical_lines {
+            if line.is_empty() {
+                // Empty logical line → single empty row
+                self.scrollback.push_back(vec![Cell::default(); new_cols]);
+                self.scrollback_wrapped.push_back(false);
+                continue;
+            }
+
+            let chunks = line.chunks(new_cols);
+            let num_chunks = (line.len() + new_cols - 1) / new_cols;
+            for (chunk_idx, chunk) in chunks.enumerate() {
+                let mut new_row = chunk.to_vec();
+                // Pad to new_cols
+                while new_row.len() < new_cols {
+                    new_row.push(Cell::default());
+                }
+                let is_last = chunk_idx == num_chunks - 1;
+                self.scrollback.push_back(new_row);
+                // All chunks except the last are soft-wrapped
+                self.scrollback_wrapped.push_back(!is_last);
+            }
+        }
+
+        // Clear hyperlinks (they reference old row indices)
+        self.scrollback_hyperlinks.clear();
+        self.scrollback_hyperlink_base = 0;
+
+        // Enforce scrollback limit
+        while self.scrollback.len() > self.scrollback_limit {
+            self.scrollback.pop_front();
+            self.scrollback_wrapped.pop_front();
+            self.scrollback_hyperlink_base += 1;
+        }
+    }
+
     pub fn resize(&mut self, cols: usize, rows: usize) {
-        self.primary.resize(cols, rows);
-        self.alternate.resize(cols, rows);
+        let old_cols = self.cols;
+        let old_rows = self.rows;
+
+        // Invalidate selection — coordinates become meaningless after resize
+        self.selection.active = false;
+
+        if self.modes.alternate_screen {
+            // Alternate screen: simple resize + clear (TUI apps redraw after SIGWINCH)
+            self.primary.resize(cols, rows);
+            self.alternate.resize(cols, rows);
+            self.alternate.clear();
+            self.cursor.row = 0;
+            self.cursor.col = 0;
+        } else {
+            // Primary screen resize.
+            //
+            // Height-only change: use content-matched replay suppression.
+            // The child's replayed rows match scrollback content exactly
+            // since width is unchanged.
+            //
+            // Width change: reflow scrollback to new width, then use
+            // content-matched suppression. The child's post-SIGWINCH
+            // output wraps at the new width, matching reflowed scrollback.
+            if cols != old_cols {
+                self.reflow_scrollback(cols);
+            }
+            self.primary.resize(cols, rows);
+            self.alternate.resize(cols, rows);
+            self.scrollback_replay_remaining = self.scrollback.len();
+        }
+
         self.cols = cols;
         self.rows = rows;
         self.scroll_top = 0;
         self.scroll_bottom = rows;
+        self.viewport_offset = 0;
         if self.cursor.row >= rows {
             self.cursor.row = rows - 1;
         }
@@ -575,37 +769,53 @@ impl Screen {
         let is_primary = !self.modes.alternate_screen;
         let full_region = top == 0 && bottom == self.rows;
 
-        // Before scrolling, capture hyperlinks from row 0 (for scrollback migration)
+        // Before scrolling, capture hyperlinks from logical row 0 (for scrollback migration)
         let row0_hyperlinks: Vec<(usize, String)> = if is_primary && full_region {
             let grid = self.active_grid();
+            let phys_row0 = grid.physical_row(0);
             grid.hyperlinks.iter()
-                .filter(|&(&(r, _), _)| r == 0)
+                .filter(|&(&(r, _), _)| r == phys_row0)
                 .map(|(&(_, c), v)| (c, v.clone()))
                 .collect()
         } else {
             Vec::new()
         };
 
-        if let Some(removed) = self.active_grid_mut().scroll_up(top, bottom) {
+        if let Some((removed, was_wrapped)) = self.active_grid_mut().scroll_up(top, bottom) {
             if is_primary && full_region {
-                let sb_idx = self.scrollback.len();
-                self.scrollback.push_back(removed);
+                // Content-matched replay suppression: after resize, the child
+                // replays content already in scrollback. Compare the row being
+                // pushed against existing scrollback to detect replays.
+                if self.scrollback_replay_remaining > 0 {
+                    let check_idx = self.scrollback.len() - self.scrollback_replay_remaining;
+                    if check_idx < self.scrollback.len() {
+                        let existing = &self.scrollback[check_idx];
+                        let matches = removed.iter().zip(existing.iter())
+                            .all(|(a, b)| a.ch == b.ch);
+                        if matches {
+                            self.scrollback_replay_remaining -= 1;
+                            return; // Suppress duplicate — content already in scrollback
+                        }
+                    }
+                    // Content mismatch — stop suppressing, add normally
+                    self.scrollback_replay_remaining = 0;
+                }
 
-                // Migrate row 0 hyperlinks to scrollback
+                let abs_idx = self.scrollback_hyperlink_base + self.scrollback.len();
+                self.scrollback.push_back(removed);
+                self.scrollback_wrapped.push_back(was_wrapped);
+
+                // Migrate row 0 hyperlinks to scrollback using absolute index
                 for (c, url) in row0_hyperlinks {
-                    self.scrollback_hyperlinks.insert((sb_idx, c), url);
+                    self.scrollback_hyperlinks.insert((abs_idx, c), url);
                 }
 
                 if self.scrollback.len() > self.scrollback_limit {
                     self.scrollback.pop_front();
-                    // Remove hyperlinks for the evicted scrollback line
-                    let evicted_idx = 0;
-                    self.scrollback_hyperlinks.retain(|&(r, _), _| r != evicted_idx);
-                    // Shift all scrollback hyperlink indices down by 1
-                    let old: Vec<_> = self.scrollback_hyperlinks.drain().collect();
-                    for ((r, c), v) in old {
-                        self.scrollback_hyperlinks.insert((r - 1, c), v);
-                    }
+                    self.scrollback_wrapped.pop_front();
+                    // Remove hyperlinks for the evicted scrollback line and advance base
+                    self.scrollback_hyperlinks.retain(|&(r, _), _| r != self.scrollback_hyperlink_base);
+                    self.scrollback_hyperlink_base += 1;
                 }
                 // If user is scrolled up, keep their viewport stable
                 if self.viewport_offset > 0 {
@@ -806,5 +1016,204 @@ impl Screen {
             self.scroll_top = top;
             self.scroll_bottom = bottom;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Helper: write a string to the screen character by character.
+    fn write_str(screen: &mut Screen, s: &str) {
+        for ch in s.chars() {
+            if ch == '\n' {
+                screen.newline();
+                screen.carriage_return();
+            } else {
+                screen.write_char(ch);
+            }
+        }
+    }
+
+    /// Helper: read a row from the grid as a string (trimmed).
+    fn read_row(screen: &Screen, row: usize) -> String {
+        let grid = screen.active_grid();
+        let s: String = (0..grid.cols).map(|c| grid.cell(row, c).ch).collect();
+        s.trim_end().to_string()
+    }
+
+    /// Helper: read a scrollback row as a string (trimmed).
+    #[allow(dead_code)]
+    fn read_scrollback_row(screen: &Screen, idx: usize) -> String {
+        let s: String = screen.scrollback[idx].iter().map(|c| c.ch).collect();
+        s.trim_end().to_string()
+    }
+
+    #[test]
+    fn test_resize_height_preserves_grid() {
+        // Grid content is preserved on resize (Ghostty-like: child overwrites after SIGWINCH)
+        let mut screen = Screen::new(10, 5);
+        write_str(&mut screen, "line0\nline1\nline2\nline3\nline4");
+
+        screen.resize(10, 3);
+
+        // Grid should keep top rows (Grid::resize truncates bottom)
+        assert_eq!(read_row(&screen, 0), "line0");
+        assert_eq!(read_row(&screen, 1), "line1");
+        assert_eq!(read_row(&screen, 2), "line2");
+        // Cursor clamped to new bounds
+        assert!(screen.cursor.row < 3);
+    }
+
+    #[test]
+    fn test_content_matched_replay_suppression() {
+        // Simulate: output fills screen + scrollback, then resize, then child replays
+        let mut screen = Screen::new(20, 3);
+        for i in 0..6 {
+            write_str(&mut screen, &format!("line {}", i));
+            if i < 5 {
+                screen.newline();
+                screen.carriage_return();
+            }
+        }
+        // scrollback should have lines 0-2, grid has lines 3-5
+        let sb_before = screen.scrollback.len();
+        assert!(sb_before > 0);
+
+        // Resize triggers replay suppression
+        screen.resize(20, 3);
+
+        // Simulate child replaying: output same lines again from cursor home
+        screen.cursor.row = 0;
+        screen.cursor.col = 0;
+        for i in 0..6 {
+            write_str(&mut screen, &format!("line {}", i));
+            if i < 5 {
+                screen.newline();
+                screen.carriage_return();
+            }
+        }
+
+        // Scrollback should NOT have grown — replayed rows were suppressed
+        assert_eq!(screen.scrollback.len(), sb_before,
+            "scrollback grew from {} to {} (duplicates not suppressed)",
+            sb_before, screen.scrollback.len());
+    }
+
+    #[test]
+    fn test_replay_suppression_stops_on_new_content() {
+        let mut screen = Screen::new(20, 3);
+        for i in 0..6 {
+            write_str(&mut screen, &format!("line {}", i));
+            if i < 5 {
+                screen.newline();
+                screen.carriage_return();
+            }
+        }
+        let sb_before = screen.scrollback.len();
+
+        screen.resize(20, 3);
+
+        // Simulate child replaying some lines then outputting NEW content
+        screen.cursor.row = 0;
+        screen.cursor.col = 0;
+        for i in 0..3 {
+            write_str(&mut screen, &format!("line {}", i));
+            screen.newline();
+            screen.carriage_return();
+        }
+        // Now output new content that doesn't match scrollback
+        for i in 0..5 {
+            write_str(&mut screen, &format!("NEW {}", i));
+            if i < 4 {
+                screen.newline();
+                screen.carriage_return();
+            }
+        }
+
+        // Scrollback should have grown — new content was added after mismatch
+        assert!(screen.scrollback.len() > sb_before,
+            "new content should have been added to scrollback");
+    }
+
+    #[test]
+    fn test_width_change_reflows_scrollback() {
+        let mut screen = Screen::new(10, 3);
+        // Write 6 lines of 10-char content → 3 go to scrollback
+        for i in 0..6 {
+            write_str(&mut screen, &format!("line{:05}", i));
+            if i < 5 {
+                screen.newline();
+                screen.carriage_return();
+            }
+        }
+        let sb_before = screen.scrollback.len();
+        assert!(sb_before > 0);
+
+        // Width change should reflow scrollback (not clear it)
+        screen.resize(5, 3);
+        // Each 10-char line at width 5 → 2 rows, so scrollback grows
+        assert!(screen.scrollback.len() >= sb_before,
+            "scrollback should be reflowed on width change, not cleared");
+        // Content should be preserved: first scrollback row should start with "line0"
+        let first_row: String = screen.scrollback[0].iter().map(|c| c.ch).collect();
+        assert!(first_row.starts_with("line0"),
+            "reflowed scrollback should preserve content");
+    }
+
+    #[test]
+    fn test_resize_cursor_clamped() {
+        let mut screen = Screen::new(10, 5);
+        write_str(&mut screen, "some text");
+        screen.cursor.row = 4;
+        screen.cursor.col = 7;
+
+        // Cursor should be clamped to new bounds
+        screen.resize(10, 3);
+        assert!(screen.cursor.row < 3);
+        assert!(screen.cursor.col < 10);
+    }
+
+    #[test]
+    fn test_selection_cleared_on_resize() {
+        let mut screen = Screen::new(10, 5);
+        screen.selection.active = true;
+        screen.selection.start_col = 0;
+        screen.selection.start_row = 0;
+        screen.selection.end_col = 5;
+        screen.selection.end_row = 2;
+
+        screen.resize(10, 3);
+        assert!(!screen.selection.active);
+    }
+
+    #[test]
+    fn test_alternate_screen_resize() {
+        let mut screen = Screen::new(10, 5);
+        screen.enter_alternate_screen();
+        write_str(&mut screen, "alt content");
+
+        screen.resize(15, 8);
+        assert_eq!(screen.cursor.row, 0);
+        assert_eq!(screen.cursor.col, 0);
+        assert_eq!(screen.rows, 8);
+        assert_eq!(screen.cols, 15);
+    }
+
+    #[test]
+    fn test_scrollback_preserved_on_resize() {
+        let mut screen = Screen::new(20, 5);
+        for i in 0..10 {
+            write_str(&mut screen, &format!("line {}", i));
+            if i < 9 {
+                screen.newline();
+                screen.carriage_return();
+            }
+        }
+        let sb_len = screen.scrollback.len();
+        assert!(sb_len > 0, "should have scrollback");
+
+        screen.resize(20, 3);
+        assert_eq!(screen.scrollback.len(), sb_len, "scrollback should be preserved on resize");
     }
 }
