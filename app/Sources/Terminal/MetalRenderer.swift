@@ -394,6 +394,10 @@ final class MetalRenderer {
             return
         }
 
+        // If the glyph atlas filled up last frame, reset it now (between frames)
+        // so new glyphs pack cleanly without overwriting in-flight texture data.
+        atlas.resetIfNeeded()
+
         // cellSize is in points; viewport is in pixels. Scale cellSize to match.
         let scaledCellW = Float(cellWidth * scale)
         let scaledCellH = Float(cellHeight * scale)
@@ -682,10 +686,10 @@ final class MetalRenderer {
 
         encoder.endEncoding()
 
-        commandBuffer.present(drawable)
         commandBuffer.addCompletedHandler { [weak self] _ in
             self?.frameSemaphore.signal()
         }
+        commandBuffer.present(drawable)
         commandBuffer.commit()
     }
 

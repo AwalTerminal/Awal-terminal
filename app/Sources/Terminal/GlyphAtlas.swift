@@ -41,6 +41,8 @@ final class GlyphAtlas {
     private var cursorX: Int = 0
     private var cursorY: Int = 0
     private var rowHeight: Int = 0
+    private var needsReset = false
+
 
     private let font: CTFont
     private let boldFont: CTFont
@@ -76,8 +78,8 @@ final class GlyphAtlas {
         self.texture = device.makeTexture(descriptor: desc)!
 
         // Clear atlas to zero (transparent)
-        let zeroData = [UInt8](repeating: 0, count: atlasWidth * atlasHeight)
-        zeroData.withUnsafeBytes { ptr in
+        let zeroBuffer = [UInt8](repeating: 0, count: atlasWidth * atlasHeight)
+        zeroBuffer.withUnsafeBytes { ptr in
             texture.replace(
                 region: MTLRegion(origin: MTLOrigin(), size: MTLSize(width: atlasWidth, height: atlasHeight, depth: 1)),
                 mipmapLevel: 0,
@@ -85,6 +87,18 @@ final class GlyphAtlas {
                 bytesPerRow: atlasWidth
             )
         }
+    }
+
+    /// Reset atlas state between frames if it filled up during the previous render.
+    /// Called by MetalRenderer at the start of each render pass.
+    func resetIfNeeded() {
+        guard needsReset else { return }
+        needsReset = false
+        cursorX = 0
+        cursorY = 0
+        rowHeight = 0
+        cache.removeAll(keepingCapacity: true)
+        ligatureCache.removeAll(keepingCapacity: true)
     }
 
     func lookup(codepoint: UInt32, bold: Bool, italic: Bool = false, device: MTLDevice) -> GlyphInfo? {
@@ -151,17 +165,9 @@ final class GlyphAtlas {
             rowHeight = 0
         }
         if cursorY + bitmapH > atlasHeight {
-            // Atlas full — clear and rebuild instead of returning nil
-            resetAtlas()
-            // Re-check after reset (cursor is at 0,0 now)
-            if cursorX + bitmapW > atlasWidth {
-                cursorX = 0
-                cursorY += rowHeight
-                rowHeight = 0
-            }
-            if cursorY + bitmapH > atlasHeight {
-                return nil // Glyph too large even for empty atlas
-            }
+            // Atlas full — defer reset to start of next frame
+            needsReset = true
+            return nil
         }
 
         // Rasterize at native pixel resolution
@@ -248,27 +254,6 @@ final class GlyphAtlas {
     }
 
     var cachedCount: Int { cache.count }
-
-    /// Clear the atlas texture and all caches, resetting the packing cursor.
-    /// Visible glyphs re-rasterize lazily on subsequent lookup() calls.
-    private func resetAtlas() {
-        cursorX = 0
-        cursorY = 0
-        rowHeight = 0
-        cache.removeAll(keepingCapacity: true)
-        ligatureCache.removeAll(keepingCapacity: true)
-
-        // Zero the atlas texture
-        let zeroData = [UInt8](repeating: 0, count: atlasWidth * atlasHeight)
-        zeroData.withUnsafeBytes { ptr in
-            texture.replace(
-                region: MTLRegion(origin: MTLOrigin(), size: MTLSize(width: atlasWidth, height: atlasHeight, depth: 1)),
-                mipmapLevel: 0,
-                withBytes: ptr.baseAddress!,
-                bytesPerRow: atlasWidth
-            )
-        }
-    }
 
     /// Search installed fonts for a Nerd Font (by name) that has Powerline glyphs.
     private static func findNerdFont(size: CGFloat) -> CTFont? {
@@ -395,13 +380,8 @@ final class GlyphAtlas {
             rowHeight = 0
         }
         if cursorY + bitmapH > atlasHeight {
-            resetAtlas()
-            if cursorX + bitmapW > atlasWidth {
-                cursorX = 0
-                cursorY += rowHeight
-                rowHeight = 0
-            }
-            if cursorY + bitmapH > atlasHeight { return nil }
+            needsReset = true
+            return nil
         }
 
         let colorSpace = CGColorSpaceCreateDeviceRGB()
