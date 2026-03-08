@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 
 use crate::terminal::cell::{Cell, CellAttrs, Color};
 use crate::terminal::modes::TerminalModes;
@@ -30,6 +30,8 @@ pub struct Grid {
     pub cols: usize,
     pub rows: usize,
     pub cells: Vec<Vec<Cell>>,
+    base: usize, // ring buffer offset for O(1) full-screen scrolling
+    pub hyperlinks: HashMap<(usize, usize), String>,
 }
 
 impl Grid {
@@ -37,15 +39,16 @@ impl Grid {
         let cells = (0..rows)
             .map(|_| (0..cols).map(|_| Cell::default()).collect())
             .collect();
-        Self { cols, rows, cells }
+        Self { cols, rows, cells, base: 0, hyperlinks: HashMap::new() }
     }
 
     pub fn cell(&self, row: usize, col: usize) -> &Cell {
-        &self.cells[row][col]
+        &self.cells[(self.base + row) % self.rows][col]
     }
 
     pub fn cell_mut(&mut self, row: usize, col: usize) -> &mut Cell {
-        &mut self.cells[row][col]
+        let physical = (self.base + row) % self.rows;
+        &mut self.cells[physical][col]
     }
 
     pub fn clear(&mut self) {
@@ -54,15 +57,56 @@ impl Grid {
                 cell.reset();
             }
         }
+        self.base = 0;
+        self.hyperlinks.clear();
     }
 
     pub fn scroll_up(&mut self, top: usize, bottom: usize) -> Option<Vec<Cell>> {
         if top + 1 >= bottom || bottom > self.rows {
             return None;
         }
+
+        // Fast path: full-screen scroll — O(1) ring buffer rotation
+        if top == 0 && bottom == self.rows {
+            let physical = self.base % self.rows;
+            let removed = std::mem::replace(
+                &mut self.cells[physical],
+                (0..self.cols).map(|_| Cell::default()).collect(),
+            );
+            // Migrate hyperlinks: remove row 0's, shift others down
+            let mut migrated = Vec::new();
+            self.hyperlinks.retain(|&(r, c), v| {
+                if r == 0 {
+                    migrated.push((c, v.clone()));
+                    false
+                } else {
+                    true
+                }
+            });
+            // Shift remaining hyperlink row keys down by 1
+            let old: Vec<_> = self.hyperlinks.drain().collect();
+            for ((r, c), v) in old {
+                self.hyperlinks.insert((r - 1, c), v);
+            }
+            self.base = (self.base + 1) % self.rows;
+            return Some(removed);
+        }
+
+        // Partial scroll region: linearize then use remove/insert
+        self.linearize();
         let removed = self.cells.remove(top);
         let blank = (0..self.cols).map(|_| Cell::default()).collect();
         self.cells.insert(bottom - 1, blank);
+        // Remove hyperlinks for the removed row, shift affected rows
+        self.hyperlinks.retain(|&(r, _), _| r != top);
+        let old: Vec<_> = self.hyperlinks.drain().collect();
+        for ((r, c), v) in old {
+            if r > top && r < bottom {
+                self.hyperlinks.insert((r - 1, c), v);
+            } else {
+                self.hyperlinks.insert((r, c), v);
+            }
+        }
         Some(removed)
     }
 
@@ -70,12 +114,24 @@ impl Grid {
         if top + 1 >= bottom || bottom > self.rows {
             return;
         }
+        self.linearize();
         self.cells.remove(bottom - 1);
         let blank = (0..self.cols).map(|_| Cell::default()).collect();
         self.cells.insert(top, blank);
+        // Remove hyperlinks for the removed bottom row, shift affected rows up
+        self.hyperlinks.retain(|&(r, _), _| r != bottom - 1);
+        let old: Vec<_> = self.hyperlinks.drain().collect();
+        for ((r, c), v) in old {
+            if r >= top && r < bottom {
+                self.hyperlinks.insert((r + 1, c), v);
+            } else {
+                self.hyperlinks.insert((r, c), v);
+            }
+        }
     }
 
     pub fn resize(&mut self, new_cols: usize, new_rows: usize) {
+        self.linearize();
         while self.cells.len() < new_rows {
             self.cells
                 .push((0..new_cols).map(|_| Cell::default()).collect());
@@ -86,6 +142,18 @@ impl Grid {
         }
         self.cols = new_cols;
         self.rows = new_rows;
+        // Remove out-of-bounds hyperlinks
+        self.hyperlinks.retain(|&(r, c), _| r < new_rows && c < new_cols);
+    }
+
+    /// Linearize the ring buffer so logical row 0 is at cells[0].
+    fn linearize(&mut self) {
+        if self.base == 0 {
+            return;
+        }
+        let physical_base = self.base % self.rows;
+        self.cells.rotate_left(physical_base);
+        self.base = 0;
     }
 }
 
@@ -169,6 +237,8 @@ pub struct Screen {
     pub title: String,
     pub working_directory: String,
     pub current_hyperlink: Option<String>,
+    /// Sparse hyperlink storage for scrollback lines, keyed by (scrollback_index, col).
+    pub scrollback_hyperlinks: HashMap<(usize, usize), String>,
 }
 
 impl Screen {
@@ -196,6 +266,7 @@ impl Screen {
             title: String::new(),
             working_directory: String::new(),
             current_hyperlink: None,
+            scrollback_hyperlinks: HashMap::new(),
         }
     }
 
@@ -253,13 +324,16 @@ impl Screen {
             attrs.insert(CellAttrs::WIDE);
         }
 
-        let hyperlink = self.current_hyperlink.clone();
         let cell = self.active_grid_mut().cell_mut(row, col);
         cell.ch = ch;
         cell.fg = fg;
         cell.bg = bg;
         cell.attrs = attrs;
-        cell.hyperlink = hyperlink;
+        if let Some(url) = self.current_hyperlink.clone() {
+            self.active_grid_mut().hyperlinks.insert((row, col), url);
+        } else {
+            self.active_grid_mut().hyperlinks.remove(&(row, col));
+        }
         self.cursor.col += 1;
 
         // For wide characters, place a spacer in the next cell
@@ -501,11 +575,37 @@ impl Screen {
         let is_primary = !self.modes.alternate_screen;
         let full_region = top == 0 && bottom == self.rows;
 
+        // Before scrolling, capture hyperlinks from row 0 (for scrollback migration)
+        let row0_hyperlinks: Vec<(usize, String)> = if is_primary && full_region {
+            let grid = self.active_grid();
+            grid.hyperlinks.iter()
+                .filter(|&(&(r, _), _)| r == 0)
+                .map(|(&(_, c), v)| (c, v.clone()))
+                .collect()
+        } else {
+            Vec::new()
+        };
+
         if let Some(removed) = self.active_grid_mut().scroll_up(top, bottom) {
             if is_primary && full_region {
+                let sb_idx = self.scrollback.len();
                 self.scrollback.push_back(removed);
+
+                // Migrate row 0 hyperlinks to scrollback
+                for (c, url) in row0_hyperlinks {
+                    self.scrollback_hyperlinks.insert((sb_idx, c), url);
+                }
+
                 if self.scrollback.len() > self.scrollback_limit {
                     self.scrollback.pop_front();
+                    // Remove hyperlinks for the evicted scrollback line
+                    let evicted_idx = 0;
+                    self.scrollback_hyperlinks.retain(|&(r, _), _| r != evicted_idx);
+                    // Shift all scrollback hyperlink indices down by 1
+                    let old: Vec<_> = self.scrollback_hyperlinks.drain().collect();
+                    for ((r, c), v) in old {
+                        self.scrollback_hyperlinks.insert((r - 1, c), v);
+                    }
                 }
                 // If user is scrolled up, keep their viewport stable
                 if self.viewport_offset > 0 {
@@ -539,7 +639,6 @@ impl Screen {
                     fg: Color::Default,
                     bg: Color::Default,
                     attrs: CellAttrs::empty(),
-                    hyperlink: None,
                 };
                 &DEFAULT_CELL
             }
@@ -554,7 +653,6 @@ impl Screen {
                     fg: Color::Default,
                     bg: Color::Default,
                     attrs: CellAttrs::empty(),
-                    hyperlink: None,
                 };
                 &DEFAULT_CELL
             }
@@ -636,7 +734,6 @@ impl Screen {
             fg: Color::Default,
             bg: Color::Default,
             attrs: CellAttrs::empty(),
-            hyperlink: None,
         };
         let scrollback_len = self.scrollback.len() as i64;
         if abs_row < 0 {

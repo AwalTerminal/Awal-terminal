@@ -564,9 +564,30 @@ pub extern "C" fn at_surface_get_hyperlink(
     row: u32,
 ) -> *mut c_char {
     let surface = ref_or!(surface, std::ptr::null_mut());
-    let cell = surface.screen.viewport_cell(row as usize, col as usize);
-    match &cell.hyperlink {
-        Some(url) => match CString::new(url.as_str()) {
+    let screen = &surface.screen;
+    let row = row as usize;
+    let col = col as usize;
+
+    // Determine which hyperlink storage to query based on viewport position
+    let url = if screen.viewport_offset == 0 || screen.modes.alternate_screen {
+        // Reading from active grid
+        screen.active_grid().hyperlinks.get(&(row, col))
+    } else {
+        let scrollback_len = screen.scrollback.len();
+        let viewport_start = scrollback_len.saturating_sub(screen.viewport_offset);
+        let abs_row = viewport_start + row;
+        if abs_row < scrollback_len {
+            // Reading from scrollback
+            screen.scrollback_hyperlinks.get(&(abs_row, col))
+        } else {
+            // Reading from active grid
+            let grid_row = abs_row - scrollback_len;
+            screen.active_grid().hyperlinks.get(&(grid_row, col))
+        }
+    };
+
+    match url {
+        Some(u) => match CString::new(u.as_str()) {
             Ok(cs) => cs.into_raw(),
             Err(_) => std::ptr::null_mut(),
         },
