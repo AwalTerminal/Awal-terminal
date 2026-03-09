@@ -368,9 +368,12 @@ impl AiAnalyzer {
                 let after = &text[pos..];
                 // Find the end of the tool call description
                 if let Some(paren_pos) = after.find('(') {
-                    let end = after[paren_pos..].find(')').map(|p| paren_pos + p + 1)
-                        .unwrap_or(after.len().min(60));
-                    return after[..end].to_string();
+                    if let Some(close_pos) = after[paren_pos..].find(')') {
+                        let end = paren_pos + close_pos + 1;
+                        return after[..end].to_string();
+                    }
+                    // No closing paren — take up to 60 chars safely
+                    return after.chars().take(60).collect();
                 }
                 return name.to_string();
             }
