@@ -1518,7 +1518,7 @@
     <div style="background:var(--bg-card); border:1px solid rgba(255,255,255,0.08); border-radius:16px; padding:2rem; max-width:480px; width:90%; position:relative; box-shadow:0 24px 80px rgba(0,0,0,0.5);">
       <button onclick="closeDownloadModal()" style="position:absolute; top:1rem; right:1rem; background:none; border:none; color:var(--text-muted); font-size:1.5rem; cursor:pointer; line-height:1;">&times;</button>
       <h3 style="color:var(--text); font-size:1.25rem; margin-bottom:0.5rem;">Almost there</h3>
-      <p style="color:var(--text-muted); font-size:0.9rem; line-height:1.6; margin-bottom:0.5rem;">We built a GPU-accelerated terminal from scratch but haven't figured out how to pay Apple $99. 😅</p>
+      <p id="modalMessage" style="color:var(--text-muted); font-size:0.9rem; line-height:1.6; margin-bottom:0.5rem;"></p>
       <p style="color:var(--text-muted); font-size:0.9rem; line-height:1.6; margin-bottom:1rem;">After unzipping, open Terminal and run:</p>
       <div style="position:relative;">
         <pre style="background:var(--bg); border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:0.75rem 1rem; font-family:'JetBrains Mono',monospace; font-size:0.85rem; color:var(--green); overflow-x:auto;"><code>xattr -cr AwalTerminal.app</code></pre>
@@ -1531,6 +1531,19 @@
   <script>
     function showDownloadModal(e) {
       e.preventDefault();
+      const messages = [
+        "We're not on the App Store yet — but we're working on it. 😉",
+        "Apple hasn't met us yet. When they do, it'll be love at first terminal. 💜",
+        "App Store? Soon. For now, you get the indie experience. 🎸",
+        "Think of this as the VIP early-access version. 🎟️",
+        "We skipped the App Store line. You're welcome. 😎",
+        "No App Store, no rules. Just vibes and fast rendering. ⚡",
+        "Unsigned but unmatched. That's our vibe. ✨",
+        "The app is safe — Apple just hasn't stamped the paperwork yet. 📝",
+        "Consider this the developer's cut — raw and unfiltered. 🎬",
+        "We put our budget into GPU shaders, not Apple fees. Priorities. 🎨",
+      ];
+      document.getElementById('modalMessage').textContent = messages[Math.floor(Math.random() * messages.length)];
       const m = document.getElementById('downloadModal');
       m.style.display = 'flex';
       const a = document.createElement('a');
