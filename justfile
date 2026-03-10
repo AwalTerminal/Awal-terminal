@@ -31,12 +31,9 @@ build: build-core build-app
 build-debug: build-core-debug build-app-debug
 
 # Run the app (debug build, launched from .app bundle for correct icon/notifications)
-run: build-core-debug
-    cd {{app_dir}} && swift build
-    @bin_path=$(cd {{app_dir}} && swift build --show-bin-path) && \
-        cp "$bin_path/AwalTerminal" build/AwalTerminal.app/Contents/MacOS/AwalTerminal && \
-        codesign -f -s - build/AwalTerminal.app && \
-        build/AwalTerminal.app/Contents/MacOS/AwalTerminal
+run: build-core-debug build-app-debug
+    scripts/bundle.sh
+    build/AwalTerminal.app/Contents/MacOS/AwalTerminal
 
 # Run tests
 test:
@@ -46,6 +43,7 @@ test:
 clean:
     cd {{core_dir}} && cargo clean
     cd {{app_dir}} && swift package clean
+    rm -rf build/
 
 # Regenerate the C header
 header:
@@ -92,3 +90,12 @@ generate-brand:
 # Serve the promotional website locally
 serve-website:
     cd docs && python3 -m http.server 8000
+
+# Show binary size info
+size: build
+    @ls -lh app/.build/arm64-apple-macosx/release/AwalTerminal | awk '{print "Binary: " $5}'
+
+# Show universal binary size info
+size-universal: build-app-universal
+    @ls -lh app/.build/apple/Products/Release/AwalTerminal | awk '{print "Binary: " $5}'
+    @lipo -info app/.build/apple/Products/Release/AwalTerminal

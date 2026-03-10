@@ -4,7 +4,16 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP_DIR="$ROOT/build/AwalTerminal.app"
+VERSION="${2:-}"
 
+# --- Helpers ---------------------------------------------------------------
+red()   { printf '\033[1;31m%s\033[0m\n' "$*"; }
+green() { printf '\033[1;32m%s\033[0m\n' "$*"; }
+info()  { printf '\033[1;34m==>\033[0m \033[1m%s\033[0m\n' "$*"; }
+
+die() { red "Error: $*" >&2; exit 1; }
+
+# --- Resolve build directory -----------------------------------------------
 if [ "${1:-}" = "universal" ]; then
     BUILD_DIR="$ROOT/app/.build/apple/Products/Release"
 else
@@ -16,12 +25,17 @@ else
 fi
 
 BINARY="$BUILD_DIR/AwalTerminal"
+[ -f "$BINARY" ] || die "Release binary not found at $BINARY. Run 'just build' first."
 
-if [ ! -f "$BINARY" ]; then
-    echo "Error: Release binary not found. Run 'just build' first."
-    exit 1
+# --- Derive version from tag if not provided --------------------------------
+if [ -z "$VERSION" ]; then
+    VERSION=$(git -C "$ROOT" describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")
 fi
+# Strip leading 'v' for plist (v1.2.0 -> 1.2.0)
+PLIST_VERSION="${VERSION#v}"
 
+# --- Build .app structure --------------------------------------------------
+info "Creating app bundle..."
 rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS"
 mkdir -p "$APP_DIR/Contents/Resources"
@@ -40,8 +54,8 @@ if [ -f "$ICON" ]; then
     cp "$ICON" "$APP_DIR/Contents/Resources/AppIcon.icns"
 fi
 
-# Write Info.plist
-cat > "$APP_DIR/Contents/Info.plist" << 'PLIST'
+# --- Write Info.plist with actual version -----------------------------------
+cat > "$APP_DIR/Contents/Info.plist" << PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -53,9 +67,9 @@ cat > "$APP_DIR/Contents/Info.plist" << 'PLIST'
     <key>CFBundleIdentifier</key>
     <string>com.awal.terminal</string>
     <key>CFBundleVersion</key>
-    <string>1.0</string>
+    <string>${PLIST_VERSION}</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
+    <string>${PLIST_VERSION}</string>
     <key>CFBundleExecutable</key>
     <string>AwalTerminal</string>
     <key>CFBundleIconFile</key>
@@ -76,7 +90,8 @@ cat > "$APP_DIR/Contents/Info.plist" << 'PLIST'
 </plist>
 PLIST
 
-# Ad-hoc code sign so macOS TCC can persist permission grants (e.g. microphone)
+# --- Code sign --------------------------------------------------------------
+info "Code signing..."
 codesign --force --sign - "$APP_DIR"
 
-echo "Built: $APP_DIR"
+green "Built: $APP_DIR (version $PLIST_VERSION)"
