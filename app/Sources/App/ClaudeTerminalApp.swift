@@ -226,77 +226,64 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         appMenuItem.submenu = appMenu
         mainMenu.addItem(appMenuItem)
 
-        // Shell menu
+        // Shell menu — creating and closing sessions
         let shellMenuItem = NSMenuItem()
         let shellMenu = NSMenu(title: "Shell")
 
         let newTabItem = NSMenuItem(title: "New Tab", action: #selector(TerminalWindowController.newTab(_:)), keyEquivalent: "t")
         shellMenu.addItem(newTabItem)
 
+        let closeTabItem = NSMenuItem(title: "Close Tab", action: #selector(TerminalWindowController.closeTab(_:)), keyEquivalent: "w")
+        shellMenu.addItem(closeTabItem)
+
         let renameTabItem = NSMenuItem(title: "Rename Tab…", action: #selector(TerminalWindowController.renameTab(_:)), keyEquivalent: "r")
         renameTabItem.keyEquivalentModifierMask = [.command, .shift]
         shellMenu.addItem(renameTabItem)
 
-        let closeTabItem = NSMenuItem(title: "Close Tab", action: #selector(TerminalWindowController.closeTab(_:)), keyEquivalent: "w")
-        shellMenu.addItem(closeTabItem)
-
+        // Split panes disabled — black screen bug after tab switch (Auto Layout vs frame-based conflict)
         shellMenu.addItem(NSMenuItem.separator())
 
-        let nextTabItem = NSMenuItem(title: "Next Tab", action: #selector(TerminalWindowController.selectNextTab(_:)), keyEquivalent: "]")
-        nextTabItem.keyEquivalentModifierMask = [.command, .shift]
-        shellMenu.addItem(nextTabItem)
-
-        let prevTabItem = NSMenuItem(title: "Previous Tab", action: #selector(TerminalWindowController.selectPreviousTab(_:)), keyEquivalent: "[")
-        prevTabItem.keyEquivalentModifierMask = [.command, .shift]
-        shellMenu.addItem(prevTabItem)
-
-        shellMenu.addItem(NSMenuItem.separator())
-
-        let findItem = NSMenuItem(title: "Find…", action: #selector(TerminalWindowController.findInTerminal(_:)), keyEquivalent: "f")
-        shellMenu.addItem(findItem)
-
-        shellMenu.addItem(NSMenuItem.separator())
-
-        let splitRightItem = NSMenuItem(title: "Split Right", action: #selector(TerminalWindowController.splitRight(_:)), keyEquivalent: "d")
+        let splitRightItem = NSMenuItem(title: "Split Right", action: nil, keyEquivalent: "")
+        splitRightItem.isEnabled = false
         shellMenu.addItem(splitRightItem)
 
-        let splitDownItem = NSMenuItem(title: "Split Down", action: #selector(TerminalWindowController.splitDown(_:)), keyEquivalent: "d")
-        splitDownItem.keyEquivalentModifierMask = [.command, .shift]
+        let splitDownItem = NSMenuItem(title: "Split Down", action: nil, keyEquivalent: "")
+        splitDownItem.isEnabled = false
         shellMenu.addItem(splitDownItem)
 
-        let closePaneItem = NSMenuItem(title: "Close Pane", action: #selector(TerminalWindowController.closePane(_:)), keyEquivalent: "w")
-        closePaneItem.keyEquivalentModifierMask = [.command, .shift]
+        let closePaneItem = NSMenuItem(title: "Close Pane", action: nil, keyEquivalent: "")
+        closePaneItem.isEnabled = false
         shellMenu.addItem(closePaneItem)
-
-        shellMenu.addItem(NSMenuItem.separator())
-
-        let nextPaneItem = NSMenuItem(title: "Next Pane", action: #selector(TerminalWindowController.focusNextPane(_:)), keyEquivalent: "]")
-        shellMenu.addItem(nextPaneItem)
-
-        let prevPaneItem = NSMenuItem(title: "Previous Pane", action: #selector(TerminalWindowController.focusPreviousPane(_:)), keyEquivalent: "[")
-        shellMenu.addItem(prevPaneItem)
-
-        shellMenu.addItem(NSMenuItem.separator())
-
-        let quickTermItem = NSMenuItem(title: "Quick Terminal", action: #selector(toggleQuickTerminal(_:)), keyEquivalent: "`")
-        quickTermItem.keyEquivalentModifierMask = [.control]
-        shellMenu.addItem(quickTermItem)
-
-        shellMenu.addItem(NSMenuItem.separator())
-
-        let notifItem = NSMenuItem(title: "Notifications", action: #selector(toggleNotifications(_:)), keyEquivalent: "")
-        shellMenu.addItem(notifItem)
 
         shellMenuItem.submenu = shellMenu
         mainMenu.addItem(shellMenuItem)
 
-        // View menu
+        // Edit menu — text operations
+        let editMenuItem = NSMenuItem()
+        let editMenu = NSMenu(title: "Edit")
+
+        let findItem = NSMenuItem(title: "Find…", action: #selector(TerminalWindowController.findInTerminal(_:)), keyEquivalent: "f")
+        editMenu.addItem(findItem)
+
+        editMenuItem.submenu = editMenu
+        mainMenu.addItem(editMenuItem)
+
+        // View menu — UI panel toggles
         let viewMenuItem = NSMenuItem()
         let viewMenu = NSMenu(title: "View")
 
         let sidePanelItem = NSMenuItem(title: "AI Side Panel", action: #selector(TerminalWindowController.toggleAISidePanel(_:)), keyEquivalent: "i")
         sidePanelItem.keyEquivalentModifierMask = [.command, .shift]
         viewMenu.addItem(sidePanelItem)
+
+        let quickTermItem = NSMenuItem(title: "Quick Terminal", action: #selector(toggleQuickTerminal(_:)), keyEquivalent: "`")
+        quickTermItem.keyEquivalentModifierMask = [.control]
+        viewMenu.addItem(quickTermItem)
+
+        viewMenu.addItem(NSMenuItem.separator())
+
+        let notifItem = NSMenuItem(title: "Notifications", action: #selector(toggleNotifications(_:)), keyEquivalent: "")
+        viewMenu.addItem(notifItem)
 
         viewMenuItem.submenu = viewMenu
         mainMenu.addItem(viewMenuItem)
@@ -325,11 +312,31 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         voiceMenuItem.submenu = voiceMenu
         mainMenu.addItem(voiceMenuItem)
 
-        // Window menu
+        // Window menu — window management and navigation
         let windowMenuItem = NSMenuItem()
         let windowMenu = NSMenu(title: "Window")
         windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
         windowMenu.addItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
+
+        windowMenu.addItem(NSMenuItem.separator())
+
+        let nextTabItem = NSMenuItem(title: "Next Tab", action: #selector(TerminalWindowController.selectNextTab(_:)), keyEquivalent: "]")
+        nextTabItem.keyEquivalentModifierMask = [.command, .shift]
+        windowMenu.addItem(nextTabItem)
+
+        let prevTabItem = NSMenuItem(title: "Previous Tab", action: #selector(TerminalWindowController.selectPreviousTab(_:)), keyEquivalent: "[")
+        prevTabItem.keyEquivalentModifierMask = [.command, .shift]
+        windowMenu.addItem(prevTabItem)
+
+        // Disabled — see split pane bug in Shell menu
+        let nextPaneItem = NSMenuItem(title: "Next Pane", action: nil, keyEquivalent: "")
+        nextPaneItem.isEnabled = false
+        windowMenu.addItem(nextPaneItem)
+
+        let prevPaneItem = NSMenuItem(title: "Previous Pane", action: nil, keyEquivalent: "")
+        prevPaneItem.isEnabled = false
+        windowMenu.addItem(prevPaneItem)
+
         windowMenuItem.submenu = windowMenu
         mainMenu.addItem(windowMenuItem)
 
