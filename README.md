@@ -50,6 +50,8 @@ A native macOS terminal built from scratch with Swift and Rust, designed specifi
 
 **Smart Notifications** — Desktop alerts when long-running AI tasks complete.
 
+**AI Components** — Auto-detect your project stack and inject skills, rules, prompts, agents, MCP servers, and hooks into AI sessions from shared registries.
+
 **Fully Configurable** — Theme colors, fonts, keybindings, and voice settings in a single config file.
 
 ## Getting Started
@@ -102,6 +104,15 @@ accent = "#636efa"
 enabled = true
 mode = "push_to_talk"
 whisper_model = "tiny.en"
+
+[ai_components]
+enabled = true
+auto_detect = true
+auto_sync = true
+
+[ai_components.registry.awal-skills]
+url = "https://github.com/AwalTerminal/awal-skills-registry.git"
+branch = "main"
 ```
 
 ## Architecture

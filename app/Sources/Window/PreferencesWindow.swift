@@ -54,10 +54,11 @@ class PreferencesWindow: NSWindowController, NSWindowDelegate {
             tabView.bottomAnchor.constraint(equalTo: window!.contentView!.bottomAnchor),
         ])
 
-        tabView.addTabViewItem(createThemeTab())
-        tabView.addTabViewItem(createFontTab())
+        tabView.addTabViewItem(createAIComponentsTab())
         tabView.addTabViewItem(createKeybindingsTab())
         tabView.addTabViewItem(createVoiceTab())
+        tabView.addTabViewItem(createFontTab())
+        tabView.addTabViewItem(createThemeTab())
     }
 
     // MARK: - Theme Tab
@@ -467,6 +468,307 @@ class PreferencesWindow: NSWindowController, NSWindowDelegate {
         updateConfigValue(key: "voice.dictation_auto_space", value: sender.state == .on ? "true" : "false")
     }
 
+    // MARK: - AI Components Tab
+
+    private var registryTableView: NSTableView?
+    private var aiComponentsStatusLabel: NSTextField?
+
+    private func createAIComponentsTab() -> NSTabViewItem {
+        let item = NSTabViewItem(identifier: "ai_components")
+        item.label = "AI Components"
+
+        let view = NSView()
+        let config = AppConfig.shared
+
+        let grid = NSGridView(numberOfColumns: 2, rows: 0)
+        grid.translatesAutoresizingMaskIntoConstraints = false
+        grid.columnSpacing = 12
+        grid.rowSpacing = 10
+
+        // Enable toggle
+        let enabledLabel = NSTextField(labelWithString: "Enable AI Components")
+        enabledLabel.font = .systemFont(ofSize: 13)
+        let enabledCheck = NSButton(checkboxWithTitle: "", target: self, action: #selector(aiComponentsEnabledChanged(_:)))
+        enabledCheck.state = config.aiComponentsEnabled ? .on : .off
+        grid.addRow(with: [enabledLabel, enabledCheck])
+
+        // Auto-detect toggle
+        let detectLabel = NSTextField(labelWithString: "Auto-detect project type")
+        detectLabel.font = .systemFont(ofSize: 13)
+        let detectCheck = NSButton(checkboxWithTitle: "", target: self, action: #selector(aiComponentsAutoDetectChanged(_:)))
+        detectCheck.state = config.aiComponentsAutoDetect ? .on : .off
+        grid.addRow(with: [detectLabel, detectCheck])
+
+        view.addSubview(grid)
+
+        NSLayoutConstraint.activate([
+            grid.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            grid.topAnchor.constraint(equalTo: view.topAnchor, constant: 16),
+            grid.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -20),
+        ])
+
+        // Registry section header
+        let regHeader = NSTextField(labelWithString: "Registries")
+        regHeader.font = .boldSystemFont(ofSize: 12)
+        regHeader.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(regHeader)
+
+        // Registry table
+        let scrollView = NSScrollView()
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.hasVerticalScroller = true
+        scrollView.borderType = .bezelBorder
+
+        let table = NSTableView()
+        table.headerView = NSTableHeaderView()
+        table.usesAlternatingRowBackgroundColors = true
+        table.allowsMultipleSelection = false
+
+        let nameCol = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
+        nameCol.title = "Name"
+        nameCol.width = 100
+        table.addTableColumn(nameCol)
+
+        let urlCol = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("url"))
+        urlCol.title = "URL"
+        urlCol.width = 280
+        table.addTableColumn(urlCol)
+
+        let branchCol = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("branch"))
+        branchCol.title = "Branch"
+        branchCol.width = 60
+        table.addTableColumn(branchCol)
+
+        table.delegate = self
+        table.dataSource = self
+        registryTableView = table
+
+        scrollView.documentView = table
+        view.addSubview(scrollView)
+
+        // Buttons
+        let addBtn = NSButton(title: "+ Add Registry", target: self, action: #selector(addRegistryClicked(_:)))
+        addBtn.translatesAutoresizingMaskIntoConstraints = false
+        addBtn.bezelStyle = .rounded
+        view.addSubview(addBtn)
+
+        let removeBtn = NSButton(title: "- Remove", target: self, action: #selector(removeRegistryClicked(_:)))
+        removeBtn.translatesAutoresizingMaskIntoConstraints = false
+        removeBtn.bezelStyle = .rounded
+        view.addSubview(removeBtn)
+
+        let syncBtn = NSButton(title: "Sync Now", target: self, action: #selector(syncRegistriesClicked(_:)))
+        syncBtn.translatesAutoresizingMaskIntoConstraints = false
+        syncBtn.bezelStyle = .rounded
+        view.addSubview(syncBtn)
+
+        // Sync status
+        let statusLabel = NSTextField(labelWithString: "")
+        statusLabel.font = .systemFont(ofSize: 11)
+        statusLabel.textColor = .secondaryLabelColor
+        statusLabel.translatesAutoresizingMaskIntoConstraints = false
+        statusLabel.isEditable = false
+        statusLabel.isBordered = false
+        statusLabel.drawsBackground = false
+        view.addSubview(statusLabel)
+        aiComponentsStatusLabel = statusLabel
+        updateAIComponentsStatus()
+
+        // Sync mode + interval
+        let syncModeLabel = NSTextField(labelWithString: "Sync mode:")
+        syncModeLabel.font = .systemFont(ofSize: 12)
+        syncModeLabel.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(syncModeLabel)
+
+        let syncModePicker = NSPopUpButton(frame: .zero, pullsDown: false)
+        syncModePicker.addItems(withTitles: ["Auto", "Manual"])
+        syncModePicker.selectItem(at: config.aiComponentsAutoSync ? 0 : 1)
+        syncModePicker.translatesAutoresizingMaskIntoConstraints = false
+        syncModePicker.target = self
+        syncModePicker.action = #selector(aiComponentsSyncModeChanged(_:))
+        view.addSubview(syncModePicker)
+
+        let intervalLabel = NSTextField(labelWithString: "Interval:")
+        intervalLabel.font = .systemFont(ofSize: 12)
+        intervalLabel.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(intervalLabel)
+
+        let intervalField = NSTextField(string: "\(config.aiComponentsSyncInterval)")
+        intervalField.font = .systemFont(ofSize: 12)
+        intervalField.translatesAutoresizingMaskIntoConstraints = false
+        intervalField.identifier = NSUserInterfaceItemIdentifier("ai_components.sync_interval")
+        intervalField.target = self
+        intervalField.action = #selector(aiComponentsIntervalChanged(_:))
+        view.addSubview(intervalField)
+
+        let secLabel = NSTextField(labelWithString: "sec")
+        secLabel.font = .systemFont(ofSize: 12)
+        secLabel.textColor = .secondaryLabelColor
+        secLabel.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(secLabel)
+
+        NSLayoutConstraint.activate([
+            regHeader.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            regHeader.topAnchor.constraint(equalTo: grid.bottomAnchor, constant: 16),
+
+            scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            scrollView.topAnchor.constraint(equalTo: regHeader.bottomAnchor, constant: 8),
+            scrollView.heightAnchor.constraint(equalToConstant: 90),
+
+            addBtn.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            addBtn.topAnchor.constraint(equalTo: scrollView.bottomAnchor, constant: 8),
+
+            removeBtn.leadingAnchor.constraint(equalTo: addBtn.trailingAnchor, constant: 8),
+            removeBtn.centerYAnchor.constraint(equalTo: addBtn.centerYAnchor),
+
+            syncBtn.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            syncBtn.centerYAnchor.constraint(equalTo: addBtn.centerYAnchor),
+
+            statusLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            statusLabel.topAnchor.constraint(equalTo: addBtn.bottomAnchor, constant: 12),
+
+            syncModeLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            syncModeLabel.topAnchor.constraint(equalTo: statusLabel.bottomAnchor, constant: 8),
+            syncModePicker.leadingAnchor.constraint(equalTo: syncModeLabel.trailingAnchor, constant: 6),
+            syncModePicker.centerYAnchor.constraint(equalTo: syncModeLabel.centerYAnchor),
+
+            intervalLabel.leadingAnchor.constraint(equalTo: syncModePicker.trailingAnchor, constant: 16),
+            intervalLabel.centerYAnchor.constraint(equalTo: syncModeLabel.centerYAnchor),
+            intervalField.leadingAnchor.constraint(equalTo: intervalLabel.trailingAnchor, constant: 6),
+            intervalField.centerYAnchor.constraint(equalTo: syncModeLabel.centerYAnchor),
+            intervalField.widthAnchor.constraint(equalToConstant: 60),
+            secLabel.leadingAnchor.constraint(equalTo: intervalField.trailingAnchor, constant: 4),
+            secLabel.centerYAnchor.constraint(equalTo: syncModeLabel.centerYAnchor),
+        ])
+
+        let note = NSTextField(labelWithString: "Changes are saved to ~/.config/awal/config.toml")
+        note.font = .systemFont(ofSize: 11)
+        note.textColor = .secondaryLabelColor
+        note.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(note)
+        NSLayoutConstraint.activate([
+            note.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            note.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -16),
+        ])
+
+        item.view = view
+        return item
+    }
+
+    @objc private func aiComponentsEnabledChanged(_ sender: NSButton) {
+        updateConfigValue(key: "ai_components.enabled", value: sender.state == .on ? "true" : "false")
+    }
+
+    @objc private func aiComponentsAutoDetectChanged(_ sender: NSButton) {
+        updateConfigValue(key: "ai_components.auto_detect", value: sender.state == .on ? "true" : "false")
+    }
+
+    @objc private func aiComponentsSyncModeChanged(_ sender: NSPopUpButton) {
+        let auto = sender.indexOfSelectedItem == 0
+        updateConfigValue(key: "ai_components.auto_sync", value: auto ? "true" : "false")
+    }
+
+    @objc private func aiComponentsIntervalChanged(_ sender: NSTextField) {
+        let value = sender.stringValue.trimmingCharacters(in: .whitespaces)
+        if let _ = Int(value) {
+            updateConfigValue(key: "ai_components.sync_interval", value: value)
+        }
+    }
+
+    @objc private func addRegistryClicked(_ sender: NSButton) {
+        let alert = NSAlert()
+        alert.messageText = "Add AI Component Registry"
+        alert.addButton(withTitle: "Add")
+        alert.addButton(withTitle: "Cancel")
+
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 90))
+
+        let nameLabel = NSTextField(labelWithString: "Name:")
+        nameLabel.frame = NSRect(x: 0, y: 64, width: 50, height: 20)
+        container.addSubview(nameLabel)
+
+        let nameField = NSTextField(frame: NSRect(x: 55, y: 62, width: 240, height: 22))
+        nameField.placeholderString = "team-components"
+        container.addSubview(nameField)
+
+        let urlLabel = NSTextField(labelWithString: "URL:")
+        urlLabel.frame = NSRect(x: 0, y: 34, width: 50, height: 20)
+        container.addSubview(urlLabel)
+
+        let urlField = NSTextField(frame: NSRect(x: 55, y: 32, width: 240, height: 22))
+        urlField.placeholderString = "https://github.com/org/components.git"
+        container.addSubview(urlField)
+
+        let branchLabel = NSTextField(labelWithString: "Branch:")
+        branchLabel.frame = NSRect(x: 0, y: 4, width: 50, height: 20)
+        container.addSubview(branchLabel)
+
+        let branchField = NSTextField(frame: NSRect(x: 55, y: 2, width: 240, height: 22))
+        branchField.stringValue = "main"
+        container.addSubview(branchField)
+
+        alert.accessoryView = container
+
+        guard let w = window else { return }
+        alert.beginSheetModal(for: w) { [weak self] response in
+            guard response == .alertFirstButtonReturn else { return }
+            let name = nameField.stringValue.trimmingCharacters(in: .whitespaces)
+            let url = urlField.stringValue.trimmingCharacters(in: .whitespaces)
+            let branch = branchField.stringValue.trimmingCharacters(in: .whitespaces)
+
+            guard !name.isEmpty, !url.isEmpty else { return }
+
+            self?.updateConfigValue(key: "ai_components.registry.\(name).url", value: "\"\(url)\"")
+            self?.updateConfigValue(key: "ai_components.registry.\(name).branch", value: "\"\(branch.isEmpty ? "main" : branch)\"")
+
+            // Trigger initial clone
+            RegistryManager.shared.syncOne(name: name, url: url, branch: branch.isEmpty ? "main" : branch)
+
+            self?.registryTableView?.reloadData()
+            self?.updateAIComponentsStatus()
+        }
+    }
+
+    @objc private func removeRegistryClicked(_ sender: NSButton) {
+        guard let table = registryTableView, table.selectedRow >= 0 else { return }
+        let config = AppConfig.shared
+        let idx = table.selectedRow
+        guard idx < config.aiComponentRegistries.count else { return }
+
+        let reg = config.aiComponentRegistries[idx]
+        removeConfigValue(key: "ai_components.registry.\(reg.name).url")
+        removeConfigValue(key: "ai_components.registry.\(reg.name).branch")
+        RegistryManager.shared.removeRegistry(name: reg.name)
+
+        table.reloadData()
+        updateAIComponentsStatus()
+    }
+
+    @objc private func syncRegistriesClicked(_ sender: NSButton) {
+        let config = AppConfig.shared
+        aiComponentsStatusLabel?.stringValue = "Syncing..."
+
+        RegistryManager.shared.syncAll(registries: config.aiComponentRegistries, force: true) { [weak self] in
+            self?.updateAIComponentsStatus()
+        }
+    }
+
+    private func updateAIComponentsStatus() {
+        if let lastSync = RegistryManager.shared.lastSyncTimeAny() {
+            let elapsed = Int(Date().timeIntervalSince(lastSync))
+            if elapsed < 60 {
+                aiComponentsStatusLabel?.stringValue = "Last synced: \(elapsed) seconds ago"
+            } else if elapsed < 3600 {
+                aiComponentsStatusLabel?.stringValue = "Last synced: \(elapsed / 60) minutes ago"
+            } else {
+                aiComponentsStatusLabel?.stringValue = "Last synced: \(elapsed / 3600) hours ago"
+            }
+        } else {
+            aiComponentsStatusLabel?.stringValue = "Not synced yet"
+        }
+    }
+
     // MARK: - Config File Helpers
 
     private static let configDir = FileManager.default.homeDirectoryForCurrentUser
@@ -539,5 +841,41 @@ class PreferencesWindow: NSWindowController, NSWindowDelegate {
         let g = Int(c.greenComponent * 255)
         let b = Int(c.blueComponent * 255)
         return String(format: "#%02x%02x%02x", r, g, b)
+    }
+}
+
+// MARK: - Registry Table View
+
+extension PreferencesWindow: NSTableViewDataSource, NSTableViewDelegate {
+
+    func numberOfRows(in tableView: NSTableView) -> Int {
+        AppConfig.shared.aiComponentRegistries.count
+    }
+
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        let registries = AppConfig.shared.aiComponentRegistries
+        guard row < registries.count else { return nil }
+        let reg = registries[row]
+
+        let cell = NSTextField(labelWithString: "")
+        cell.font = .systemFont(ofSize: 12)
+        cell.lineBreakMode = .byTruncatingTail
+
+        switch tableColumn?.identifier.rawValue {
+        case "name":
+            cell.stringValue = reg.name
+        case "url":
+            cell.stringValue = reg.url
+        case "branch":
+            cell.stringValue = reg.branch
+        default:
+            break
+        }
+
+        return cell
+    }
+
+    func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
+        22
     }
 }

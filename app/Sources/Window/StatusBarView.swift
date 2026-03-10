@@ -27,6 +27,13 @@ class StatusBarView: NSView {
         return btn
     }()
     private let gitLabel = NSTextField(labelWithString: "")
+    private let aiComponentLabel: VoiceClickLabel = {
+        let label = VoiceClickLabel(labelWithString: "")
+        label.isEditable = false
+        label.isBordered = false
+        label.drawsBackground = false
+        return label
+    }()
     private let dimsLabel = NSTextField(labelWithString: "")
     private let tokensLabel = NSTextField(labelWithString: "")
     private let timeLabel = NSTextField(labelWithString: "")
@@ -136,6 +143,17 @@ class StatusBarView: NSView {
 
         gitLabel.textColor = branchColor
 
+        // AI component indicator (between git and dims)
+        aiComponentLabel.font = monoFont
+        aiComponentLabel.textColor = NSColor(red: 100.0/255.0, green: 200.0/255.0, blue: 160.0/255.0, alpha: 1.0)
+        aiComponentLabel.translatesAutoresizingMaskIntoConstraints = false
+        aiComponentLabel.toolTip = "Click to view active AI components"
+        aiComponentLabel.isHidden = true
+        aiComponentLabel.onClick = { [weak self] in
+            self?.showAIComponentPopover()
+        }
+        addSubview(aiComponentLabel)
+
         // Separators: thin dots between sections
         let sep1 = makeSeparator()
         let sep2 = makeSeparator()
@@ -183,6 +201,10 @@ class StatusBarView: NSView {
             // Git (right after path)
             gitLabel.leadingAnchor.constraint(equalTo: pathButton.trailingAnchor, constant: 8),
             gitLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+
+            // AI component indicator (right after git)
+            aiComponentLabel.leadingAnchor.constraint(equalTo: gitLabel.trailingAnchor, constant: 8),
+            aiComponentLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
 
             // Right side: time
             timeLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
@@ -506,6 +528,83 @@ class StatusBarView: NSView {
             self?.dimsLabel.stringValue = self?.savedDimsText ?? ""
             self?.dimsLabel.textColor = NSColor(white: 0.45, alpha: 1.0)
         }
+    }
+
+    // MARK: - AI Components Display
+
+    private var activeAIComponentDetails: [(name: String, source: String, stack: String, type: ComponentType)] = []
+
+    func setAIComponentInfo(
+        stacks: Set<String>,
+        skillCount: Int,
+        ruleCount: Int = 0,
+        promptCount: Int = 0,
+        agentCount: Int = 0,
+        mcpServerCount: Int = 0,
+        components: [(name: String, source: String, stack: String, type: ComponentType)]
+    ) {
+        activeAIComponentDetails = components
+        let total = skillCount + ruleCount + promptCount + agentCount + mcpServerCount
+        if total > 0 {
+            let stackNames = stacks.sorted().joined(separator: ", ")
+            // Build a breakdown of non-zero counts
+            var parts: [String] = []
+            if skillCount > 0 { parts.append("\(skillCount) skills") }
+            if ruleCount > 0 { parts.append("\(ruleCount) rules") }
+            if promptCount > 0 { parts.append("\(promptCount) prompts") }
+            if agentCount > 0 { parts.append("\(agentCount) agents") }
+            if mcpServerCount > 0 { parts.append("\(mcpServerCount) MCP") }
+
+            let summary: String
+            if parts.count <= 2 {
+                summary = parts.joined(separator: ", ")
+            } else {
+                summary = "\(total) components"
+            }
+            aiComponentLabel.stringValue = "\(stackNames) · \(summary)"
+            aiComponentLabel.isHidden = false
+        } else {
+            aiComponentLabel.stringValue = ""
+            aiComponentLabel.isHidden = true
+        }
+    }
+
+    func clearAIComponentInfo() {
+        activeAIComponentDetails = []
+        aiComponentLabel.stringValue = ""
+        aiComponentLabel.isHidden = true
+    }
+
+    private func showAIComponentPopover() {
+        guard !activeAIComponentDetails.isEmpty else { return }
+
+        let menu = NSMenu()
+        menu.addItem(NSMenuItem(title: "Active Components", action: nil, keyEquivalent: ""))
+        menu.addItem(NSMenuItem.separator())
+
+        // Group by component type
+        let grouped = Dictionary(grouping: activeAIComponentDetails) { $0.type }
+        let typeOrder: [ComponentType] = [.rule, .skill, .prompt, .agent, .mcpServer, .hook]
+
+        for type in typeOrder {
+            guard let items = grouped[type], !items.isEmpty else { continue }
+            let header = NSMenuItem(title: type.pluralLabel.capitalized, action: nil, keyEquivalent: "")
+            header.isEnabled = false
+            menu.addItem(header)
+            for item in items {
+                let title = "  \(item.name)  (\(item.source)/\(item.stack))"
+                menu.addItem(NSMenuItem(title: title, action: nil, keyEquivalent: ""))
+            }
+            menu.addItem(NSMenuItem.separator())
+        }
+
+        // Remove trailing separator
+        if let last = menu.items.last, last.isSeparatorItem {
+            menu.removeItem(last)
+        }
+
+        let location = NSPoint(x: 0, y: aiComponentLabel.bounds.height)
+        menu.popUp(positioning: nil, at: location, in: aiComponentLabel)
     }
 
     func setGenerating(_ generating: Bool) {

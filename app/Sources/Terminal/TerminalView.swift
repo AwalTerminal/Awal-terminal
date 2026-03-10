@@ -43,6 +43,9 @@ class TerminalView: NSView {
     private var deferredMenuRender: DispatchWorkItem?
 
     private(set) var activeModelName: String = ""
+    private(set) var lastAIComponentContext: AIComponentContext?
+    private var postSessionHooks: [URL] = []
+    private var lastWorkingDir: String?
     private(set) var activeProvider: String = ""
     private(set) var isGenerating: Bool = false
 
@@ -996,11 +999,37 @@ class TerminalView: NSView {
             WorkspaceStore.shared.save(path: dir, model: model.name)
         }
 
+        // Inject AI components based on model and project type
+        lastAIComponentContext = nil
+        postSessionHooks = []
+        lastWorkingDir = workingDir
+        var aiComponentContext: AIComponentContext? = nil
+        if let dir = workingDir, AppConfig.shared.aiComponentsEnabled {
+            aiComponentContext = AIComponentInjector.inject(
+                modelName: model.name,
+                projectPath: dir
+            )
+        }
+
+        // Execute pre-session hooks
+        if let ctx = aiComponentContext {
+            postSessionHooks = ctx.postSessionHooks
+            for hookURL in ctx.preSessionHooks {
+                executeHookScript(hookURL, workingDir: workingDir)
+            }
+        }
+
         // Build the full command to execute
         var modelCmd = commandOverride ?? model.command
         if commandOverride == nil, !modelCmd.isEmpty, let bin = model.binaryName, let install = model.installCommand {
             modelCmd = "command -v \(bin) >/dev/null 2>&1 || { echo \"Installing \(model.name)...\"; \(install); } && \(model.command)"
         }
+
+        // For non-Claude models, modify the command with AI component flags
+        if let ctx = aiComponentContext, let cmdModifier = ctx.commandModifier {
+            modelCmd = cmdModifier(modelCmd)
+        }
+        lastAIComponentContext = aiComponentContext
 
         let hasCommand = !modelCmd.isEmpty
 
@@ -1139,6 +1168,42 @@ class TerminalView: NSView {
         }
 
         setupPtyReader()
+    }
+
+    /// Execute a hook script synchronously in a subprocess.
+    private func executeHookScript(_ scriptURL: URL, workingDir: String?) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/bash")
+        process.arguments = [scriptURL.path]
+        if let dir = workingDir {
+            process.currentDirectoryURL = URL(fileURLWithPath: dir)
+        }
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        try? process.run()
+        process.waitUntilExit()
+    }
+
+    /// Execute post-session hooks asynchronously.
+    func executePostSessionHooks() {
+        guard !postSessionHooks.isEmpty else { return }
+        let hooks = postSessionHooks
+        let dir = lastWorkingDir
+        postSessionHooks = []
+        DispatchQueue.global(qos: .utility).async {
+            for hookURL in hooks {
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: "/bin/bash")
+                process.arguments = [hookURL.path]
+                if let dir = dir {
+                    process.currentDirectoryURL = URL(fileURLWithPath: dir)
+                }
+                process.standardOutput = FileHandle.nullDevice
+                process.standardError = FileHandle.nullDevice
+                try? process.run()
+                process.waitUntilExit()
+            }
+        }
     }
 
     private func setupPtyReader() {

@@ -35,6 +35,21 @@ struct AppConfig {
     var voiceCommandPrefix: String = ""
     var voiceWakeWord: String = "hey terminal"
 
+    // AI Components
+    var aiComponentsEnabled: Bool = true
+    var aiComponentsAutoDetect: Bool = true
+    var aiComponentsAutoSync: Bool = true
+    var aiComponentsSyncInterval: Int = 3600
+    var aiComponentRegistries: [(name: String, url: String, branch: String)] = [
+        (name: "awal-skills", url: "https://github.com/AwalTerminal/awal-skills-registry.git", branch: "main"),
+    ]
+    private var aiComponentOverrides: [String: Set<String>] = [:]
+
+    /// Get stack overrides for a specific project path.
+    func aiComponentOverride(for projectPath: String) -> Set<String>? {
+        aiComponentOverrides[projectPath]
+    }
+
     /// Parse a keybinding string like "cmd+shift+d" into (keyEquivalent, modifierMask).
     static func parseKeybinding(_ combo: String) -> (String, NSEvent.ModifierFlags)? {
         let parts = combo.lowercased().split(separator: "+").map { $0.trimmingCharacters(in: .whitespaces) }
@@ -114,6 +129,45 @@ struct AppConfig {
         if let v = parsed["voice.dictation_auto_space"] { config.voiceDictationAutoSpace = v == "true" || v.isEmpty }
         if let v = parsed["voice.command_prefix"] { config.voiceCommandPrefix = v }
         if let v = parsed["voice.wake_word"] { config.voiceWakeWord = v }
+
+        // AI Components
+        if let v = parsed["ai_components.enabled"] { config.aiComponentsEnabled = v == "true" }
+        if let v = parsed["ai_components.auto_detect"] { config.aiComponentsAutoDetect = v == "true" }
+        if let v = parsed["ai_components.auto_sync"] { config.aiComponentsAutoSync = v == "true" }
+        if let v = parsed["ai_components.sync_interval"], let n = Int(v) { config.aiComponentsSyncInterval = n }
+
+        // Parse AI component registries: ai_components.registry.<name>.url / .branch
+        var registryNames = Set<String>()
+        for key in parsed.keys where key.hasPrefix("ai_components.registry.") {
+            let rest = key.dropFirst("ai_components.registry.".count)
+            if let dotIdx = rest.firstIndex(of: ".") {
+                registryNames.insert(String(rest[rest.startIndex..<dotIdx]))
+            }
+        }
+        for name in registryNames.sorted() {
+            let url = parsed["ai_components.registry.\(name).url"] ?? ""
+            let branch = parsed["ai_components.registry.\(name).branch"] ?? "main"
+            if !url.isEmpty {
+                // Update existing default or append new
+                if let idx = config.aiComponentRegistries.firstIndex(where: { $0.name == name }) {
+                    config.aiComponentRegistries[idx] = (name: name, url: url, branch: branch)
+                } else {
+                    config.aiComponentRegistries.append((name: name, url: url, branch: branch))
+                }
+            }
+        }
+
+        // Parse AI component overrides: ai_components.overrides."<path>".stacks = "go,flutter"
+        for (key, value) in parsed where key.hasPrefix("ai_components.overrides.") {
+            let rest = key.dropFirst("ai_components.overrides.".count)
+            // Key format: "<path>".stacks or <path>.stacks
+            if rest.hasSuffix(".stacks") {
+                let pathPart = String(rest.dropLast(".stacks".count))
+                    .trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+                let stacks = Set(value.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) })
+                config.aiComponentOverrides[pathPart] = stacks
+            }
+        }
 
         return config
     }

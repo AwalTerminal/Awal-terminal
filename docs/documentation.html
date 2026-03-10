@@ -464,6 +464,7 @@
         <li><a href="#quick-terminal">Quick Terminal</a></li>
         <li><a href="#ai-features">AI Features</a></li>
         <li><a href="#llm-integration">LLM Integration</a></li>
+        <li><a href="#ai-components">AI Components</a></li>
         <li><a href="#voice-input">Voice Input</a></li>
         <li><a href="#configuration">Configuration</a></li>
         <li><a href="#keyboard-shortcuts">Keyboard Shortcuts</a></li>
@@ -651,7 +652,54 @@
         </div>
       </section>
 
-      <!-- 7. Voice Input -->
+      <!-- 7. AI Components -->
+      <section class="doc-section" id="ai-components">
+        <h2>AI Components</h2>
+        <p>Awal Terminal can auto-detect your project stack (Go, Flutter, Swift, Python, etc.) and inject relevant AI components into your coding sessions. Components are loaded from shared Git registries and injected per model.</p>
+
+        <h3>Component Types</h3>
+        <table class="doc-table">
+          <thead><tr><th>Type</th><th>Format</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td>Skills</td><td><code>skills/&lt;name&gt;/SKILL.md</code></td><td>AI skill definitions with instructions</td></tr>
+            <tr><td>Rules</td><td><code>rules/&lt;name&gt;.md</code></td><td>Always-on coding conventions</td></tr>
+            <tr><td>Prompts</td><td><code>prompts/&lt;name&gt;.md</code></td><td>Reusable task templates</td></tr>
+            <tr><td>Agents</td><td><code>agents/&lt;name&gt;/agent.json</code></td><td>Autonomous task performers</td></tr>
+            <tr><td>MCP Servers</td><td><code>mcp-servers/&lt;name&gt;.json</code></td><td>Tool server configs (Claude only)</td></tr>
+            <tr><td>Hooks</td><td><code>hooks/pre-session/&lt;name&gt;.sh</code></td><td>Scripts run before/after sessions</td></tr>
+          </tbody>
+        </table>
+
+        <h3>How It Works</h3>
+        <ol>
+          <li>Awal detects your project type by scanning for marker files (e.g., <code>go.mod</code>, <code>pubspec.yaml</code>, <code>Package.swift</code>)</li>
+          <li>Common components are loaded for all projects</li>
+          <li>Stack-specific components are loaded based on detected project type</li>
+          <li>Components are injected into the AI session: Claude via the plugin system, Gemini via <code>--system-instruction-file</code>, Codex via <code>--instructions</code></li>
+        </ol>
+
+        <h3>Status Bar</h3>
+        <p>When AI components are active, the status bar shows the detected stack and component count (e.g., <code>flutter &middot; 3 skills, 2 rules</code>). Click it to see the full list of active components.</p>
+
+        <h3>Configuration</h3>
+        <pre><code>[ai_components]
+enabled = true
+auto_detect = true
+auto_sync = true
+sync_interval = 3600
+
+[ai_components.registry.awal-skills]
+url = "https://github.com/AwalTerminal/awal-skills-registry.git"
+branch = "main"</code></pre>
+        <p>You can add multiple registries. Open <strong>Preferences &gt; AI Components</strong> (<code>Cmd+,</code>) to manage registries, sync settings, and toggle auto-detection.</p>
+
+        <h3>Stack Overrides</h3>
+        <p>Force specific stacks for a project path instead of auto-detection:</p>
+        <pre><code>[ai_components.overrides."/Users/me/my-project"]
+stacks = "go,flutter"</code></pre>
+      </section>
+
+      <!-- 8. Voice Input -->
       <section class="doc-section" id="voice-input">
         <h2>Voice Input</h2>
         <p>Awal Terminal includes voice input powered by Apple's on-device speech recognition (SFSpeechRecognizer).</p>
@@ -736,7 +784,17 @@ vad_threshold = 0.02
 language = "en"
 wake_word = "hey terminal"
 dictation_auto_enter = false
-dictation_auto_space = true</code></pre>
+dictation_auto_space = true
+
+[ai_components]
+enabled = true
+auto_detect = true
+auto_sync = true
+sync_interval = 3600
+
+[ai_components.registry.awal-skills]
+url = "https://github.com/AwalTerminal/awal-skills-registry.git"
+branch = "main"</code></pre>
 
         <h3>Theme Colors</h3>
         <table class="doc-table">
@@ -767,6 +825,18 @@ dictation_auto_space = true</code></pre>
 
         <h3>Voice Settings</h3>
         <p>Enable voice input by setting <code>enabled = true</code> under <code>[voice]</code>. Configure the mode (<code>push_to_talk</code>, <code>continuous</code>, <code>wake_word</code>, <code>dictation</code>), sensitivity threshold, language, and wake word phrase.</p>
+
+        <h3>AI Components Settings</h3>
+        <table class="doc-table">
+          <thead><tr><th>Key</th><th>Description</th><th>Default</th></tr></thead>
+          <tbody>
+            <tr><td><code>enabled</code></td><td>Enable AI component injection</td><td><code>true</code></td></tr>
+            <tr><td><code>auto_detect</code></td><td>Auto-detect project stack from marker files</td><td><code>true</code></td></tr>
+            <tr><td><code>auto_sync</code></td><td>Auto-sync registries on session start</td><td><code>true</code></td></tr>
+            <tr><td><code>sync_interval</code></td><td>Minimum seconds between auto-syncs</td><td><code>3600</code></td></tr>
+          </tbody>
+        </table>
+        <p>Add registries with <code>[ai_components.registry.&lt;name&gt;]</code> sections containing <code>url</code> and <code>branch</code> keys.</p>
       </section>
 
       <!-- 9. Keyboard Shortcuts -->

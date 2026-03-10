@@ -9,7 +9,7 @@ class RegistryManager {
     private let configDir = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(".config/awal")
     private var registriesDir: URL { configDir.appendingPathComponent("registries") }
-    private var metaFile: URL { configDir.appendingPathComponent("skill-meta.json") }
+    private var metaFile: URL { configDir.appendingPathComponent("ai-component-meta.json") }
 
     private var syncInProgress = false
 
@@ -158,10 +158,10 @@ class RegistryManager {
             try proc.run()
             proc.waitUntilExit()
             if proc.terminationStatus != 0 {
-                NSLog("[SkillRegistry] Failed to clone \(url)")
+                NSLog("[AIComponentRegistry] Failed to clone \(url)")
             }
         } catch {
-            NSLog("[SkillRegistry] Clone error: \(error)")
+            NSLog("[AIComponentRegistry] Clone error: \(error)")
         }
     }
 
@@ -176,7 +176,7 @@ class RegistryManager {
             try proc.run()
             proc.waitUntilExit()
         } catch {
-            NSLog("[SkillRegistry] Pull error: \(error)")
+            NSLog("[AIComponentRegistry] Pull error: \(error)")
         }
     }
 
@@ -206,7 +206,7 @@ class RegistryManager {
               let lastSync = info["lastSync"] as? TimeInterval else {
             return true
         }
-        let interval = TimeInterval(AppConfig.shared.skillsSyncInterval)
+        let interval = TimeInterval(AppConfig.shared.aiComponentsSyncInterval)
         return Date().timeIntervalSince1970 - lastSync >= interval
     }
 

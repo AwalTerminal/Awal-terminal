@@ -435,6 +435,24 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
                 at_surface_set_ai_analysis(surface, isAI)
             }
             tab.statusBar.setVoiceVisible(true)
+            // Update AI component indicator
+            if let ctx = terminal.lastAIComponentContext, ctx.totalCount > 0 {
+                let components = AIComponentRegistry.shared.listActiveComponents(
+                    stacks: ctx.detectedStacks,
+                    registries: AppConfig.shared.aiComponentRegistries
+                )
+                tab.statusBar.setAIComponentInfo(
+                    stacks: ctx.detectedStacks,
+                    skillCount: ctx.skillCount,
+                    ruleCount: ctx.ruleCount,
+                    promptCount: ctx.promptCount,
+                    agentCount: ctx.agentCount,
+                    mcpServerCount: ctx.mcpServerCount,
+                    components: components
+                )
+            } else {
+                tab.statusBar.clearAIComponentInfo()
+            }
             self.reloadTabBar()
             self.updateWindowTitle()
         }
