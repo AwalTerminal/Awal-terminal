@@ -681,17 +681,27 @@
         <h3>Status Bar</h3>
         <p>When AI components are active, the status bar shows the detected stack and component count (e.g., <code>flutter &middot; 3 skills, 2 rules</code>). Click it to see the full list of active components.</p>
 
-        <h3>Configuration</h3>
+        <h3>Default Registry</h3>
+        <p>Awal ships with the <a href="https://github.com/AwalTerminal/awal-skills-registry">awal-skills</a> registry pre-configured. It includes common coding rules, skills, and stack-specific components for Go, Flutter, Swift, Python, Rust, Node.js, Java, and C#.</p>
+
+        <h3>Custom Registries</h3>
+        <p>You can add your own registries — for example, your team's internal coding conventions, custom prompts, or proprietary MCP server configs. Any Git repository that follows the registry structure works. Add them via <strong>Preferences &gt; AI Components &gt; + Add Registry</strong>, or in your config file:</p>
         <pre><code>[ai_components]
 enabled = true
 auto_detect = true
 auto_sync = true
 sync_interval = 3600
 
+# Default registry (included out of the box)
 [ai_components.registry.awal-skills]
 url = "https://github.com/AwalTerminal/awal-skills-registry.git"
+branch = "main"
+
+# Add your own registry
+[ai_components.registry.my-team]
+url = "https://github.com/my-org/ai-components.git"
 branch = "main"</code></pre>
-        <p>You can add multiple registries. Open <strong>Preferences &gt; AI Components</strong> (<code>Cmd+,</code>) to manage registries, sync settings, and toggle auto-detection.</p>
+        <p>Multiple registries are merged — components from all registries are loaded together. Use <strong>Preferences &gt; AI Components</strong> (<code>Cmd+,</code>) to manage registries, sync settings, and toggle auto-detection.</p>
 
         <h3>Stack Overrides</h3>
         <p>Force specific stacks for a project path instead of auto-detection:</p>
