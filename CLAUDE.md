@@ -35,6 +35,8 @@ When making changes that add, remove, or modify user-facing features (new UI ele
 - **`docs/documentation.html`** — Update the corresponding section(s) in the website documentation page (Getting Started, AI Features, Keyboard Shortcuts, Configuration, etc.)
 - **`docs/index.html`** — Update the feature cards on the landing page if a major new feature is added
 
+When adding or removing feature cards in `docs/index.html`, ensure the total count is a multiple of 3 (the grid column count). Order cards by importance — major differentiating features first. If needed, merge less important features into a single card to maintain full rows.
+
 Do NOT update docs for internal refactors, bug fixes, or changes that don't affect the user-facing behavior.
 
 ## Project Structure
