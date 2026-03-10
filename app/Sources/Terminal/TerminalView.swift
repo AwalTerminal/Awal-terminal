@@ -2358,26 +2358,107 @@ class TerminalView: NSView {
         guard let _ = surface else { return }
         guard let text = NSPasteboard.general.string(forType: .string) else { return }
 
-        let bracketedPaste = at_surface_get_bracketed_paste(surface)
-        var pasteData = text
-        if bracketedPaste {
-            pasteData = "\u{1b}[200~" + text + "\u{1b}[201~"
+        gatedPaste(text) { [weak self] approved in
+            guard let self, let _ = self.surface else { return }
+            let bracketedPaste = at_surface_get_bracketed_paste(self.surface)
+            var pasteData = approved
+            if bracketedPaste {
+                pasteData = "\u{1b}[200~" + approved + "\u{1b}[201~"
+            }
+            self.queuePtyWrite(Array(pasteData.utf8))
         }
-
-        queuePtyWrite(Array(pasteData.utf8))
     }
 
     /// Inject text into the terminal as if typed (used by voice dictation).
     func injectText(_ text: String) {
         guard let _ = surface else { return }
 
-        let bracketedPaste = at_surface_get_bracketed_paste(surface)
-        var data = text
-        if bracketedPaste {
-            data = "\u{1b}[200~" + text + "\u{1b}[201~"
+        gatedPaste(text) { [weak self] approved in
+            guard let self, let _ = self.surface else { return }
+            let bracketedPaste = at_surface_get_bracketed_paste(self.surface)
+            var data = approved
+            if bracketedPaste {
+                data = "\u{1b}[200~" + approved + "\u{1b}[201~"
+            }
+            self.queuePtyWrite(Array(data.utf8))
+        }
+    }
+
+    /// Gate large pastes behind a confirmation dialog.
+    /// If the text is within the threshold, calls completion immediately.
+    /// Otherwise shows a sheet with options to save-to-file, paste all, truncate, or cancel.
+    private func gatedPaste(_ text: String, completion: @escaping (String) -> Void) {
+        let config = AppConfig.shared
+        guard text.count > config.pasteWarningThreshold else {
+            completion(text)
+            return
         }
 
-        queuePtyWrite(Array(data.utf8))
+        guard let window = self.window else {
+            completion(text)
+            return
+        }
+
+        let lineCount = text.components(separatedBy: "\n").count
+        let charCount = text.count
+        let truncateLen = config.pasteTruncateLength
+
+        let alert = NSAlert.branded()
+        alert.messageText = "Large Paste Detected"
+        alert.informativeText = "The clipboard contains \(formatCount(charCount)) characters (\(formatCount(lineCount)) lines). Pasting this much text may cause performance issues."
+        alert.addButton(withTitle: "Save to File & Paste Path")
+        alert.addButton(withTitle: "Paste All")
+        alert.addButton(withTitle: "Paste First \(formatCount(truncateLen)) Characters")
+        alert.addButton(withTitle: "Cancel")
+
+        alert.beginSheetModal(for: window) { [weak self] response in
+            switch response {
+            case .alertFirstButtonReturn:
+                // Save to file & paste path
+                self?.saveToFileAndPastePath(text, completion: completion)
+            case .alertSecondButtonReturn:
+                // Paste all
+                completion(text)
+            case .alertThirdButtonReturn:
+                // Paste truncated
+                let truncated = String(text.prefix(truncateLen))
+                completion(truncated)
+            default:
+                // Cancel — do nothing
+                break
+            }
+        }
+    }
+
+    /// Save pasted content to a file and return the file path via completion.
+    private func saveToFileAndPastePath(_ text: String, completion: @escaping (String) -> Void) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let ext = (trimmed.hasPrefix("{") || trimmed.hasPrefix("[")) ? "json" : "txt"
+        let timestamp = Int(Date().timeIntervalSince1970)
+        let filename = ".pasted-content-\(timestamp).\(ext)"
+
+        let dir: String
+        if let wd = lastWorkingDir, FileManager.default.fileExists(atPath: wd) {
+            dir = wd
+        } else {
+            dir = NSTemporaryDirectory()
+        }
+
+        let path = (dir as NSString).appendingPathComponent(filename)
+        do {
+            try text.write(toFile: path, atomically: true, encoding: .utf8)
+            completion(path)
+        } catch {
+            // Fall back to pasting all if file write fails
+            completion(text)
+        }
+    }
+
+    /// Format a number with grouping separators for display.
+    private func formatCount(_ n: Int) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        return formatter.string(from: NSNumber(value: n)) ?? "\(n)"
     }
 
     /// Set the search query in the search bar (opens search if not visible).

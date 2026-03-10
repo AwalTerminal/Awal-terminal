@@ -35,6 +35,10 @@ struct AppConfig {
     var voiceCommandPrefix: String = ""
     var voiceWakeWord: String = "hey terminal"
 
+    // Paste
+    var pasteWarningThreshold: Int = 100_000
+    var pasteTruncateLength: Int = 10_000
+
     // AI Components
     var aiComponentsEnabled: Bool = true
     var aiComponentsAutoDetect: Bool = true
@@ -129,6 +133,10 @@ struct AppConfig {
         if let v = parsed["voice.dictation_auto_space"] { config.voiceDictationAutoSpace = v == "true" || v.isEmpty }
         if let v = parsed["voice.command_prefix"] { config.voiceCommandPrefix = v }
         if let v = parsed["voice.wake_word"] { config.voiceWakeWord = v }
+
+        // Paste
+        if let v = parsed["paste.warning_threshold"], let n = Int(v) { config.pasteWarningThreshold = n }
+        if let v = parsed["paste.truncate_length"], let n = Int(v) { config.pasteTruncateLength = n }
 
         // AI Components
         if let v = parsed["ai_components.enabled"] { config.aiComponentsEnabled = v == "true" }
