@@ -1,9 +1,40 @@
 import Foundation
 
+/// Errors that can occur during registry sync operations.
+enum RegistrySyncError: Error, LocalizedError {
+    case cloneFailed(name: String, stderr: String)
+    case pullFailed(name: String, stderr: String)
+    case invalidStructure(name: String, details: String)
+    case gitNotFound
+
+    var errorDescription: String? {
+        switch self {
+        case .cloneFailed(let name, let stderr):
+            return "Failed to clone '\(name)': \(stderr)"
+        case .pullFailed(let name, let stderr):
+            return "Failed to pull '\(name)': \(stderr)"
+        case .invalidStructure(let name, let details):
+            return "Invalid structure in '\(name)': \(details)"
+        case .gitNotFound:
+            return "Git executable not found at /usr/bin/git"
+        }
+    }
+}
+
+/// Per-registry sync status.
+enum RegistryStatus {
+    case notCloned
+    case synced(lastSync: Date, commitHash: String)
+    case syncing
+    case error(String)
+}
+
 /// Manages skill registry Git repos: clone, pull, caching, and sync metadata.
 class RegistryManager {
 
     static let shared = RegistryManager()
+
+    static let statusDidChange = Notification.Name("RegistryManagerStatusDidChange")
 
     private let fm = FileManager.default
     private let configDir = FileManager.default.homeDirectoryForCurrentUser
@@ -13,54 +44,43 @@ class RegistryManager {
 
     private var syncInProgress = false
 
+    /// Per-registry status tracking.
+    private(set) var registryStatuses: [String: RegistryStatus] = [:]
+
     // MARK: - Public API
 
     /// Clone or pull all configured registries. Runs on a background queue.
-    func syncAll(registries: [(name: String, url: String, branch: String)], force: Bool = false, completion: (() -> Void)? = nil) {
+    func syncAll(
+        registries: [(name: String, url: String, branch: String)],
+        force: Bool = false,
+        completion: (([String: Result<Void, RegistrySyncError>]) -> Void)? = nil
+    ) {
         guard !syncInProgress else {
-            completion?()
+            completion?([:])
             return
         }
         syncInProgress = true
 
         DispatchQueue.global(qos: .utility).async { [weak self] in
             guard let self else { return }
+            var results: [String: Result<Void, RegistrySyncError>] = [:]
+
             defer {
                 self.syncInProgress = false
-                DispatchQueue.main.async { completion?() }
+                DispatchQueue.main.async { completion?(results) }
             }
 
             for reg in registries {
-                let repoDir = self.registriesDir.appendingPathComponent(reg.name)
-
-                if self.fm.fileExists(atPath: repoDir.path) {
-                    if !force && !self.shouldSync(name: reg.name) {
-                        continue
-                    }
-                    self.pullRegistry(at: repoDir, branch: reg.branch)
-                } else {
-                    self.cloneRegistry(url: reg.url, to: repoDir, branch: reg.branch)
-                }
-
-                // Update metadata
-                let commitHash = self.currentCommit(at: repoDir)
-                self.updateMeta(name: reg.name, commitHash: commitHash)
+                let result = self.syncOneInternal(name: reg.name, url: reg.url, branch: reg.branch, force: force)
+                results[reg.name] = result
             }
         }
     }
 
-    /// Sync a single registry immediately (blocking).
-    func syncOne(name: String, url: String, branch: String) {
-        let repoDir = registriesDir.appendingPathComponent(name)
-
-        if fm.fileExists(atPath: repoDir.path) {
-            pullRegistry(at: repoDir, branch: branch)
-        } else {
-            cloneRegistry(url: url, to: repoDir, branch: branch)
-        }
-
-        let commitHash = currentCommit(at: repoDir)
-        updateMeta(name: name, commitHash: commitHash)
+    /// Sync a single registry immediately (blocking). Returns result.
+    @discardableResult
+    func syncOne(name: String, url: String, branch: String) -> Result<Void, RegistrySyncError> {
+        return syncOneInternal(name: name, url: url, branch: branch, force: true)
     }
 
     /// Remove a cloned registry.
@@ -68,6 +88,8 @@ class RegistryManager {
         let repoDir = registriesDir.appendingPathComponent(name)
         try? fm.removeItem(at: repoDir)
         removeMeta(name: name)
+        registryStatuses[name] = .notCloned
+        postStatusChange()
     }
 
     /// Get the local path for a registry's clone.
@@ -100,6 +122,39 @@ class RegistryManager {
             }
         }
         return latest
+    }
+
+    /// Validate registry structure after clone/pull.
+    /// Returns a list of warnings (empty if structure is valid).
+    func validateStructure(name: String) -> [String] {
+        let repoDir = registriesDir.appendingPathComponent(name)
+        guard fm.fileExists(atPath: repoDir.path) else {
+            return ["Repository directory does not exist"]
+        }
+
+        var warnings: [String] = []
+        let commonDir = repoDir.appendingPathComponent("common")
+        let stacksDir = repoDir.appendingPathComponent("stacks")
+
+        let hasCommon = fm.fileExists(atPath: commonDir.path)
+        let hasStacks = fm.fileExists(atPath: stacksDir.path)
+
+        if !hasCommon && !hasStacks {
+            warnings.append("Missing both common/ and stacks/ directories")
+        }
+
+        if hasCommon {
+            let recognized = ["skills", "rules", "prompts", "agents", "mcp-servers", "hooks", "commands"]
+            if let contents = try? fm.contentsOfDirectory(atPath: commonDir.path) {
+                for item in contents where !item.hasPrefix(".") {
+                    if !recognized.contains(item) {
+                        warnings.append("Unrecognized directory: common/\(item)")
+                    }
+                }
+            }
+        }
+
+        return warnings
     }
 
     /// Parse a registry.toml file and return stack detection rules.
@@ -143,40 +198,100 @@ class RegistryManager {
         return rules
     }
 
+    // MARK: - Internal Sync
+
+    private func syncOneInternal(name: String, url: String, branch: String, force: Bool) -> Result<Void, RegistrySyncError> {
+        setStatus(name, .syncing)
+
+        let repoDir = registriesDir.appendingPathComponent(name)
+        let result: Result<Void, RegistrySyncError>
+
+        if fm.fileExists(atPath: repoDir.path) {
+            if !force && !shouldSync(name: name) {
+                // Already up to date
+                if let meta = loadMeta()[name],
+                   let ts = meta["lastSync"] as? TimeInterval,
+                   let hash = meta["commitHash"] as? String {
+                    setStatus(name, .synced(lastSync: Date(timeIntervalSince1970: ts), commitHash: hash))
+                }
+                return .success(())
+            }
+            result = pullRegistry(at: repoDir, branch: branch, name: name)
+        } else {
+            result = cloneRegistry(url: url, to: repoDir, branch: branch, name: name)
+        }
+
+        switch result {
+        case .success:
+            let commitHash = currentCommit(at: repoDir)
+            updateMeta(name: name, commitHash: commitHash)
+
+            // Validate and set status with warnings
+            let warnings = validateStructure(name: name)
+            if !warnings.isEmpty {
+                setStatus(name, .error(warnings.first ?? "Invalid structure"))
+            } else {
+                setStatus(name, .synced(lastSync: Date(), commitHash: commitHash))
+            }
+
+        case .failure(let error):
+            setStatus(name, .error(error.localizedDescription))
+        }
+
+        return result
+    }
+
     // MARK: - Git Operations
 
-    private func cloneRegistry(url: String, to dir: URL, branch: String) {
+    private func cloneRegistry(url: String, to dir: URL, branch: String, name: String) -> Result<Void, RegistrySyncError> {
+        guard fm.fileExists(atPath: "/usr/bin/git") else {
+            return .failure(.gitNotFound)
+        }
+
         try? fm.createDirectory(at: dir.deletingLastPathComponent(), withIntermediateDirectories: true)
 
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/usr/bin/git")
         proc.arguments = ["clone", "--depth", "1", "--branch", branch, url, dir.path]
         proc.standardOutput = FileHandle.nullDevice
-        proc.standardError = FileHandle.nullDevice
+        let stderrPipe = Pipe()
+        proc.standardError = stderrPipe
 
         do {
             try proc.run()
             proc.waitUntilExit()
+            let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+            let stderrStr = String(data: stderrData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
             if proc.terminationStatus != 0 {
-                NSLog("[AIComponentRegistry] Failed to clone \(url)")
+                return .failure(.cloneFailed(name: name, stderr: stderrStr))
             }
+            return .success(())
         } catch {
-            NSLog("[AIComponentRegistry] Clone error: \(error)")
+            return .failure(.cloneFailed(name: name, stderr: error.localizedDescription))
         }
     }
 
-    private func pullRegistry(at dir: URL, branch: String) {
+    private func pullRegistry(at dir: URL, branch: String, name: String) -> Result<Void, RegistrySyncError> {
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/usr/bin/git")
         proc.arguments = ["-C", dir.path, "pull", "--ff-only", "origin", branch]
         proc.standardOutput = FileHandle.nullDevice
-        proc.standardError = FileHandle.nullDevice
+        let stderrPipe = Pipe()
+        proc.standardError = stderrPipe
 
         do {
             try proc.run()
             proc.waitUntilExit()
+            let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+            let stderrStr = String(data: stderrData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+            if proc.terminationStatus != 0 {
+                return .failure(.pullFailed(name: name, stderr: stderrStr))
+            }
+            return .success(())
         } catch {
-            NSLog("[AIComponentRegistry] Pull error: \(error)")
+            return .failure(.pullFailed(name: name, stderr: error.localizedDescription))
         }
     }
 
@@ -196,6 +311,19 @@ class RegistryManager {
         } catch {
             return ""
         }
+    }
+
+    // MARK: - Status Tracking
+
+    private func setStatus(_ name: String, _ status: RegistryStatus) {
+        DispatchQueue.main.async { [weak self] in
+            self?.registryStatuses[name] = status
+            self?.postStatusChange()
+        }
+    }
+
+    private func postStatusChange() {
+        NotificationCenter.default.post(name: Self.statusDidChange, object: self)
     }
 
     // MARK: - Sync Metadata

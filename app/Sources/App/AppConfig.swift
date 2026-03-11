@@ -45,7 +45,7 @@ struct AppConfig {
     var aiComponentsAutoSync: Bool = true
     var aiComponentsSyncInterval: Int = 3600
     var aiComponentRegistries: [(name: String, url: String, branch: String)] = [
-        (name: "awal-skills", url: "https://github.com/AwalTerminal/awal-skills-registry.git", branch: "main"),
+        (name: "awal-components", url: "https://github.com/AwalTerminal/awal-ai-components-registry.git", branch: "main"),
     ]
     private var aiComponentOverrides: [String: Set<String>] = [:]
 
@@ -76,7 +76,11 @@ struct AppConfig {
         return (key, mods)
     }
 
-    static let shared = load()
+    private(set) static var shared = load()
+
+    static func reload() {
+        shared = load()
+    }
 
     private static let configDir = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(".config/awal")

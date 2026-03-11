@@ -9,6 +9,7 @@ struct AssemblyResult {
     let agentCount: Int
     let mcpServerCount: Int
     let hookCount: Int
+    var warnings: [String] = []
 
     var totalCount: Int { skillCount + ruleCount + promptCount + agentCount + mcpServerCount + hookCount }
 }
@@ -61,10 +62,14 @@ class AIComponentRegistry {
         var totalAgents = 0
         var totalMcpServers = 0
         var totalHooks = 0
+        var warnings: [String] = []
 
         for reg in registries {
             let regPath = RegistryManager.shared.registryPath(name: reg.name)
-            guard fm.fileExists(atPath: regPath.path) else { continue }
+            guard fm.fileExists(atPath: regPath.path) else {
+                warnings.append("\(reg.name): not cloned yet")
+                continue
+            }
 
             // Count MCP servers and hooks at registry level (not per-stack)
             totalMcpServers += countItems(in: regPath.appendingPathComponent("common/mcp-servers"), ext: "json")
@@ -92,6 +97,14 @@ class AIComponentRegistry {
             }
         }
 
+        // Add structure warnings from RegistryManager
+        for reg in registries {
+            let structWarnings = RegistryManager.shared.validateStructure(name: reg.name)
+            for w in structWarnings {
+                warnings.append("\(reg.name): \(w)")
+            }
+        }
+
         return AssemblyResult(
             pluginDirs: allDirs,
             skillCount: totalSkills,
@@ -99,7 +112,8 @@ class AIComponentRegistry {
             promptCount: totalPrompts,
             agentCount: totalAgents,
             mcpServerCount: totalMcpServers,
-            hookCount: totalHooks
+            hookCount: totalHooks,
+            warnings: warnings
         )
     }
 

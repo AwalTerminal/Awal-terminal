@@ -7,12 +7,18 @@ struct ProjectDetector {
     static let builtInRules: [String: [String]] = [
         "go":      ["go.mod", "go.sum"],
         "flutter": ["pubspec.yaml"],
-        "swift":   ["Package.swift", "*.xcodeproj"],
+        "swift":   ["Package.swift", "*.xcodeproj", "*.xcworkspace"],
         "python":  ["pyproject.toml", "setup.py", "requirements.txt"],
         "csharp":  ["*.csproj", "*.sln"],
         "rust":    ["Cargo.toml"],
         "node":    ["package.json"],
-        "java":    ["pom.xml", "build.gradle"],
+        "java":    ["pom.xml", "build.gradle", "build.gradle.kts"],
+        "kotlin":  ["build.gradle.kts", "*.kt"],
+        "php":     ["composer.json", "artisan", "*.php"],
+        "ruby":    ["Gemfile", "*.gemspec", "Rakefile"],
+        "zig":     ["build.zig"],
+        "elixir":  ["mix.exs"],
+        "cpp":     ["CMakeLists.txt", "Makefile", "*.cpp"],
     ]
 
     /// Detect which stacks a project directory belongs to.
