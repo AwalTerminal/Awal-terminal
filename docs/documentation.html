@@ -465,6 +465,7 @@
         <li><a href="#ai-features">AI Features</a></li>
         <li><a href="#llm-integration">LLM Integration</a></li>
         <li><a href="#ai-components">AI Components</a></li>
+        <li><a href="#large-paste-protection">Large Paste Protection</a></li>
         <li><a href="#voice-input">Voice Input</a></li>
         <li><a href="#configuration">Configuration</a></li>
         <li><a href="#keyboard-shortcuts">Keyboard Shortcuts</a></li>
@@ -666,7 +667,7 @@
             <tr><td>Prompts</td><td><code>prompts/&lt;name&gt;.md</code></td><td>Reusable task templates</td></tr>
             <tr><td>Agents</td><td><code>agents/&lt;name&gt;/agent.json</code></td><td>Autonomous task performers</td></tr>
             <tr><td>MCP Servers</td><td><code>mcp-servers/&lt;name&gt;.json</code></td><td>Tool server configs (Claude only)</td></tr>
-            <tr><td>Hooks</td><td><code>hooks/pre-session/&lt;name&gt;.sh</code></td><td>Scripts run before/after sessions</td></tr>
+            <tr><td>Hooks</td><td><code>hooks/pre-session/</code>, <code>hooks/post-session/</code>, <code>hooks/before-commit/</code></td><td>Scripts run at session start, end, or before commits</td></tr>
           </tbody>
         </table>
 
@@ -703,10 +704,39 @@ url = "https://github.com/my-org/ai-components.git"
 branch = "main"</code></pre>
         <p>Multiple registries are merged — components from all registries are loaded together. Use the <strong>AI Components &gt; Manage Components</strong> menu to manage registries, browse loaded components, and configure sync settings.</p>
 
+        <h3>Hooks</h3>
+        <p>Hooks are shell scripts that run automatically at specific points in an AI session. Place them in the appropriate directory under your registry's stack folder:</p>
+        <ul>
+          <li><strong>Pre-session</strong> (<code>hooks/pre-session/</code>) &mdash; Runs when a session starts. Example: <code>flutter pub get</code> to ensure dependencies are up to date.</li>
+          <li><strong>Post-session</strong> (<code>hooks/post-session/</code>) &mdash; Runs when a session ends. Example: <code>dart format .</code> to auto-format code.</li>
+          <li><strong>Before-commit</strong> (<code>hooks/before-commit/</code>) &mdash; Runs before Bash tool calls (Claude only, via PreToolUse). Example: format staged files before they're committed.</li>
+        </ul>
+        <p>Hooks are injected into Claude's settings automatically. For other models, pre-session and post-session hooks are executed directly by Awal Terminal.</p>
+
+        <h3>AI Components Manager</h3>
+        <p>Open the dedicated manager window from <strong>AI Components &gt; Manage Components</strong> in the menu bar. The manager lets you browse all loaded components across registries, view component details, and manage sync settings. You can also trigger a manual sync with <code>Cmd+Y</code>.</p>
+
         <h3>Stack Overrides</h3>
         <p>Force specific stacks for a project path instead of auto-detection:</p>
         <pre><code>[ai_components.overrides."/Users/me/my-project"]
 stacks = "go,flutter"</code></pre>
+      </section>
+
+      <!-- Large Paste Protection -->
+      <section class="doc-section" id="large-paste-protection">
+        <h2>Large Paste Protection</h2>
+        <p>When you paste text that exceeds a configurable character threshold (default: 100,000 characters), Awal Terminal shows a confirmation dialog instead of pasting immediately. This prevents accidentally flooding your terminal or AI session with massive content.</p>
+        <p>The dialog offers four options:</p>
+        <ul>
+          <li><strong>Save to File &amp; Paste Path</strong> &mdash; Saves the clipboard content to a temporary file and pastes the file path instead.</li>
+          <li><strong>Paste All</strong> &mdash; Pastes the full content as-is.</li>
+          <li><strong>Paste Truncated</strong> &mdash; Pastes only the first N characters (default: 10,000), configurable via <code>paste.truncate_length</code>.</li>
+          <li><strong>Cancel</strong> &mdash; Aborts the paste.</li>
+        </ul>
+        <p>Configure thresholds in <code>config.toml</code>:</p>
+        <pre><code>[paste]
+warning_threshold = 100000   # Show dialog above this many characters
+truncate_length = 10000      # Characters to keep when truncating</code></pre>
       </section>
 
       <!-- 8. Voice Input -->
@@ -796,6 +826,10 @@ wake_word = "hey terminal"
 dictation_auto_enter = false
 dictation_auto_space = true
 
+[paste]
+warning_threshold = 100000
+truncate_length = 10000
+
 [ai_components]
 enabled = true
 auto_detect = true
@@ -847,6 +881,15 @@ branch = "main"</code></pre>
           </tbody>
         </table>
         <p>Add registries with <code>[ai_components.registry.&lt;name&gt;]</code> sections containing <code>url</code> and <code>branch</code> keys.</p>
+
+        <h3>Paste Settings</h3>
+        <table class="doc-table">
+          <thead><tr><th>Key</th><th>Description</th><th>Default</th></tr></thead>
+          <tbody>
+            <tr><td><code>paste.warning_threshold</code></td><td>Show confirmation dialog for pastes above this many characters</td><td><code>100000</code></td></tr>
+            <tr><td><code>paste.truncate_length</code></td><td>Number of characters to keep when using "Paste Truncated"</td><td><code>10000</code></td></tr>
+          </tbody>
+        </table>
       </section>
 
       <!-- 9. Keyboard Shortcuts -->
@@ -871,6 +914,7 @@ branch = "main"</code></pre>
             <tr><td>Panes</td><td><code>Cmd+]</code></td><td>Next pane</td></tr>
             <tr><td>Panes</td><td><code>Cmd+[</code></td><td>Previous pane</td></tr>
             <tr><td>AI</td><td><code>Cmd+Shift+I</code></td><td>Toggle AI side panel</td></tr>
+            <tr><td>AI</td><td><code>Cmd+Y</code></td><td>Sync AI Components</td></tr>
             <tr><td>Terminal</td><td><code>Ctrl+`</code></td><td>Quick terminal</td></tr>
             <tr><td>Voice</td><td><code>Ctrl+Shift+Space</code></td><td>Push-to-talk</td></tr>
             <tr><td>Search</td><td><code>Enter</code></td><td>Next match</td></tr>

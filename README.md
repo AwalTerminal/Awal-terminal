@@ -52,6 +52,8 @@ A native macOS terminal built from scratch with Swift and Rust, designed specifi
 
 **AI Components** — Auto-detect your project stack and inject skills, rules, prompts, agents, MCP servers, and hooks into AI sessions from shared registries.
 
+**Large Paste Protection** — Confirmation dialog for large pastes with options to save to file, truncate, or paste all. Configurable threshold.
+
 **Fully Configurable** — Theme colors, fonts, keybindings, and voice settings in a single config file.
 
 ## Getting Started
@@ -105,6 +107,10 @@ enabled = true
 mode = "push_to_talk"
 whisper_model = "tiny.en"
 
+[paste]
+warning_threshold = 100000
+truncate_length = 10000
+
 [ai_components]
 enabled = true
 auto_detect = true
@@ -137,6 +143,7 @@ docs/       Promotional website (GitHub Pages)
 | Find | `Cmd+F` |
 | AI side panel | `Cmd+Shift+I` |
 | Quick terminal | `` Ctrl+` `` |
+| Sync AI components | `Cmd+Y` |
 | Voice input (PTT) | `Ctrl+Shift+Space` |
 
 ## License
