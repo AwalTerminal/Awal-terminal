@@ -11,6 +11,7 @@ struct AIComponentContext {
     let commandModifier: ((String) -> String)?
     let preSessionHooks: [URL]
     let postSessionHooks: [URL]
+    let beforeCommitHooks: [URL]
 
     var totalCount: Int { skillCount + ruleCount + promptCount + agentCount + mcpServerCount }
 }
@@ -103,7 +104,7 @@ enum AIComponentInjector {
     private static func injectClaude(
         stacks: Set<String>,
         registries: [(name: String, url: String, branch: String)],
-        hooks: (preSession: [URL], postSession: [URL])
+        hooks: (preSession: [URL], postSession: [URL], beforeCommit: [URL])
     ) -> AIComponentContext {
         let result = AIComponentRegistry.shared.assemble(stacks: stacks, registries: registries)
 
@@ -148,8 +149,8 @@ enum AIComponentInjector {
         updateClaudeSettings(settingsFile: claudeSettings, pluginPaths: pluginNames, mcpConfigs: mcpConfigs)
 
         // Write hooks to Claude settings
-        if !hooks.preSession.isEmpty || !hooks.postSession.isEmpty {
-            writeClaudeHooks(settingsFile: claudeSettings, preHooks: hooks.preSession, postHooks: hooks.postSession)
+        if !hooks.preSession.isEmpty || !hooks.postSession.isEmpty || !hooks.beforeCommit.isEmpty {
+            writeClaudeHooks(settingsFile: claudeSettings, preHooks: hooks.preSession, postHooks: hooks.postSession, beforeCommitHooks: hooks.beforeCommit)
         }
 
         return AIComponentContext(
@@ -161,7 +162,8 @@ enum AIComponentInjector {
             mcpServerCount: result.mcpServerCount,
             commandModifier: nil,
             preSessionHooks: hooks.preSession,
-            postSessionHooks: hooks.postSession
+            postSessionHooks: hooks.postSession,
+            beforeCommitHooks: hooks.beforeCommit
         )
     }
 
@@ -204,7 +206,7 @@ enum AIComponentInjector {
         }
     }
 
-    private static func writeClaudeHooks(settingsFile: URL, preHooks: [URL], postHooks: [URL]) {
+    private static func writeClaudeHooks(settingsFile: URL, preHooks: [URL], postHooks: [URL], beforeCommitHooks: [URL]) {
         guard let data = try? Data(contentsOf: settingsFile),
               var settings = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
 
@@ -234,6 +236,19 @@ enum AIComponentInjector {
                 postSession.append(entry)
             }
             hooks["PostSession"] = postSession
+        }
+
+        if !beforeCommitHooks.isEmpty {
+            var preCommit = hooks["PreCommit"] as? [[String: Any]] ?? []
+            for hook in beforeCommitHooks {
+                let entry: [String: Any] = [
+                    "type": "command",
+                    "command": "bash \(hook.path)",
+                    "source": "awal"
+                ]
+                preCommit.append(entry)
+            }
+            hooks["PreCommit"] = preCommit
         }
 
         settings["hooks"] = hooks
@@ -311,7 +326,7 @@ enum AIComponentInjector {
         prefix: String,
         projectPath: String,
         flagName: String?,
-        hooks: (preSession: [URL], postSession: [URL])
+        hooks: (preSession: [URL], postSession: [URL], beforeCommit: [URL])
     ) -> AIComponentContext? {
         let components = AIComponentRegistry.shared.listActiveComponents(stacks: stacks, registries: registries)
 
@@ -334,7 +349,8 @@ enum AIComponentInjector {
                 skillCount: 0, ruleCount: 0, promptCount: 0, agentCount: 0, mcpServerCount: 0,
                 commandModifier: nil,
                 preSessionHooks: hooks.preSession,
-                postSessionHooks: hooks.postSession
+                postSessionHooks: hooks.postSession,
+                beforeCommitHooks: hooks.beforeCommit
             )
         }
 
@@ -353,7 +369,8 @@ enum AIComponentInjector {
             mcpServerCount: 0,  // MCP is Claude-only
             commandModifier: modifier,
             preSessionHooks: hooks.preSession,
-            postSessionHooks: hooks.postSession
+            postSessionHooks: hooks.postSession,
+            beforeCommitHooks: hooks.beforeCommit
         )
     }
 }

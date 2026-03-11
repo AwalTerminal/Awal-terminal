@@ -280,9 +280,10 @@ class AIComponentRegistry {
     func collectHooks(
         stacks: Set<String>,
         registries: [(name: String, url: String, branch: String)]
-    ) -> (preSession: [URL], postSession: [URL]) {
+    ) -> (preSession: [URL], postSession: [URL], beforeCommit: [URL]) {
         var pre: [URL] = []
         var post: [URL] = []
+        var commit: [URL] = []
 
         for reg in registries {
             let regPath = RegistryManager.shared.registryPath(name: reg.name)
@@ -294,10 +295,11 @@ class AIComponentRegistry {
             for dir in dirs {
                 pre.append(contentsOf: scriptURLs(in: dir.appendingPathComponent("pre-session")))
                 post.append(contentsOf: scriptURLs(in: dir.appendingPathComponent("post-session")))
+                commit.append(contentsOf: scriptURLs(in: dir.appendingPathComponent("before-commit")))
             }
         }
 
-        return (pre, post)
+        return (pre, post, commit)
     }
 
     /// Clean up assembled plugin directories.
@@ -541,7 +543,7 @@ class AIComponentRegistry {
     /// Get hook script names from hooks/ subdirectories.
     private func hookNames(in hooksDir: URL) -> [String] {
         var names: [String] = []
-        for subdir in ["pre-session", "post-session"] {
+        for subdir in ["pre-session", "post-session", "before-commit"] {
             let dir = hooksDir.appendingPathComponent(subdir)
             if let items = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) {
                 for item in items where item.pathExtension == "sh" {
@@ -563,7 +565,7 @@ class AIComponentRegistry {
     /// Count hook scripts in hooks/ subdirectories.
     private func countHooks(in hooksDir: URL) -> Int {
         var count = 0
-        for subdir in ["pre-session", "post-session"] {
+        for subdir in ["pre-session", "post-session", "before-commit"] {
             let dir = hooksDir.appendingPathComponent(subdir)
             if let items = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) {
                 count += items.filter { $0.pathExtension == "sh" }.count

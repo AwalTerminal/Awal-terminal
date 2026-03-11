@@ -45,6 +45,7 @@ class TerminalView: NSView {
     private(set) var activeModelName: String = ""
     private(set) var lastAIComponentContext: AIComponentContext?
     private var postSessionHooks: [URL] = []
+    private var beforeCommitHooks: [URL] = []
     private var lastWorkingDir: String?
     private(set) var activeProvider: String = ""
     private(set) var isGenerating: Bool = false
@@ -1002,6 +1003,7 @@ class TerminalView: NSView {
         // Inject AI components based on model and project type
         lastAIComponentContext = nil
         postSessionHooks = []
+        beforeCommitHooks = []
         lastWorkingDir = workingDir
         var aiComponentContext: AIComponentContext? = nil
         if let dir = workingDir, AppConfig.shared.aiComponentsEnabled {
@@ -1014,6 +1016,7 @@ class TerminalView: NSView {
         // Execute pre-session hooks
         if let ctx = aiComponentContext {
             postSessionHooks = ctx.postSessionHooks
+            beforeCommitHooks = ctx.beforeCommitHooks
             for hookURL in ctx.preSessionHooks {
                 executeHookScript(hookURL, workingDir: workingDir)
             }
