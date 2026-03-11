@@ -17,14 +17,18 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
     }
 
     private let registryTableView = NSTableView()
-    private let outlineView = NSOutlineView()
+    private let componentTableView = NSTableView()
     private let errorLabel = NSTextField(labelWithString: "")
     private let syncAllButton: NSButton
     private let autoSyncCheck: NSButton
     private let intervalField: NSTextField
+    private let segmentedControl = NSSegmentedControl()
 
     // Components browser data
     private var componentGroups: [ComponentGroup] = []
+    /// Segment labels: one per populated component type
+    private var tabTypes: [ComponentType] = []
+    private var currentTabItems: [(name: String, source: String, stack: String)] = []
 
     private struct ComponentGroup {
         let type: ComponentType
@@ -85,7 +89,7 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
         guard let contentView = window?.contentView else { return }
         contentView.wantsLayer = true
 
-        // -- Top section: Registries --
+        // -- Top section: Registries (always visible) --
         let regHeader = NSTextField(labelWithString: "Registries")
         regHeader.font = .boldSystemFont(ofSize: 13)
         regHeader.translatesAutoresizingMaskIntoConstraints = false
@@ -95,7 +99,6 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
         syncAllButton.bezelStyle = .rounded
         contentView.addSubview(syncAllButton)
 
-        // Registry table
         let regScroll = NSScrollView()
         regScroll.translatesAutoresizingMaskIntoConstraints = false
         regScroll.hasVerticalScroller = true
@@ -138,7 +141,6 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
         regScroll.documentView = registryTableView
         contentView.addSubview(regScroll)
 
-        // Registry buttons
         let addBtn = NSButton(title: "+ Add", target: self, action: #selector(addRegistryClicked(_:)))
         addBtn.translatesAutoresizingMaskIntoConstraints = false
         addBtn.bezelStyle = .rounded
@@ -154,7 +156,6 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
         syncSelectedBtn.bezelStyle = .rounded
         contentView.addSubview(syncSelectedBtn)
 
-        // Error label
         errorLabel.font = .systemFont(ofSize: 11)
         errorLabel.textColor = NSColor(red: 1, green: 0.4, blue: 0.4, alpha: 1)
         errorLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -170,39 +171,39 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
         divider.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(divider)
 
-        // -- Bottom section: Components browser --
-        let compHeader = NSTextField(labelWithString: "Loaded Components")
-        compHeader.font = .boldSystemFont(ofSize: 13)
-        compHeader.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(compHeader)
+        // -- Components section: segmented tabs + table --
+        segmentedControl.segmentStyle = .texturedRounded
+        segmentedControl.target = self
+        segmentedControl.action = #selector(segmentChanged(_:))
+        segmentedControl.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(segmentedControl)
 
         let compScroll = NSScrollView()
         compScroll.translatesAutoresizingMaskIntoConstraints = false
         compScroll.hasVerticalScroller = true
         compScroll.borderType = .bezelBorder
 
-        let nameOutCol = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
-        nameOutCol.title = "Component"
-        nameOutCol.width = 200
-        outlineView.addTableColumn(nameOutCol)
+        let compNameCol = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("comp_name"))
+        compNameCol.title = "Name"
+        compNameCol.width = 240
+        componentTableView.addTableColumn(compNameCol)
 
-        let sourceCol = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("source"))
-        sourceCol.title = "Registry"
-        sourceCol.width = 140
-        outlineView.addTableColumn(sourceCol)
+        let compRegCol = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("comp_registry"))
+        compRegCol.title = "Registry"
+        compRegCol.width = 160
+        componentTableView.addTableColumn(compRegCol)
 
-        let stackCol = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("stack"))
-        stackCol.title = "Stack"
-        stackCol.width = 100
-        outlineView.addTableColumn(stackCol)
+        let compStackCol = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("comp_stack"))
+        compStackCol.title = "Stack"
+        compStackCol.width = 120
+        componentTableView.addTableColumn(compStackCol)
 
-        outlineView.outlineTableColumn = nameOutCol
-        outlineView.headerView = NSTableHeaderView()
-        outlineView.usesAlternatingRowBackgroundColors = true
-        outlineView.delegate = self
-        outlineView.dataSource = self
+        componentTableView.headerView = NSTableHeaderView()
+        componentTableView.usesAlternatingRowBackgroundColors = true
+        componentTableView.delegate = self
+        componentTableView.dataSource = self
 
-        compScroll.documentView = outlineView
+        compScroll.documentView = componentTableView
         contentView.addSubview(compScroll)
 
         // -- Bottom bar: sync settings --
@@ -237,7 +238,7 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
             regScroll.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
             regScroll.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
             regScroll.topAnchor.constraint(equalTo: regHeader.bottomAnchor, constant: 8),
-            regScroll.heightAnchor.constraint(equalToConstant: 100),
+            regScroll.heightAnchor.constraint(equalToConstant: 80),
 
             // Registry buttons
             addBtn.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
@@ -257,14 +258,14 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
             divider.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
             divider.topAnchor.constraint(equalTo: errorLabel.bottomAnchor, constant: 8),
 
-            // Components header
-            compHeader.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            compHeader.topAnchor.constraint(equalTo: divider.bottomAnchor, constant: 8),
+            // Segmented control
+            segmentedControl.topAnchor.constraint(equalTo: divider.bottomAnchor, constant: 8),
+            segmentedControl.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
 
-            // Components outline
+            // Component table
             compScroll.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
             compScroll.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
-            compScroll.topAnchor.constraint(equalTo: compHeader.bottomAnchor, constant: 8),
+            compScroll.topAnchor.constraint(equalTo: segmentedControl.bottomAnchor, constant: 8),
             compScroll.bottomAnchor.constraint(equalTo: autoSyncCheck.topAnchor, constant: -10),
 
             // Bottom bar
@@ -278,6 +279,25 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
             secLabel.leadingAnchor.constraint(equalTo: intervalField.trailingAnchor, constant: 4),
             secLabel.centerYAnchor.constraint(equalTo: autoSyncCheck.centerYAnchor),
         ])
+    }
+
+    @objc private func segmentChanged(_ sender: NSSegmentedControl) {
+        selectTab(at: sender.selectedSegment)
+    }
+
+    private func selectTab(at index: Int) {
+        guard index >= 0 && index < tabTypes.count else {
+            currentTabItems = []
+            componentTableView.reloadData()
+            return
+        }
+        let type = tabTypes[index]
+        if let group = componentGroups.first(where: { $0.type == type }) {
+            currentTabItems = group.items
+        } else {
+            currentTabItems = []
+        }
+        componentTableView.reloadData()
     }
 
     // MARK: - Data Refresh
@@ -321,10 +341,31 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
             )
         }
 
-        outlineView.reloadData()
-        // Expand all groups
-        for group in componentGroups {
-            outlineView.expandItem(group.type.rawValue)
+        // Rebuild segmented control
+        let previousSelectedType: ComponentType? = {
+            let idx = segmentedControl.selectedSegment
+            if idx >= 0 && idx < tabTypes.count { return tabTypes[idx] }
+            return nil
+        }()
+
+        tabTypes = componentGroups.map { $0.type }
+        segmentedControl.segmentCount = tabTypes.count
+        for (i, type) in tabTypes.enumerated() {
+            let count = componentGroups.first(where: { $0.type == type })?.items.count ?? 0
+            segmentedControl.setLabel("\(type.pluralLabel.capitalized) (\(count))", forSegment: i)
+            segmentedControl.setWidth(0, forSegment: i)
+        }
+
+        // Restore selection or default to first
+        if let prev = previousSelectedType, let idx = tabTypes.firstIndex(of: prev) {
+            segmentedControl.selectedSegment = idx
+            selectTab(at: idx)
+        } else if !tabTypes.isEmpty {
+            segmentedControl.selectedSegment = 0
+            selectTab(at: 0)
+        } else {
+            currentTabItems = []
+            componentTableView.reloadData()
         }
     }
 
@@ -523,15 +564,43 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
     }
 }
 
-// MARK: - Registry Table (NSTableView)
+// MARK: - NSTableView DataSource & Delegate
 
 extension AIComponentsManagerWindow: NSTableViewDataSource, NSTableViewDelegate {
 
     func numberOfRows(in tableView: NSTableView) -> Int {
-        AppConfig.shared.aiComponentRegistries.count
+        if tableView === registryTableView {
+            return AppConfig.shared.aiComponentRegistries.count
+        }
+        if tableView === componentTableView {
+            return currentTabItems.count
+        }
+        return 0
     }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        if tableView === registryTableView {
+            return registryView(for: tableColumn, row: row)
+        }
+        if tableView === componentTableView {
+            return componentView(for: tableColumn, row: row)
+        }
+        return nil
+    }
+
+    func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
+        22
+    }
+
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        if (notification.object as? NSTableView) === registryTableView {
+            updateErrorLabel()
+        }
+    }
+
+    // MARK: Registry table cells
+
+    private func registryView(for tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let registries = AppConfig.shared.aiComponentRegistries
         guard row < registries.count else { return nil }
         let reg = registries[row]
@@ -546,7 +615,7 @@ extension AIComponentsManagerWindow: NSTableViewDataSource, NSTableViewDelegate 
             switch status {
             case .synced:
                 let warnings = RegistryManager.shared.validateStructure(name: reg.name)
-                label.stringValue = "\u{25CF}" // filled circle
+                label.stringValue = "\u{25CF}"
                 label.textColor = warnings.isEmpty
                     ? NSColor(red: 0.3, green: 0.8, blue: 0.4, alpha: 1)
                     : NSColor(red: 1, green: 0.3, blue: 0.3, alpha: 1)
@@ -564,7 +633,7 @@ extension AIComponentsManagerWindow: NSTableViewDataSource, NSTableViewDelegate 
                         ? NSColor(red: 0.3, green: 0.8, blue: 0.4, alpha: 1)
                         : NSColor(red: 1, green: 0.3, blue: 0.3, alpha: 1)
                 } else {
-                    label.stringValue = "\u{25CB}" // hollow circle
+                    label.stringValue = "\u{25CB}"
                     label.textColor = NSColor(white: 0.5, alpha: 1)
                 }
             }
@@ -599,7 +668,7 @@ extension AIComponentsManagerWindow: NSTableViewDataSource, NSTableViewDelegate 
             if let date = RegistryManager.shared.lastSyncTime(name: reg.name) {
                 cell.stringValue = formatRelativeTime(date)
             } else {
-                cell.stringValue = "—"
+                cell.stringValue = "\u{2014}"
             }
             return cell
 
@@ -608,95 +677,29 @@ extension AIComponentsManagerWindow: NSTableViewDataSource, NSTableViewDelegate 
         }
     }
 
-    func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
-        22
-    }
+    // MARK: Component table cells
 
-    func tableViewSelectionDidChange(_ notification: Notification) {
-        updateErrorLabel()
-    }
-}
+    private func componentView(for tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        guard row < currentTabItems.count else { return nil }
+        let item = currentTabItems[row]
 
-// MARK: - Components Browser (NSOutlineView)
-
-extension AIComponentsManagerWindow: NSOutlineViewDataSource, NSOutlineViewDelegate {
-
-    func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
-        if item == nil {
-            return componentGroups.count
-        }
-        if let typeRaw = item as? String,
-           let group = componentGroups.first(where: { $0.type.rawValue == typeRaw }) {
-            return group.items.count
-        }
-        return 0
-    }
-
-    func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
-        if item == nil {
-            return componentGroups[index].type.rawValue
-        }
-        if let typeRaw = item as? String,
-           componentGroups.contains(where: { $0.type.rawValue == typeRaw }) {
-            return "\(typeRaw).\(index)"
-        }
-        return ""
-    }
-
-    func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
-        if let typeRaw = item as? String {
-            return componentGroups.contains(where: { $0.type.rawValue == typeRaw })
-        }
-        return false
-    }
-
-    func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
         let cell = NSTextField(labelWithString: "")
         cell.font = .systemFont(ofSize: 12)
         cell.lineBreakMode = .byTruncatingTail
 
-        if let typeRaw = item as? String,
-           let group = componentGroups.first(where: { $0.type.rawValue == typeRaw }) {
-            // Group header row
-            switch tableColumn?.identifier.rawValue {
-            case "name":
-                cell.stringValue = "\(group.type.pluralLabel.capitalized) (\(group.items.count))"
-                cell.font = .boldSystemFont(ofSize: 12)
-            default:
-                break
-            }
-            return cell
+        switch tableColumn?.identifier.rawValue {
+        case "comp_name":
+            cell.stringValue = item.name
+        case "comp_registry":
+            cell.stringValue = item.source
+            cell.textColor = .secondaryLabelColor
+        case "comp_stack":
+            cell.stringValue = item.stack
+            cell.textColor = .secondaryLabelColor
+        default:
+            break
         }
-
-        if let compound = item as? String, compound.contains(".") {
-            let parts = compound.split(separator: ".", maxSplits: 1)
-            if parts.count == 2,
-               let typeRaw = parts.first.map(String.init),
-               let idx = Int(parts[1]),
-               let group = componentGroups.first(where: { $0.type.rawValue == typeRaw }),
-               idx < group.items.count {
-                let comp = group.items[idx]
-                switch tableColumn?.identifier.rawValue {
-                case "name":
-                    cell.stringValue = comp.name
-                case "source":
-                    cell.stringValue = comp.source
-                    cell.textColor = .secondaryLabelColor
-                case "stack":
-                    cell.stringValue = comp.stack
-                    cell.textColor = .secondaryLabelColor
-                default:
-                    break
-                }
-            }
-            return cell
-        }
-
         return cell
-    }
-
-    func outlineView(_ outlineView: NSOutlineView, heightOfRowByItem item: Any) -> CGFloat {
-        20
     }
 }
 

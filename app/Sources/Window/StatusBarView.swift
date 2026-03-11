@@ -576,49 +576,25 @@ class StatusBarView: NSView {
         aiComponentLabel.textColor = NSColor(white: 0.35, alpha: 1.0)
     }
 
+    private weak var activePopover: NSPopover?
+
     private func showAIComponentPopover() {
-        let menu = NSMenu()
-        menu.addItem(NSMenuItem(title: "AI Components", action: nil, keyEquivalent: ""))
-        menu.addItem(NSMenuItem.separator())
-
-        if activeAIComponentDetails.isEmpty {
-            let emptyItem = NSMenuItem(title: "No components loaded", action: nil, keyEquivalent: "")
-            emptyItem.isEnabled = false
-            menu.addItem(emptyItem)
-        } else {
-            // Group by component type
-            let grouped = Dictionary(grouping: activeAIComponentDetails) { $0.type }
-            let typeOrder: [ComponentType] = [.rule, .skill, .prompt, .agent, .mcpServer, .hook]
-
-            for type in typeOrder {
-                guard let items = grouped[type], !items.isEmpty else { continue }
-                let header = NSMenuItem(title: type.pluralLabel.capitalized, action: nil, keyEquivalent: "")
-                header.isEnabled = false
-                menu.addItem(header)
-                for item in items {
-                    let title = "  \(item.name)  (\(item.source)/\(item.stack))"
-                    menu.addItem(NSMenuItem(title: title, action: nil, keyEquivalent: ""))
-                }
-                menu.addItem(NSMenuItem.separator())
-            }
-
-            // Remove trailing separator
-            if let last = menu.items.last, last.isSeparatorItem {
-                menu.removeItem(last)
-            }
+        // Toggle behavior — close if already open
+        if let existing = activePopover {
+            existing.performClose(nil)
+            activePopover = nil
+            return
         }
 
-        menu.addItem(NSMenuItem.separator())
-        let manageItem = NSMenuItem(title: "Manage Components...", action: #selector(openComponentsManager(_:)), keyEquivalent: "")
-        manageItem.target = self
-        menu.addItem(manageItem)
-
-        let location = NSPoint(x: 0, y: aiComponentLabel.bounds.height)
-        menu.popUp(positioning: nil, at: location, in: aiComponentLabel)
-    }
-
-    @objc private func openComponentsManager(_ sender: NSMenuItem) {
-        AIComponentsManagerWindow.show()
+        let controller = AIComponentPopoverController(
+            components: activeAIComponentDetails
+        )
+        let popover = NSPopover()
+        popover.contentViewController = controller
+        popover.behavior = .applicationDefined
+        popover.contentSize = controller.view.frame.size
+        popover.show(relativeTo: aiComponentLabel.bounds, of: aiComponentLabel, preferredEdge: .maxY)
+        activePopover = popover
     }
 
     func setGenerating(_ generating: Bool) {
@@ -639,6 +615,199 @@ class StatusBarView: NSView {
             generatingWidthConstraint.constant = 0
             generatingLabel.stringValue = ""
         }
+    }
+}
+
+// MARK: - AI Component Popover
+
+class AIComponentPopoverController: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
+
+    private let allComponents: [(name: String, source: String, stack: String, type: ComponentType)]
+    private var populatedTypes: [ComponentType] = []
+    private var currentItems: [(name: String, source: String, stack: String)] = []
+
+    private let segmentedControl = NSSegmentedControl()
+    private let tableView = NSTableView()
+
+    init(components: [(name: String, source: String, stack: String, type: ComponentType)]) {
+        self.allComponents = components
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func loadView() {
+        // Build populated types first to compute size
+        let grouped = Dictionary(grouping: allComponents) { $0.type }
+        let typeOrder: [ComponentType] = [.skill, .rule, .prompt, .agent, .mcpServer, .hook]
+        populatedTypes = typeOrder.filter { grouped[$0] != nil && !grouped[$0]!.isEmpty }
+
+        // Compute max item count across tabs for dynamic height
+        let maxItems = populatedTypes.map { grouped[$0]?.count ?? 0 }.max() ?? 0
+        let rowHeight: CGFloat = 22
+        let tableHeight = max(CGFloat(maxItems) * rowHeight + 4, 60) // min 60
+        let popoverHeight = min(10 + 24 + 8 + tableHeight + 8 + 30 + 10, 400) // clamp
+
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 520, height: popoverHeight))
+        container.wantsLayer = true
+        container.layer?.backgroundColor = NSColor(white: 0.12, alpha: 1.0).cgColor
+        self.view = container
+
+        // Segmented control
+        segmentedControl.segmentCount = populatedTypes.count
+        for (i, type) in populatedTypes.enumerated() {
+            let count = grouped[type]?.count ?? 0
+            segmentedControl.setLabel("\(type.pluralLabel.capitalized) (\(count))", forSegment: i)
+            segmentedControl.setWidth(0, forSegment: i)
+        }
+        segmentedControl.segmentStyle = .texturedRounded
+        segmentedControl.target = self
+        segmentedControl.action = #selector(segmentChanged(_:))
+        segmentedControl.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(segmentedControl)
+
+        // Table view
+        let scrollView = NSScrollView()
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.hasVerticalScroller = true
+        scrollView.borderType = .noBorder
+        scrollView.drawsBackground = false
+
+        let nameCol = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
+        nameCol.title = "Name"
+        nameCol.width = 300
+        nameCol.resizingMask = .autoresizingMask
+        tableView.addTableColumn(nameCol)
+
+        let sourceCol = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("source"))
+        sourceCol.title = "Source / Stack"
+        sourceCol.width = 180
+        sourceCol.resizingMask = .userResizingMask
+        tableView.addTableColumn(sourceCol)
+
+        tableView.headerView = nil
+        tableView.backgroundColor = .clear
+        tableView.usesAlternatingRowBackgroundColors = false
+        tableView.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
+        tableView.delegate = self
+        tableView.dataSource = self
+
+        scrollView.documentView = tableView
+        container.addSubview(scrollView)
+
+        // "Manage Components..." button
+        let manageButton = NSButton(title: "Manage Components...", target: self, action: #selector(manageClicked(_:)))
+        manageButton.translatesAutoresizingMaskIntoConstraints = false
+        manageButton.bezelStyle = .rounded
+        container.addSubview(manageButton)
+
+        // Empty state label (shown when no components)
+        if populatedTypes.isEmpty {
+            segmentedControl.isHidden = true
+            let emptyLabel = NSTextField(labelWithString: "No components loaded")
+            emptyLabel.font = .systemFont(ofSize: 12)
+            emptyLabel.textColor = NSColor(white: 0.5, alpha: 1.0)
+            emptyLabel.alignment = .center
+            emptyLabel.translatesAutoresizingMaskIntoConstraints = false
+            container.addSubview(emptyLabel)
+            NSLayoutConstraint.activate([
+                emptyLabel.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+                emptyLabel.centerYAnchor.constraint(equalTo: container.centerYAnchor, constant: -20),
+            ])
+        }
+
+        // Close button
+        let closeButton = NSButton(title: "", target: self, action: #selector(closeClicked(_:)))
+        closeButton.bezelStyle = .circular
+        closeButton.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close")
+        closeButton.imagePosition = .imageOnly
+        closeButton.isBordered = false
+        closeButton.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(closeButton)
+
+        NSLayoutConstraint.activate([
+            closeButton.topAnchor.constraint(equalTo: container.topAnchor, constant: 8),
+            closeButton.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -8),
+            closeButton.widthAnchor.constraint(equalToConstant: 18),
+            closeButton.heightAnchor.constraint(equalToConstant: 18),
+
+            segmentedControl.topAnchor.constraint(equalTo: container.topAnchor, constant: 10),
+            segmentedControl.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+
+            scrollView.topAnchor.constraint(equalTo: segmentedControl.bottomAnchor, constant: 8),
+            scrollView.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 8),
+            scrollView.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -8),
+            scrollView.bottomAnchor.constraint(equalTo: manageButton.topAnchor, constant: -8),
+
+            manageButton.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            manageButton.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -10),
+        ])
+
+        // Select first tab
+        if !populatedTypes.isEmpty {
+            segmentedControl.selectedSegment = 0
+            selectType(at: 0)
+        }
+    }
+
+    @objc private func segmentChanged(_ sender: NSSegmentedControl) {
+        selectType(at: sender.selectedSegment)
+    }
+
+    private func selectType(at index: Int) {
+        guard index >= 0 && index < populatedTypes.count else { return }
+        let type = populatedTypes[index]
+        currentItems = allComponents.filter { $0.type == type }.map { (name: $0.name, source: $0.source, stack: $0.stack) }
+        tableView.reloadData()
+    }
+
+    @objc private func closeClicked(_ sender: NSButton) {
+        view.window?.close()
+    }
+
+    @objc private func manageClicked(_ sender: NSButton) {
+        // Close popover first, then open manager
+        if let popover = view.window?.parent as? NSPanel {
+            popover.close()
+        }
+        // Walk up to find the popover and close it
+        view.window?.close()
+        AIComponentsManagerWindow.show()
+    }
+
+    // MARK: - NSTableViewDataSource
+
+    func numberOfRows(in tableView: NSTableView) -> Int {
+        currentItems.count
+    }
+
+    // MARK: - NSTableViewDelegate
+
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        guard row < currentItems.count else { return nil }
+        let item = currentItems[row]
+
+        let cell = NSTextField(labelWithString: "")
+        cell.font = .systemFont(ofSize: 12)
+        cell.lineBreakMode = .byTruncatingTail
+        cell.drawsBackground = false
+        cell.isBordered = false
+
+        switch tableColumn?.identifier.rawValue {
+        case "name":
+            cell.stringValue = item.name
+            cell.textColor = NSColor(white: 0.85, alpha: 1.0)
+        case "source":
+            cell.stringValue = "\(item.source) / \(item.stack)"
+            cell.textColor = NSColor(white: 0.5, alpha: 1.0)
+        default:
+            break
+        }
+        return cell
+    }
+
+    func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
+        22
     }
 }
 
