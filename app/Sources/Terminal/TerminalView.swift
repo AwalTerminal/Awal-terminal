@@ -2293,6 +2293,10 @@ class TerminalView: NSView {
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         guard appState == .terminal else { return super.performKeyEquivalent(with: event) }
+        // Don't intercept when a sheet (e.g. alert dialog) is active on this or another window
+        if window?.attachedSheet != nil || event.window != window {
+            return super.performKeyEquivalent(with: event)
+        }
         guard event.modifierFlags.contains(.command) else { return super.performKeyEquivalent(with: event) }
 
         switch event.charactersIgnoringModifiers {
