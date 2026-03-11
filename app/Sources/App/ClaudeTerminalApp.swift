@@ -100,6 +100,44 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         NotificationManager.shared.isEnabled.toggle()
     }
 
+    // MARK: - AI Components
+
+    @objc func showAIComponentsManager(_ sender: Any?) {
+        AIComponentsManagerWindow.show()
+    }
+
+    @objc func syncAIComponentsNow(_ sender: Any?) {
+        let config = AppConfig.shared
+        RegistryManager.shared.syncAll(registries: config.aiComponentRegistries, force: true) { results in
+            let errors = results.compactMap { (name, result) -> String? in
+                if case .failure(let err) = result { return "\(name): \(err.localizedDescription)" }
+                return nil
+            }
+            if errors.isEmpty {
+                // Flash confirmation in the active window's status bar
+                if let controller = NSApp.keyWindow?.windowController as? TerminalWindowController {
+                    controller.flashStatusBar("Components synced")
+                }
+            } else {
+                let alert = NSAlert.branded()
+                alert.messageText = "Sync Errors"
+                alert.informativeText = errors.joined(separator: "\n")
+                alert.alertStyle = .warning
+                alert.runModal()
+            }
+        }
+    }
+
+    @objc func toggleAIComponentsEnabled(_ sender: Any?) {
+        let current = AppConfig.shared.aiComponentsEnabled
+        ConfigWriter.updateValue(key: "ai_components.enabled", value: current ? "false" : "true")
+    }
+
+    @objc func toggleAIComponentsAutoDetect(_ sender: Any?) {
+        let current = AppConfig.shared.aiComponentsAutoDetect
+        ConfigWriter.updateValue(key: "ai_components.auto_detect", value: current ? "false" : "true")
+    }
+
     // MARK: - Voice Input
 
     private var voicePTTHotKeyRef: EventHotKeyRef?
@@ -188,6 +226,30 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if menuItem.action == #selector(toggleNotifications(_:)) {
             menuItem.state = NotificationManager.shared.isEnabled ? .on : .off
         }
+        if menuItem.action == #selector(toggleAIComponentsEnabled(_:)) {
+            menuItem.state = AppConfig.shared.aiComponentsEnabled ? .on : .off
+        }
+        if menuItem.action == #selector(toggleAIComponentsAutoDetect(_:)) {
+            menuItem.state = AppConfig.shared.aiComponentsAutoDetect ? .on : .off
+        }
+        // Populate Detected Stacks submenu dynamically
+        if menuItem.title == "Detected Stacks", let submenu = menuItem.submenu {
+            submenu.removeAllItems()
+            var stacks: Set<String> = []
+            if let controller = NSApp.keyWindow?.windowController as? TerminalWindowController {
+                let focused = controller.tabs[controller.activeTabIndex].splitContainer.focusedTerminal
+                if let ctx = focused.lastAIComponentContext {
+                    stacks = ctx.detectedStacks
+                }
+            }
+            if stacks.isEmpty {
+                submenu.addItem(NSMenuItem(title: "(none detected)", action: nil, keyEquivalent: ""))
+            } else {
+                for stack in stacks.sorted() {
+                    submenu.addItem(NSMenuItem(title: stack, action: nil, keyEquivalent: ""))
+                }
+            }
+        }
         if menuItem.action == #selector(toggleVoiceInput(_:)) {
             menuItem.state = VoiceInputController.shared.state != .idle ? .on : .off
         }
@@ -262,6 +324,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let editMenuItem = NSMenuItem()
         let editMenu = NSMenu(title: "Edit")
 
+        editMenu.addItem(NSMenuItem(title: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x"))
+        editMenu.addItem(NSMenuItem(title: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
+        editMenu.addItem(NSMenuItem(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
+        editMenu.addItem(NSMenuItem(title: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
+        editMenu.addItem(NSMenuItem.separator())
+
         let findItem = NSMenuItem(title: "Find…", action: #selector(TerminalWindowController.findInTerminal(_:)), keyEquivalent: "f")
         editMenu.addItem(findItem)
 
@@ -287,6 +355,35 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         viewMenuItem.submenu = viewMenu
         mainMenu.addItem(viewMenuItem)
+
+        // AI Components menu
+        let aiCompMenuItem = NSMenuItem()
+        let aiCompMenu = NSMenu(title: "AI Components")
+
+        let manageItem = NSMenuItem(title: "Manage Components...", action: #selector(showAIComponentsManager(_:)), keyEquivalent: "")
+        aiCompMenu.addItem(manageItem)
+
+        let syncItem = NSMenuItem(title: "Sync Now", action: #selector(syncAIComponentsNow(_:)), keyEquivalent: "y")
+        syncItem.keyEquivalentModifierMask = [.command, .shift]
+        aiCompMenu.addItem(syncItem)
+
+        aiCompMenu.addItem(NSMenuItem.separator())
+
+        let enableItem = NSMenuItem(title: "Enable AI Components", action: #selector(toggleAIComponentsEnabled(_:)), keyEquivalent: "")
+        aiCompMenu.addItem(enableItem)
+
+        let autoDetectItem = NSMenuItem(title: "Auto-detect Project Type", action: #selector(toggleAIComponentsAutoDetect(_:)), keyEquivalent: "")
+        aiCompMenu.addItem(autoDetectItem)
+
+        aiCompMenu.addItem(NSMenuItem.separator())
+
+        let stacksSubmenuItem = NSMenuItem(title: "Detected Stacks", action: nil, keyEquivalent: "")
+        let stacksSubmenu = NSMenu(title: "Detected Stacks")
+        stacksSubmenuItem.submenu = stacksSubmenu
+        aiCompMenu.addItem(stacksSubmenuItem)
+
+        aiCompMenuItem.submenu = aiCompMenu
+        mainMenu.addItem(aiCompMenuItem)
 
         // Voice menu
         let voiceMenuItem = NSMenuItem()
@@ -363,6 +460,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         "toggle_side_panel": "AI Side Panel",
         "quick_terminal": "Quick Terminal",
         "settings": "Preferences…",
+        "manage_components": "Manage Components...",
+        "sync_components": "Sync Now",
     ]
 
     private func applyKeybindings(_ menu: NSMenu) {

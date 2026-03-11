@@ -148,7 +148,8 @@ class StatusBarView: NSView {
         aiComponentLabel.textColor = NSColor(red: 100.0/255.0, green: 200.0/255.0, blue: 160.0/255.0, alpha: 1.0)
         aiComponentLabel.translatesAutoresizingMaskIntoConstraints = false
         aiComponentLabel.toolTip = "Click to view active AI components"
-        aiComponentLabel.isHidden = true
+        aiComponentLabel.stringValue = "AI"
+        aiComponentLabel.textColor = NSColor(white: 0.35, alpha: 1.0)
         aiComponentLabel.onClick = { [weak self] in
             self?.showAIComponentPopover()
         }
@@ -562,49 +563,62 @@ class StatusBarView: NSView {
                 summary = "\(total) components"
             }
             aiComponentLabel.stringValue = "\(stackNames) · \(summary)"
-            aiComponentLabel.isHidden = false
+            aiComponentLabel.textColor = NSColor(red: 100.0/255.0, green: 200.0/255.0, blue: 160.0/255.0, alpha: 1.0)
         } else {
-            aiComponentLabel.stringValue = ""
-            aiComponentLabel.isHidden = true
+            aiComponentLabel.stringValue = "AI"
+            aiComponentLabel.textColor = NSColor(white: 0.35, alpha: 1.0)
         }
     }
 
     func clearAIComponentInfo() {
         activeAIComponentDetails = []
-        aiComponentLabel.stringValue = ""
-        aiComponentLabel.isHidden = true
+        aiComponentLabel.stringValue = "AI"
+        aiComponentLabel.textColor = NSColor(white: 0.35, alpha: 1.0)
     }
 
     private func showAIComponentPopover() {
-        guard !activeAIComponentDetails.isEmpty else { return }
-
         let menu = NSMenu()
-        menu.addItem(NSMenuItem(title: "Active Components", action: nil, keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "AI Components", action: nil, keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
 
-        // Group by component type
-        let grouped = Dictionary(grouping: activeAIComponentDetails) { $0.type }
-        let typeOrder: [ComponentType] = [.rule, .skill, .prompt, .agent, .mcpServer, .hook]
+        if activeAIComponentDetails.isEmpty {
+            let emptyItem = NSMenuItem(title: "No components loaded", action: nil, keyEquivalent: "")
+            emptyItem.isEnabled = false
+            menu.addItem(emptyItem)
+        } else {
+            // Group by component type
+            let grouped = Dictionary(grouping: activeAIComponentDetails) { $0.type }
+            let typeOrder: [ComponentType] = [.rule, .skill, .prompt, .agent, .mcpServer, .hook]
 
-        for type in typeOrder {
-            guard let items = grouped[type], !items.isEmpty else { continue }
-            let header = NSMenuItem(title: type.pluralLabel.capitalized, action: nil, keyEquivalent: "")
-            header.isEnabled = false
-            menu.addItem(header)
-            for item in items {
-                let title = "  \(item.name)  (\(item.source)/\(item.stack))"
-                menu.addItem(NSMenuItem(title: title, action: nil, keyEquivalent: ""))
+            for type in typeOrder {
+                guard let items = grouped[type], !items.isEmpty else { continue }
+                let header = NSMenuItem(title: type.pluralLabel.capitalized, action: nil, keyEquivalent: "")
+                header.isEnabled = false
+                menu.addItem(header)
+                for item in items {
+                    let title = "  \(item.name)  (\(item.source)/\(item.stack))"
+                    menu.addItem(NSMenuItem(title: title, action: nil, keyEquivalent: ""))
+                }
+                menu.addItem(NSMenuItem.separator())
             }
-            menu.addItem(NSMenuItem.separator())
+
+            // Remove trailing separator
+            if let last = menu.items.last, last.isSeparatorItem {
+                menu.removeItem(last)
+            }
         }
 
-        // Remove trailing separator
-        if let last = menu.items.last, last.isSeparatorItem {
-            menu.removeItem(last)
-        }
+        menu.addItem(NSMenuItem.separator())
+        let manageItem = NSMenuItem(title: "Manage Components...", action: #selector(openComponentsManager(_:)), keyEquivalent: "")
+        manageItem.target = self
+        menu.addItem(manageItem)
 
         let location = NSPoint(x: 0, y: aiComponentLabel.bounds.height)
         menu.popUp(positioning: nil, at: location, in: aiComponentLabel)
+    }
+
+    @objc private func openComponentsManager(_ sender: NSMenuItem) {
+        AIComponentsManagerWindow.show()
     }
 
     func setGenerating(_ generating: Bool) {

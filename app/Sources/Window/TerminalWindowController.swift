@@ -11,6 +11,12 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
 
     private var activeTab: TabState { tabs[activeTabIndex] }
 
+    /// Flash a brief message on the active tab's status bar.
+    func flashStatusBar(_ message: String) {
+        guard !tabs.isEmpty else { return }
+        activeTab.statusBar.showFlash(message)
+    }
+
     init(isInitialTab: Bool = true, model: LLMModel? = nil, workingDir: String? = nil) {
         // Size to ~80% of the screen
         let screenFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
