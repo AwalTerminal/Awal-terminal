@@ -110,8 +110,8 @@ enabled = true
 auto_detect = true
 auto_sync = true
 
-[ai_components.registry.awal-skills]
-url = "https://github.com/AwalTerminal/awal-skills-registry.git"
+[ai_components.registry.awal-components]
+url = "https://github.com/AwalTerminal/awal-ai-components-registry.git"
 branch = "main"
 ```
 
