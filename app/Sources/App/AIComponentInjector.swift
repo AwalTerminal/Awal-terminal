@@ -212,43 +212,44 @@ enum AIComponentInjector {
 
         var hooks = settings["hooks"] as? [String: Any] ?? [:]
 
-        if !preHooks.isEmpty {
-            var preSession = hooks["PreSession"] as? [[String: Any]] ?? []
-            for hook in preHooks {
-                let entry: [String: Any] = [
-                    "type": "command",
-                    "command": "bash \(hook.path)",
-                    "source": "awal"
-                ]
-                preSession.append(entry)
+        // Remove all existing awal hook groups before re-adding (detect by command path)
+        for key in hooks.keys {
+            if var entries = hooks[key] as? [[String: Any]] {
+                entries.removeAll { group in
+                    guard let innerHooks = group["hooks"] as? [[String: Any]] else { return false }
+                    return innerHooks.allSatisfy { entry in
+                        (entry["command"] as? String)?.contains(".config/awal/") == true
+                    }
+                }
+                hooks[key] = entries.isEmpty ? nil : entries
             }
-            hooks["PreSession"] = preSession
+        }
+
+        if !preHooks.isEmpty {
+            var sessionStart = hooks["SessionStart"] as? [[String: Any]] ?? []
+            let hookEntries = preHooks.map { url -> [String: Any] in
+                ["type": "command", "command": "bash \(url.path)"]
+            }
+            sessionStart.append(["hooks": hookEntries])
+            hooks["SessionStart"] = sessionStart
         }
 
         if !postHooks.isEmpty {
-            var postSession = hooks["PostSession"] as? [[String: Any]] ?? []
-            for hook in postHooks {
-                let entry: [String: Any] = [
-                    "type": "command",
-                    "command": "bash \(hook.path)",
-                    "source": "awal"
-                ]
-                postSession.append(entry)
+            var stop = hooks["Stop"] as? [[String: Any]] ?? []
+            let hookEntries = postHooks.map { url -> [String: Any] in
+                ["type": "command", "command": "bash \(url.path)"]
             }
-            hooks["PostSession"] = postSession
+            stop.append(["hooks": hookEntries])
+            hooks["Stop"] = stop
         }
 
         if !beforeCommitHooks.isEmpty {
-            var preCommit = hooks["PreCommit"] as? [[String: Any]] ?? []
-            for hook in beforeCommitHooks {
-                let entry: [String: Any] = [
-                    "type": "command",
-                    "command": "bash \(hook.path)",
-                    "source": "awal"
-                ]
-                preCommit.append(entry)
+            var preToolUse = hooks["PreToolUse"] as? [[String: Any]] ?? []
+            let hookEntries = beforeCommitHooks.map { url -> [String: Any] in
+                ["type": "command", "command": "bash \(url.path)"]
             }
-            hooks["PreCommit"] = preCommit
+            preToolUse.append(["matcher": "Bash", "hooks": hookEntries])
+            hooks["PreToolUse"] = preToolUse
         }
 
         settings["hooks"] = hooks
@@ -301,12 +302,17 @@ enum AIComponentInjector {
                 settings["mcpServers"] = mcpServers
             }
 
-            // Clean awal-sourced hooks
+            // Clean awal hooks (detect by command path)
             if var hooks = settings["hooks"] as? [String: Any] {
                 for key in hooks.keys {
                     if var entries = hooks[key] as? [[String: Any]] {
-                        entries.removeAll { ($0["source"] as? String) == "awal" }
-                        hooks[key] = entries
+                        entries.removeAll { group in
+                            guard let innerHooks = group["hooks"] as? [[String: Any]] else { return false }
+                            return innerHooks.allSatisfy { entry in
+                                (entry["command"] as? String)?.contains(".config/awal/") == true
+                            }
+                        }
+                        hooks[key] = entries.isEmpty ? nil : entries
                     }
                 }
                 settings["hooks"] = hooks
