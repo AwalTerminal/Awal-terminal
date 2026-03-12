@@ -34,6 +34,7 @@ class StatusBarView: NSView {
         label.drawsBackground = false
         return label
     }()
+    private let cpuLabel = NSTextField(labelWithString: "")
     private let dimsLabel = NSTextField(labelWithString: "")
     private let tokensLabel = NSTextField(labelWithString: "")
     private let timeLabel = NSTextField(labelWithString: "")
@@ -87,7 +88,7 @@ class StatusBarView: NSView {
         let pathColor = NSColor(white: 0.55, alpha: 1.0)
         let branchColor = NSColor(red: 180.0/255.0, green: 142.0/255.0, blue: 255.0/255.0, alpha: 1.0)
 
-        let labels: [NSTextField] = [gitLabel, dimsLabel, tokensLabel, timeLabel]
+        let labels: [NSTextField] = [gitLabel, cpuLabel, dimsLabel, tokensLabel, timeLabel]
         for label in labels {
             label.font = monoFont
             label.textColor = dimColor
@@ -223,8 +224,12 @@ class StatusBarView: NSView {
             sep2.trailingAnchor.constraint(equalTo: tokensLabel.leadingAnchor, constant: -10),
             sep2.centerYAnchor.constraint(equalTo: centerYAnchor),
 
-            // Dims (before sep2)
-            dimsLabel.trailingAnchor.constraint(equalTo: sep2.leadingAnchor, constant: -10),
+            // CPU (before sep2)
+            cpuLabel.trailingAnchor.constraint(equalTo: sep2.leadingAnchor, constant: -10),
+            cpuLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+
+            // Dims (before CPU)
+            dimsLabel.trailingAnchor.constraint(equalTo: cpuLabel.leadingAnchor, constant: -10),
             dimsLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
 
@@ -333,9 +338,11 @@ class StatusBarView: NSView {
         let pid = shellPid
         let isClaudeSession = currentModelName == "Claude"
         DispatchQueue.global(qos: .utility).async { [weak self] in
+            let fgPid = self?.findForegroundProcess(pid) ?? pid
             // Get cwd from procfs (macOS: use proc_pidinfo or lsof)
-            let cwd = self?.getCwd(pid: pid) ?? ""
+            let cwd = self?.getCwdOfPid(fgPid) ?? ""
             let gitResult = self?.getGitInfo(cwd: cwd) ?? (label: "", changes: [])
+            let cpuUsage = self?.getProcessCPU(pid: fgPid) ?? 0.0
 
             // Update token tracking for Claude sessions
             if isClaudeSession {
@@ -349,18 +356,13 @@ class StatusBarView: NSView {
                 self?.pathButton.title = self?.shortenPath(cwd) ?? ""
                 self?.gitLabel.stringValue = gitResult.label
                 self?.tokensLabel.stringValue = tokenDisplay
+                self?.updateCPULabel(cpuUsage)
                 self?.onGitStatusChanged?(gitResult.changes)
                 if self?.currentPath != oldPath {
                     self?.onPathChanged?()
                 }
             }
         }
-    }
-
-    private func getCwd(pid: pid_t) -> String {
-        // Find the foreground (deepest child) process, then get its cwd
-        let targetPid = findForegroundProcess(pid)
-        return getCwdOfPid(targetPid)
     }
 
     private func findForegroundProcess(_ pid: pid_t) -> pid_t {
@@ -455,6 +457,40 @@ class StatusBarView: NSView {
             }
         } catch {}
         return ("", [])
+    }
+
+    private func getProcessCPU(pid: pid_t) -> Double {
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/bin/ps")
+        proc.arguments = ["-p", "\(pid)", "-o", "%cpu="]
+        let pipe = Pipe()
+        proc.standardOutput = pipe
+        proc.standardError = FileHandle.nullDevice
+        do {
+            try proc.run()
+            proc.waitUntilExit()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return Double(output) ?? 0.0
+        } catch {
+            return 0.0
+        }
+    }
+
+    private func updateCPULabel(_ cpu: Double) {
+        if shellPid <= 0 {
+            cpuLabel.stringValue = ""
+            return
+        }
+        let rounded = Int(cpu.rounded())
+        cpuLabel.stringValue = "CPU \(rounded)%"
+        if cpu >= 75 {
+            cpuLabel.textColor = NSColor(red: 1.0, green: 0.4, blue: 0.3, alpha: 1.0)
+        } else if cpu >= 25 {
+            cpuLabel.textColor = NSColor(red: 0.9, green: 0.8, blue: 0.2, alpha: 1.0)
+        } else {
+            cpuLabel.textColor = NSColor(white: 0.45, alpha: 1.0)
+        }
     }
 
     private func shortenPath(_ path: String) -> String {
