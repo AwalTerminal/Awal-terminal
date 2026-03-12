@@ -28,11 +28,11 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
     private var componentGroups: [ComponentGroup] = []
     /// Segment labels: one per populated component type
     private var tabTypes: [ComponentType] = []
-    private var currentTabItems: [(name: String, source: String, stack: String)] = []
+    private var currentTabItems: [(name: String, source: String, stack: String, key: String)] = []
 
     private struct ComponentGroup {
         let type: ComponentType
-        let items: [(name: String, source: String, stack: String)]
+        let items: [(name: String, source: String, stack: String, key: String)]
     }
 
     init() {
@@ -183,9 +183,16 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
         compScroll.hasVerticalScroller = true
         compScroll.borderType = .bezelBorder
 
+        let compEnabledCol = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("comp_enabled"))
+        compEnabledCol.title = ""
+        compEnabledCol.width = 28
+        compEnabledCol.minWidth = 28
+        compEnabledCol.maxWidth = 28
+        componentTableView.addTableColumn(compEnabledCol)
+
         let compNameCol = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("comp_name"))
         compNameCol.title = "Name"
-        compNameCol.width = 240
+        compNameCol.width = 220
         componentTableView.addTableColumn(compNameCol)
 
         let compRegCol = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("comp_registry"))
@@ -337,7 +344,7 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
             guard let items = grouped[type], !items.isEmpty else { return nil }
             return ComponentGroup(
                 type: type,
-                items: items.map { (name: $0.name, source: $0.source, stack: $0.stack) }
+                items: items.map { (name: $0.name, source: $0.source, stack: $0.stack, key: $0.key) }
             )
         }
 
@@ -392,6 +399,20 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
                 errorLabel.textColor = NSColor(red: 1, green: 0.8, blue: 0.3, alpha: 1)
                 return
             }
+
+            // Show security findings count
+            if let findings = RegistryManager.shared.scanResults[name], !findings.isEmpty {
+                let criticalCount = findings.filter { $0.severity == .critical }.count
+                let warningCount = findings.filter { $0.severity == .warning }.count
+                var parts: [String] = []
+                if criticalCount > 0 { parts.append("\(criticalCount) critical") }
+                if warningCount > 0 { parts.append("\(warningCount) warning\(warningCount == 1 ? "" : "s")") }
+                errorLabel.stringValue = "\(name): \(parts.joined(separator: ", ")) security finding\(findings.count == 1 ? "" : "s")"
+                errorLabel.textColor = criticalCount > 0
+                    ? NSColor(red: 1, green: 0.4, blue: 0.4, alpha: 1)
+                    : NSColor(red: 1, green: 0.8, blue: 0.3, alpha: 1)
+                return
+            }
         }
 
         errorLabel.stringValue = ""
@@ -430,76 +451,261 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
         alert.addButton(withTitle: "Add")
         alert.addButton(withTitle: "Cancel")
 
-        let container = NSView(frame: NSRect(x: 0, y: 0, width: 360, height: 90))
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 360, height: 150))
 
+        // Type selector
+        let typeLabel = NSTextField(labelWithString: "Type:")
+        typeLabel.frame = NSRect(x: 0, y: 124, width: 55, height: 20)
+        container.addSubview(typeLabel)
+
+        let typePopup = NSPopUpButton(frame: NSRect(x: 60, y: 120, width: 295, height: 26))
+        typePopup.addItems(withTitles: ["Git Repository", "localskills.sh", "Local Directory"])
+        container.addSubview(typePopup)
+
+        // Git fields
         let urlLabel = NSTextField(labelWithString: "URL:")
-        urlLabel.frame = NSRect(x: 0, y: 64, width: 55, height: 20)
+        urlLabel.frame = NSRect(x: 0, y: 94, width: 55, height: 20)
         container.addSubview(urlLabel)
 
-        let urlField = EditableTextField(frame: NSRect(x: 60, y: 62, width: 295, height: 22))
+        let urlField = EditableTextField(frame: NSRect(x: 60, y: 92, width: 295, height: 22))
         urlField.placeholderString = "https://github.com/org/components.git"
         container.addSubview(urlField)
 
         let nameLabel = NSTextField(labelWithString: "Name:")
-        nameLabel.frame = NSRect(x: 0, y: 34, width: 55, height: 20)
+        nameLabel.frame = NSRect(x: 0, y: 64, width: 55, height: 20)
         container.addSubview(nameLabel)
 
-        let nameField = EditableTextField(frame: NSRect(x: 60, y: 32, width: 295, height: 22))
+        let nameField = EditableTextField(frame: NSRect(x: 60, y: 62, width: 295, height: 22))
         nameField.placeholderString = "auto-filled from URL"
         container.addSubview(nameField)
 
         let branchLabel = NSTextField(labelWithString: "Branch:")
-        branchLabel.frame = NSRect(x: 0, y: 4, width: 55, height: 20)
+        branchLabel.frame = NSRect(x: 0, y: 34, width: 55, height: 20)
         container.addSubview(branchLabel)
 
-        let branchField = EditableTextField(frame: NSRect(x: 60, y: 2, width: 295, height: 22))
+        let branchField = EditableTextField(frame: NSRect(x: 60, y: 32, width: 295, height: 22))
         branchField.stringValue = "main"
         container.addSubview(branchField)
+
+        let tagLabel = NSTextField(labelWithString: "Tag:")
+        tagLabel.frame = NSRect(x: 0, y: 4, width: 55, height: 20)
+        container.addSubview(tagLabel)
+
+        let tagField = EditableTextField(frame: NSRect(x: 60, y: 2, width: 295, height: 22))
+        tagField.placeholderString = "optional (e.g. v1.0.0)"
+        container.addSubview(tagField)
+
+        // localskills fields (hidden initially)
+        let slugsLabel = NSTextField(labelWithString: "Slugs:")
+        slugsLabel.frame = NSRect(x: 0, y: 94, width: 55, height: 20)
+        slugsLabel.isHidden = true
+        container.addSubview(slugsLabel)
+
+        let slugsField = EditableTextField(frame: NSRect(x: 60, y: 92, width: 295, height: 22))
+        slugsField.placeholderString = "skill-slug-1, skill-slug-2"
+        slugsField.isHidden = true
+        container.addSubview(slugsField)
+
+        // Local directory fields (hidden initially)
+        let pathLabel = NSTextField(labelWithString: "Path:")
+        pathLabel.frame = NSRect(x: 0, y: 94, width: 55, height: 20)
+        pathLabel.isHidden = true
+        container.addSubview(pathLabel)
+
+        let pathField = EditableTextField(frame: NSRect(x: 60, y: 92, width: 220, height: 22))
+        pathField.placeholderString = "/path/to/components"
+        pathField.isHidden = true
+        container.addSubview(pathField)
+
+        let browseBtn = NSButton(title: "Browse...", target: nil, action: nil)
+        browseBtn.frame = NSRect(x: 285, y: 90, width: 70, height: 24)
+        browseBtn.bezelStyle = .rounded
+        browseBtn.isHidden = true
+        container.addSubview(browseBtn)
+
+        // Git-specific fields list
+        let gitFields: [NSView] = [urlLabel, urlField, branchLabel, branchField, tagLabel, tagField]
+        let localskillsFields: [NSView] = [slugsLabel, slugsField]
+        let localFields: [NSView] = [pathLabel, pathField, browseBtn]
+
+        // Type change handler
+        class TypeChangeTarget: NSObject {
+            let gitFields: [NSView]
+            let localskillsFields: [NSView]
+            let localFields: [NSView]
+            let nameField: NSTextField
+            let typePopup: NSPopUpButton
+
+            init(gitFields: [NSView], localskillsFields: [NSView], localFields: [NSView], nameField: NSTextField, typePopup: NSPopUpButton) {
+                self.gitFields = gitFields
+                self.localskillsFields = localskillsFields
+                self.localFields = localFields
+                self.nameField = nameField
+                self.typePopup = typePopup
+            }
+
+            @objc func typeChanged(_ sender: NSPopUpButton) {
+                let idx = sender.indexOfSelectedItem
+                for v in gitFields { v.isHidden = idx != 0 }
+                for v in localskillsFields { v.isHidden = idx != 1 }
+                for v in localFields { v.isHidden = idx != 2 }
+                nameField.placeholderString = idx == 0 ? "auto-filled from URL" : "registry name"
+            }
+        }
+
+        let typeTarget = TypeChangeTarget(
+            gitFields: gitFields, localskillsFields: localskillsFields,
+            localFields: localFields, nameField: nameField, typePopup: typePopup
+        )
+        typePopup.target = typeTarget
+        typePopup.action = #selector(TypeChangeTarget.typeChanged(_:))
+
+        // Browse button handler
+        class BrowseTarget: NSObject {
+            let pathField: NSTextField
+            init(pathField: NSTextField) { self.pathField = pathField }
+            @objc func browse(_ sender: NSButton) {
+                let panel = NSOpenPanel()
+                panel.canChooseFiles = false
+                panel.canChooseDirectories = true
+                panel.allowsMultipleSelection = false
+                if panel.runModal() == .OK, let url = panel.url {
+                    pathField.stringValue = url.path
+                }
+            }
+        }
+
+        let browseTarget = BrowseTarget(pathField: pathField)
+        browseBtn.target = browseTarget
+        browseBtn.action = #selector(BrowseTarget.browse(_:))
 
         alert.accessoryView = container
         alert.window.initialFirstResponder = urlField
 
         guard let w = window else { return }
         alert.beginSheetModal(for: w) { [weak self] response in
+            // Keep targets alive through closure
+            _ = typeTarget
+            _ = browseTarget
+
             guard response == .alertFirstButtonReturn else { return }
-            let url = urlField.stringValue.trimmingCharacters(in: .whitespaces)
-            let branch = branchField.stringValue.trimmingCharacters(in: .whitespaces)
+            let selectedType = typePopup.indexOfSelectedItem
 
-            guard !url.isEmpty else {
-                let errAlert = NSAlert.branded()
-                errAlert.messageText = "Missing URL"
-                errAlert.informativeText = "A repository URL is required."
-                errAlert.alertStyle = .warning
-                if let w = self?.window { errAlert.beginSheetModal(for: w) }
-                return
-            }
-
-            // Auto-derive name from URL if not provided
             var name = nameField.stringValue.trimmingCharacters(in: .whitespaces)
-            if name.isEmpty {
-                name = url.components(separatedBy: "/").last?
-                    .replacingOccurrences(of: ".git", with: "") ?? "registry"
-            }
 
-            let effectiveBranch = branch.isEmpty ? "main" : branch
-            ConfigWriter.updateValue(key: "ai_components.registry.\(name).url", value: "\"\(url)\"")
-            ConfigWriter.updateValue(key: "ai_components.registry.\(name).branch", value: "\"\(effectiveBranch)\"")
-            AppConfig.reload()
-            self?.refreshAll()
+            switch selectedType {
+            case 0: // Git
+                let url = urlField.stringValue.trimmingCharacters(in: .whitespaces)
+                let branch = branchField.stringValue.trimmingCharacters(in: .whitespaces)
 
-            // Trigger initial clone
-            DispatchQueue.global(qos: .utility).async {
-                let result = RegistryManager.shared.syncOne(name: name, url: url, branch: effectiveBranch)
-                DispatchQueue.main.async {
-                    self?.refreshAll()
-                    if case .failure(let err) = result {
-                        let errAlert = NSAlert.branded()
-                        errAlert.messageText = "Clone Failed"
-                        errAlert.informativeText = err.localizedDescription
-                        errAlert.alertStyle = .warning
-                        if let w = self?.window { errAlert.beginSheetModal(for: w) }
+                guard !url.isEmpty else {
+                    let errAlert = NSAlert.branded()
+                    errAlert.messageText = "Missing URL"
+                    errAlert.informativeText = "A repository URL is required."
+                    errAlert.alertStyle = .warning
+                    if let w = self?.window { errAlert.beginSheetModal(for: w) }
+                    return
+                }
+
+                if name.isEmpty {
+                    name = url.components(separatedBy: "/").last?
+                        .replacingOccurrences(of: ".git", with: "") ?? "registry"
+                }
+
+                let effectiveBranch = branch.isEmpty ? "main" : branch
+                let tag = tagField.stringValue.trimmingCharacters(in: .whitespaces)
+                ConfigWriter.updateValue(key: "ai_components.registry.\(name).url", value: "\"\(url)\"")
+                ConfigWriter.updateValue(key: "ai_components.registry.\(name).branch", value: "\"\(effectiveBranch)\"")
+                if !tag.isEmpty {
+                    ConfigWriter.updateValue(key: "ai_components.registry.\(name).tag", value: "\"\(tag)\"")
+                }
+                AppConfig.reload()
+                self?.refreshAll()
+
+                let regConfig = RegistryConfig(name: name, url: url, branch: effectiveBranch, tag: tag.isEmpty ? nil : tag)
+                DispatchQueue.global(qos: .utility).async {
+                    let result = RegistryManager.shared.syncOne(registry: regConfig)
+                    DispatchQueue.main.async {
+                        self?.refreshAll()
+                        if case .failure(let err) = result {
+                            let errAlert = NSAlert.branded()
+                            errAlert.messageText = "Clone Failed"
+                            errAlert.informativeText = err.localizedDescription
+                            errAlert.alertStyle = .warning
+                            if let w = self?.window { errAlert.beginSheetModal(for: w) }
+                        }
                     }
                 }
+
+            case 1: // localskills
+                let slugsStr = slugsField.stringValue.trimmingCharacters(in: .whitespaces)
+                guard !slugsStr.isEmpty else {
+                    let errAlert = NSAlert.branded()
+                    errAlert.messageText = "Missing Slugs"
+                    errAlert.informativeText = "At least one skill slug is required."
+                    errAlert.alertStyle = .warning
+                    if let w = self?.window { errAlert.beginSheetModal(for: w) }
+                    return
+                }
+                if name.isEmpty { name = "localskills" }
+
+                let slugs = slugsStr.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+                ConfigWriter.updateValue(key: "ai_components.registry.\(name).type", value: "\"localskills\"")
+                ConfigWriter.updateValue(key: "ai_components.registry.\(name).slugs", value: "\"\(slugs.joined(separator: ","))\"")
+                AppConfig.reload()
+                self?.refreshAll()
+
+                let regConfig = RegistryConfig(name: name, url: "", branch: "main", type: .localskills, slugs: slugs)
+                DispatchQueue.global(qos: .utility).async {
+                    let result = RegistryManager.shared.syncOne(registry: regConfig)
+                    DispatchQueue.main.async {
+                        self?.refreshAll()
+                        if case .failure(let err) = result {
+                            let errAlert = NSAlert.branded()
+                            errAlert.messageText = "Sync Failed"
+                            errAlert.informativeText = err.localizedDescription
+                            errAlert.alertStyle = .warning
+                            if let w = self?.window { errAlert.beginSheetModal(for: w) }
+                        }
+                    }
+                }
+
+            case 2: // Local directory
+                let path = pathField.stringValue.trimmingCharacters(in: .whitespaces)
+                guard !path.isEmpty else {
+                    let errAlert = NSAlert.branded()
+                    errAlert.messageText = "Missing Path"
+                    errAlert.informativeText = "A directory path is required."
+                    errAlert.alertStyle = .warning
+                    if let w = self?.window { errAlert.beginSheetModal(for: w) }
+                    return
+                }
+                if name.isEmpty {
+                    name = URL(fileURLWithPath: path).lastPathComponent
+                }
+
+                ConfigWriter.updateValue(key: "ai_components.registry.\(name).type", value: "\"local\"")
+                ConfigWriter.updateValue(key: "ai_components.registry.\(name).path", value: "\"\(path)\"")
+                AppConfig.reload()
+                self?.refreshAll()
+
+                let regConfig = RegistryConfig(name: name, url: "", branch: "main", type: .local, path: path)
+                DispatchQueue.global(qos: .utility).async {
+                    let result = RegistryManager.shared.syncOne(registry: regConfig)
+                    DispatchQueue.main.async {
+                        self?.refreshAll()
+                        if case .failure(let err) = result {
+                            let errAlert = NSAlert.branded()
+                            errAlert.messageText = "Sync Failed"
+                            errAlert.informativeText = err.localizedDescription
+                            errAlert.alertStyle = .warning
+                            if let w = self?.window { errAlert.beginSheetModal(for: w) }
+                        }
+                    }
+                }
+
+            default:
+                break
             }
         }
     }
@@ -510,8 +716,10 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
         guard idx >= 0 && idx < registries.count else { return }
 
         let reg = registries[idx]
-        ConfigWriter.removeValue(key: "ai_components.registry.\(reg.name).url")
-        ConfigWriter.removeValue(key: "ai_components.registry.\(reg.name).branch")
+        // Remove all possible config keys for any registry type
+        for key in ["url", "branch", "tag", "type", "slugs", "path"] {
+            ConfigWriter.removeValue(key: "ai_components.registry.\(reg.name).\(key)")
+        }
         AppConfig.reload()
         RegistryManager.shared.removeRegistry(name: reg.name)
         refreshAll()
@@ -524,7 +732,7 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
 
         let reg = registries[idx]
         DispatchQueue.global(qos: .utility).async { [weak self] in
-            let result = RegistryManager.shared.syncOne(name: reg.name, url: reg.url, branch: reg.branch)
+            let result = RegistryManager.shared.syncOne(registry: reg)
             DispatchQueue.main.async {
                 self?.refreshAll()
                 if case .failure(let err) = result {
@@ -646,17 +854,32 @@ extension AIComponentsManagerWindow: NSTableViewDataSource, NSTableViewDelegate 
             return cell
 
         case "url":
-            let shortened = reg.url
-                .replacingOccurrences(of: "https://github.com/", with: "github.com/")
-                .replacingOccurrences(of: ".git", with: "")
-            let cell = NSTextField(labelWithString: shortened)
+            let displayText: String
+            switch reg.type {
+            case .git:
+                displayText = reg.url
+                    .replacingOccurrences(of: "https://github.com/", with: "github.com/")
+                    .replacingOccurrences(of: ".git", with: "")
+            case .localskills:
+                displayText = "localskills: \(reg.slugs.joined(separator: ", "))"
+            case .local:
+                displayText = reg.path ?? ""
+            }
+            let cell = NSTextField(labelWithString: displayText)
             cell.font = .systemFont(ofSize: 12)
             cell.textColor = .secondaryLabelColor
             cell.lineBreakMode = .byTruncatingTail
             return cell
 
         case "branch":
-            let cell = NSTextField(labelWithString: reg.branch)
+            let displayValue: String
+            switch reg.type {
+            case .git:
+                displayValue = reg.tag.map { "tag:\($0)" } ?? reg.branch
+            case .localskills, .local:
+                displayValue = "\u{2014}"
+            }
+            let cell = NSTextField(labelWithString: displayValue)
             cell.font = .systemFont(ofSize: 12)
             cell.textColor = .secondaryLabelColor
             return cell
@@ -683,23 +906,67 @@ extension AIComponentsManagerWindow: NSTableViewDataSource, NSTableViewDelegate 
         guard row < currentTabItems.count else { return nil }
         let item = currentTabItems[row]
 
-        let cell = NSTextField(labelWithString: "")
-        cell.font = .systemFont(ofSize: 12)
-        cell.lineBreakMode = .byTruncatingTail
-
         switch tableColumn?.identifier.rawValue {
+        case "comp_enabled":
+            let checkbox = NSButton(checkboxWithTitle: "", target: self, action: #selector(componentToggled(_:)))
+            checkbox.tag = row
+            let isDisabled = AppConfig.shared.aiComponentsDisabled.contains(item.key)
+            checkbox.state = isDisabled ? .off : .on
+            return checkbox
+
         case "comp_name":
-            cell.stringValue = item.name
+            let cell = NSTextField(labelWithString: "")
+            cell.font = .systemFont(ofSize: 12)
+            cell.lineBreakMode = .byTruncatingTail
+            // Show security indicator
+            let hasFindings = RegistryManager.shared.scanResults.values
+                .flatMap { $0 }
+                .contains { $0.componentKey == item.key }
+            if hasFindings {
+                let hasCritical = RegistryManager.shared.scanResults.values
+                    .flatMap { $0 }
+                    .contains { $0.componentKey == item.key && $0.severity == .critical }
+                let dot = hasCritical ? "\u{1F534} " : "\u{1F7E1} "
+                cell.stringValue = dot + item.name
+            } else {
+                cell.stringValue = item.name
+            }
+            return cell
+
         case "comp_registry":
-            cell.stringValue = item.source
+            let cell = NSTextField(labelWithString: item.source)
+            cell.font = .systemFont(ofSize: 12)
             cell.textColor = .secondaryLabelColor
+            cell.lineBreakMode = .byTruncatingTail
+            return cell
+
         case "comp_stack":
-            cell.stringValue = item.stack
+            let cell = NSTextField(labelWithString: item.stack)
+            cell.font = .systemFont(ofSize: 12)
             cell.textColor = .secondaryLabelColor
+            cell.lineBreakMode = .byTruncatingTail
+            return cell
+
         default:
-            break
+            return nil
         }
-        return cell
+    }
+
+    @objc private func componentToggled(_ sender: NSButton) {
+        let row = sender.tag
+        guard row < currentTabItems.count else { return }
+        let key = currentTabItems[row].key
+
+        var disabled = AppConfig.shared.aiComponentsDisabled
+        if sender.state == .off {
+            disabled.insert(key)
+        } else {
+            disabled.remove(key)
+        }
+
+        let value = disabled.sorted().joined(separator: ",")
+        ConfigWriter.updateValue(key: "ai_components.disabled", value: "\"\(value)\"")
+        AppConfig.reload()
     }
 }
 
