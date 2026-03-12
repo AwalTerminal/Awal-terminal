@@ -314,6 +314,16 @@ class RegistryManager {
 
     // MARK: - localskills Sync
 
+    /// Build an environment dictionary with PATH including the binary's directory.
+    /// GUI apps don't inherit the shell PATH, so child processes can't find `node` etc.
+    private func processEnvironment(binPath: String) -> [String: String] {
+        var env = ProcessInfo.processInfo.environment
+        let binDir = (binPath as NSString).deletingLastPathComponent
+        let existing = env["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
+        env["PATH"] = "\(binDir):\(existing):/usr/local/bin:/opt/homebrew/bin"
+        return env
+    }
+
     private func findLocalskillsBinary() -> String? {
         let home = fm.homeDirectoryForCurrentUser.path
         // Check well-known locations (GUI apps don't inherit shell PATH)
@@ -384,6 +394,7 @@ class RegistryManager {
             let proc = Process()
             proc.executableURL = URL(fileURLWithPath: binary)
             proc.arguments = ["install", "--target", "claude", "--project", tempDir.path, "--copy", slug]
+            proc.environment = processEnvironment(binPath: binary)
             proc.standardOutput = FileHandle.nullDevice
             let stderrPipe = Pipe()
             proc.standardError = stderrPipe
@@ -469,6 +480,7 @@ class RegistryManager {
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: npm)
         proc.arguments = ["install", "-g", "@localskills/cli"]
+        proc.environment = processEnvironment(binPath: npm)
         proc.standardOutput = FileHandle.nullDevice
         let stderrPipe = Pipe()
         proc.standardError = stderrPipe
