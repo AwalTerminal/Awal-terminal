@@ -431,6 +431,38 @@ enum AIComponentInjector {
             }
         }
 
+        // Collect rules from all assembled plugins and create a synthetic awal-rules skill
+        var ruleFiles: [(name: String, url: URL)] = []
+        for pluginDir in result.pluginDirs {
+            let rulesSubdir = pluginDir.appendingPathComponent("rules")
+            guard let items = try? fm.contentsOfDirectory(at: rulesSubdir, includingPropertiesForKeys: nil) else { continue }
+            for item in items where item.pathExtension == "md" {
+                let resolved = item.resolvingSymlinksInPath()
+                ruleFiles.append((name: item.lastPathComponent, url: resolved))
+            }
+        }
+
+        if !ruleFiles.isEmpty {
+            let rulesSkillDir = agentsSkillsDir.appendingPathComponent("awal-rules")
+            let rulesDestDir = rulesSkillDir.appendingPathComponent("rules")
+            try? fm.createDirectory(at: rulesDestDir, withIntermediateDirectories: true)
+
+            // Copy each rule file into the rules/ subdirectory
+            for rule in ruleFiles {
+                let dest = rulesDestDir.appendingPathComponent(rule.name)
+                try? fm.copyItem(at: rule.url, to: dest)
+            }
+
+            // Generate SKILL.md with YAML frontmatter referencing each rule
+            let ruleList = ruleFiles.map { "- rules/\($0.name)" }.joined(separator: "\n")
+            let skillContent = "---\nname: awal-rules\ndescription: Project rules and guidelines injected by Awal Terminal\n---\n\n# Awal Rules\n\nFollow these rules and guidelines for the current project:\n\n\(ruleList)\n"
+            try? skillContent.write(
+                to: rulesSkillDir.appendingPathComponent("SKILL.md"),
+                atomically: true,
+                encoding: .utf8
+            )
+        }
+
         return AIComponentContext(
             detectedStacks: stacks,
             skillCount: result.skillCount,
