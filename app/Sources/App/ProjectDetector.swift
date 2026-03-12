@@ -69,7 +69,105 @@ struct ProjectDetector {
             }
         }
 
+        // Detect sub-stacks (frameworks) based on detected parent stacks
+        let subStacks = detectSubStacks(parentStacks: detected, path: path)
+        detected.formUnion(subStacks)
+
         return detected
+    }
+
+    /// Sub-stack detection rules — keyed by parent stack, containing framework-level detections.
+    static let builtInSubStackRules: [String: [String: [String]]] = [
+        "node": [
+            "nextjs":  ["next.config.js", "next.config.mjs", "next.config.ts"],
+            "nuxt":    ["nuxt.config.ts", "nuxt.config.js"],
+            "remix":   ["remix.config.js", "remix.config.ts"],
+            "nestjs":  ["nest-cli.json"],
+        ],
+        "python": [
+            "django":  ["manage.py"],
+            "flask":   ["app.py"],
+        ],
+        "swift": [
+            "vapor":   ["Sources/App/configure.swift"],
+        ],
+        "ruby": [
+            "rails":   ["bin/rails", "config/routes.rb"],
+        ],
+        "php": [
+            "laravel": ["artisan", "app/Http/Kernel.php"],
+        ],
+    ]
+
+    /// Detect framework-level sub-stacks based on already-detected parent stacks.
+    static func detectSubStacks(parentStacks: Set<String>, path: String) -> Set<String> {
+        let fm = FileManager.default
+        var subStacks = Set<String>()
+
+        for parent in parentStacks {
+            guard let rules = builtInSubStackRules[parent] else { continue }
+
+            for (subStack, markers) in rules {
+                for marker in markers {
+                    let filePath = (path as NSString).appendingPathComponent(marker)
+                    if fm.fileExists(atPath: filePath) {
+                        subStacks.insert(subStack)
+                        break
+                    }
+                }
+            }
+
+            // Dependency-based detection for node sub-stacks
+            if parent == "node" {
+                let packageJson = (path as NSString).appendingPathComponent("package.json")
+                if let content = try? String(contentsOfFile: packageJson, encoding: .utf8) {
+                    let depChecks: [(name: String, dep: String)] = [
+                        ("nextjs", "\"next\""),
+                        ("express", "\"express\""),
+                        ("nuxt", "\"nuxt\""),
+                        ("remix", "\"@remix-run/"),
+                        ("nestjs", "\"@nestjs/"),
+                    ]
+                    for (name, dep) in depChecks {
+                        if content.contains(dep) {
+                            subStacks.insert(name)
+                        }
+                    }
+                }
+            }
+
+            // Dependency-based detection for python sub-stacks
+            if parent == "python" {
+                for depFile in ["requirements.txt", "pyproject.toml", "setup.py", "Pipfile"] {
+                    let filePath = (path as NSString).appendingPathComponent(depFile)
+                    if let content = try? String(contentsOfFile: filePath, encoding: .utf8) {
+                        if content.contains("fastapi") { subStacks.insert("fastapi") }
+                        if content.contains("django") { subStacks.insert("django") }
+                        if content.contains("flask") { subStacks.insert("flask") }
+                    }
+                }
+            }
+
+            // Dependency-based detection for go sub-stacks
+            if parent == "go" {
+                let goMod = (path as NSString).appendingPathComponent("go.mod")
+                if let content = try? String(contentsOfFile: goMod, encoding: .utf8) {
+                    let goFrameworks: [(name: String, dep: String)] = [
+                        ("gin", "github.com/gin-gonic/gin"),
+                        ("echo", "github.com/labstack/echo"),
+                        ("fiber", "github.com/gofiber/fiber"),
+                        ("chi", "github.com/go-chi/chi"),
+                    ]
+                    for (name, dep) in goFrameworks {
+                        if content.contains(dep) {
+                            subStacks.insert(name)
+                        }
+                    }
+                }
+            }
+        }
+
+        return subStacks
     }
 
     /// Check if any file in the directory matches a simple glob pattern (e.g. "*.xcodeproj").
