@@ -1,5 +1,23 @@
 import AppKit
 
+/// Type of registry source.
+enum RegistryType: String {
+    case git = "git"
+    case localskills = "localskills"
+    case local = "local"
+}
+
+/// Configuration for a single AI component registry.
+struct RegistryConfig {
+    let name: String
+    let url: String
+    let branch: String
+    var tag: String? = nil
+    var type: RegistryType = .git
+    var slugs: [String] = []
+    var path: String? = nil
+}
+
 /// Application configuration loaded from ~/.config/awal/config.toml
 struct AppConfig {
 
@@ -44,9 +62,18 @@ struct AppConfig {
     var aiComponentsAutoDetect: Bool = true
     var aiComponentsAutoSync: Bool = true
     var aiComponentsSyncInterval: Int = 3600
-    var aiComponentRegistries: [(name: String, url: String, branch: String)] = [
-        (name: "awal-components", url: "https://github.com/AwalTerminal/awal-ai-components-registry.git", branch: "main"),
+    var aiComponentRegistries: [RegistryConfig] = [
+        RegistryConfig(name: "awal-components", url: "https://github.com/AwalTerminal/awal-ai-components-registry.git", branch: "main"),
     ]
+    var aiComponentsDisabled: Set<String> = []
+    var aiComponentsSecurityScan: Bool = true
+    var aiComponentsBlockCritical: Bool = true
+
+    // AI Components Export
+    var aiComponentsExportEnabled: Bool = false
+    var aiComponentsExportFormats: [String] = []
+    var aiComponentsExportTarget: String = "cache"
+
     private var aiComponentOverrides: [String: Set<String>] = [:]
 
     /// Get stack overrides for a specific project path.
@@ -148,7 +175,25 @@ struct AppConfig {
         if let v = parsed["ai_components.auto_sync"] { config.aiComponentsAutoSync = v == "true" }
         if let v = parsed["ai_components.sync_interval"], let n = Int(v) { config.aiComponentsSyncInterval = n }
 
-        // Parse AI component registries: ai_components.registry.<name>.url / .branch
+        // Disabled components
+        if let v = parsed["ai_components.disabled"] {
+            config.aiComponentsDisabled = Set(
+                v.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+            )
+        }
+
+        // Security scanning
+        if let v = parsed["ai_components.security_scan"] { config.aiComponentsSecurityScan = v == "true" }
+        if let v = parsed["ai_components.block_critical"] { config.aiComponentsBlockCritical = v == "true" }
+
+        // Export settings
+        if let v = parsed["ai_components.export.enabled"] { config.aiComponentsExportEnabled = v == "true" }
+        if let v = parsed["ai_components.export.formats"] {
+            config.aiComponentsExportFormats = v.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        }
+        if let v = parsed["ai_components.export.target"] { config.aiComponentsExportTarget = v }
+
+        // Parse AI component registries: ai_components.registry.<name>.url / .branch / .tag
         var registryNames = Set<String>()
         for key in parsed.keys where key.hasPrefix("ai_components.registry.") {
             let rest = key.dropFirst("ai_components.registry.".count)
@@ -157,14 +202,29 @@ struct AppConfig {
             }
         }
         for name in registryNames.sorted() {
+            let typeStr = parsed["ai_components.registry.\(name).type"] ?? "git"
+            let regType = RegistryType(rawValue: typeStr) ?? .git
             let url = parsed["ai_components.registry.\(name).url"] ?? ""
             let branch = parsed["ai_components.registry.\(name).branch"] ?? "main"
-            if !url.isEmpty {
+            let tag = parsed["ai_components.registry.\(name).tag"]
+            let slugsStr = parsed["ai_components.registry.\(name).slugs"] ?? ""
+            let slugs = slugsStr.isEmpty ? [] : slugsStr.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+            let path = parsed["ai_components.registry.\(name).path"]
+
+            let isValid: Bool
+            switch regType {
+            case .git: isValid = !url.isEmpty
+            case .localskills: isValid = !slugs.isEmpty
+            case .local: isValid = path != nil && !path!.isEmpty
+            }
+
+            if isValid {
+                let regConfig = RegistryConfig(name: name, url: url, branch: branch, tag: tag, type: regType, slugs: slugs, path: path)
                 // Update existing default or append new
                 if let idx = config.aiComponentRegistries.firstIndex(where: { $0.name == name }) {
-                    config.aiComponentRegistries[idx] = (name: name, url: url, branch: branch)
+                    config.aiComponentRegistries[idx] = regConfig
                 } else {
-                    config.aiComponentRegistries.append((name: name, url: url, branch: branch))
+                    config.aiComponentRegistries.append(regConfig)
                 }
             }
         }
