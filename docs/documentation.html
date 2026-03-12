@@ -674,8 +674,9 @@
         <h3>How It Works</h3>
         <ol>
           <li>Awal detects your project type by scanning for marker files (e.g., <code>go.mod</code>, <code>pubspec.yaml</code>, <code>Package.swift</code>)</li>
+          <li>Sub-stacks are detected for frameworks like Next.js, Django, Flask, Vapor, NestJS, Remix, and more</li>
           <li>Common components are loaded for all projects</li>
-          <li>Stack-specific components are loaded based on detected project type</li>
+          <li>Stack-specific components are loaded based on detected project type and sub-stacks</li>
           <li>Components are injected into the AI session: Claude via the plugin system, Gemini via <code>--system-instruction-file</code>, Codex via <code>--instructions</code></li>
         </ol>
 
@@ -685,24 +686,54 @@
         <h3>Default Registry</h3>
         <p>Awal ships with the <a href="https://github.com/AwalTerminal/awal-ai-components-registry">awal-components</a> registry pre-configured. It includes common coding rules, skills, and stack-specific components for Go, Flutter, Swift, Python, Rust, Node.js, Java, C#, Kotlin, PHP, Ruby, Zig, Elixir, and C++.</p>
 
+        <h3>Registry Types</h3>
+        <p>Awal supports three types of registries:</p>
+        <ul>
+          <li><strong>Git</strong> &mdash; Any Git repository that follows the registry structure. Cloned and pulled automatically.</li>
+          <li><strong>localskills</strong> &mdash; Skills from the <a href="https://localskills.dev">localskills</a> marketplace. The CLI is auto-installed via npm if not found.</li>
+          <li><strong>Local</strong> &mdash; A local directory on your machine, read in-place without cloning.</li>
+        </ul>
+
         <h3>Custom Registries</h3>
-        <p>You can add your own registries — for example, your team's internal coding conventions, custom prompts, or proprietary MCP server configs. Any Git repository that follows the registry structure works. Add them via <strong>Preferences &gt; AI Components &gt; + Add Registry</strong>, or in your config file:</p>
+        <p>Add registries via <strong>AI Components &gt; Manage Components &gt; + Add</strong>, or in your config file:</p>
         <pre><code>[ai_components]
 enabled = true
 auto_detect = true
 auto_sync = true
 sync_interval = 3600
+security_scan = true
 
 # Default registry (included out of the box)
 [ai_components.registry.awal-components]
 url = "https://github.com/AwalTerminal/awal-ai-components-registry.git"
 branch = "main"
 
-# Add your own registry
+# Add your own Git registry
 [ai_components.registry.my-team]
 url = "https://github.com/my-org/ai-components.git"
-branch = "main"</code></pre>
+branch = "main"
+
+# localskills registry (auto-installs CLI via npm)
+[ai_components.registry.my-skill]
+type = "localskills"
+slugs = "ZpDEwZj1Yq"
+
+# Local directory registry
+[ai_components.registry.my-local]
+type = "local"
+path = "/path/to/local/registry"</code></pre>
         <p>Multiple registries are merged — components from all registries are loaded together. Use the <strong>AI Components &gt; Manage Components</strong> menu to manage registries, browse loaded components, and configure sync settings.</p>
+
+        <h3>Security Scanning</h3>
+        <p>Awal scans registry contents for potentially dangerous patterns like shell commands, environment variable access, and network requests. Critical findings are blocked by default. Configure with <code>security_scan = true</code> and <code>block_critical = true</code> in your config.</p>
+
+        <h3>Per-Component Toggles</h3>
+        <p>Disable individual components without removing their registry. Use the checkboxes in the AI Components Manager, or add component keys to the <code>disabled</code> list in your config:</p>
+        <pre><code>[ai_components]
+disabled = "my-registry/common/skill/some-skill, my-registry/node/rule/some-rule"</code></pre>
+
+        <h3>Import &amp; Export</h3>
+        <p>Share your registry configurations with teammates. Use <strong>AI Components &gt; Import &amp; Export</strong> to export your current setup or import a shared configuration bundle.</p>
 
         <h3>Hooks</h3>
         <p>Hooks are shell scripts that run automatically at specific points in an AI session. Place them in the appropriate directory under your registry's stack folder:</p>
@@ -835,10 +866,16 @@ enabled = true
 auto_detect = true
 auto_sync = true
 sync_interval = 3600
+security_scan = true
+block_critical = true
 
 [ai_components.registry.awal-components]
 url = "https://github.com/AwalTerminal/awal-ai-components-registry.git"
-branch = "main"</code></pre>
+branch = "main"
+
+[ai_components.registry.my-skill]
+type = "localskills"
+slugs = "ZpDEwZj1Yq"</code></pre>
 
         <h3>Theme Colors</h3>
         <table class="doc-table">
@@ -878,9 +915,12 @@ branch = "main"</code></pre>
             <tr><td><code>auto_detect</code></td><td>Auto-detect project stack from marker files</td><td><code>true</code></td></tr>
             <tr><td><code>auto_sync</code></td><td>Auto-sync registries on session start</td><td><code>true</code></td></tr>
             <tr><td><code>sync_interval</code></td><td>Minimum seconds between auto-syncs</td><td><code>3600</code></td></tr>
+            <tr><td><code>security_scan</code></td><td>Scan registries for dangerous patterns</td><td><code>true</code></td></tr>
+            <tr><td><code>block_critical</code></td><td>Block components with critical security findings</td><td><code>true</code></td></tr>
+            <tr><td><code>disabled</code></td><td>Comma-separated list of disabled component keys</td><td>(empty)</td></tr>
           </tbody>
         </table>
-        <p>Add registries with <code>[ai_components.registry.&lt;name&gt;]</code> sections containing <code>url</code> and <code>branch</code> keys.</p>
+        <p>Add registries with <code>[ai_components.registry.&lt;name&gt;]</code> sections. Git registries use <code>url</code> and <code>branch</code>; localskills registries use <code>type = "localskills"</code> and <code>slugs</code>; local registries use <code>type = "local"</code> and <code>path</code>.</p>
 
         <h3>Paste Settings</h3>
         <table class="doc-table">

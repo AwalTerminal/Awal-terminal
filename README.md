@@ -50,7 +50,9 @@ A native macOS terminal built from scratch with Swift and Rust, designed specifi
 
 **Smart Notifications** — Desktop alerts when long-running AI tasks complete.
 
-**AI Components** — Auto-detect your project stack and inject skills, rules, prompts, agents, MCP servers, and hooks into AI sessions from shared registries.
+**AI Components** — Auto-detect your project stack and inject skills, rules, prompts, agents, MCP servers, and hooks into AI sessions from shared registries. Supports git, [localskills](https://localskills.dev), and local directory sources. Per-component enable/disable, security scanning, and import/export.
+
+**Sub-Stack Detection** — Automatically detects frameworks like Next.js, Django, Flask, Vapor, NestJS, and more on top of base stack detection for more targeted component injection.
 
 **Large Paste Protection** — Confirmation dialog for large pastes with options to save to file, truncate, or paste all. Configurable threshold.
 
@@ -115,10 +117,19 @@ truncate_length = 10000
 enabled = true
 auto_detect = true
 auto_sync = true
+security_scan = true
 
 [ai_components.registry.awal-components]
 url = "https://github.com/AwalTerminal/awal-ai-components-registry.git"
 branch = "main"
+
+[ai_components.registry.my-skill]
+type = "localskills"
+slugs = "ZpDEwZj1Yq"
+
+[ai_components.registry.my-local]
+type = "local"
+path = "/path/to/local/registry"
 ```
 
 ## Architecture
