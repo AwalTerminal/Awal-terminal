@@ -72,6 +72,10 @@ class StatusBarView: NSView {
 
     var onVoiceToggle: (() -> Void)?
 
+    private var sep1: NSTextField!
+    private var sep2: NSTextField!
+    private var sep3: NSTextField!
+
     private var sessionStart: Date = Date()
     private var updateTimer: Timer?
     private var shellPid: pid_t = 0
@@ -167,9 +171,9 @@ class StatusBarView: NSView {
         addSubview(aiComponentLabel)
 
         // Separators: thin dots between sections
-        let sep1 = makeSeparator()
-        let sep2 = makeSeparator()
-        let sep3 = makeSeparator()
+        self.sep1 = makeSeparator()
+        self.sep2 = makeSeparator()
+        self.sep3 = makeSeparator()
 
         // Top border line
         let border = NSView()
@@ -258,6 +262,8 @@ class StatusBarView: NSView {
         pulsingDot.isHidden = true
         voiceWaveform.isHidden = true
 
+        updateSeparators()
+
         modelButton.title = "Awal Terminal"
 
         // Poll cwd + git every 2 seconds
@@ -278,6 +284,11 @@ class StatusBarView: NSView {
         sep.translatesAutoresizingMaskIntoConstraints = false
         addSubview(sep)
         return sep
+    }
+
+    private func updateSeparators() {
+        sep1.isHidden = voiceButton.isHidden
+        sep2.isHidden = tokensLabel.stringValue.isEmpty
     }
 
     @objc private func modelClicked(_ sender: NSButton) {
@@ -360,7 +371,7 @@ class StatusBarView: NSView {
             // Get cwd from procfs (macOS: use proc_pidinfo or lsof)
             let cwd = self?.getCwdOfPid(fgPid) ?? ""
             let gitResult = self?.getGitInfo(cwd: cwd) ?? (label: "", changes: [])
-            let cpuUsage = self?.getProcessCPU(pid: fgPid) ?? 0.0
+            let cpuUsage = self?.getProcessTreeCPU(rootPid: pid) ?? 0.0
 
             // Update token tracking for Claude sessions
             if isClaudeSession {
@@ -375,6 +386,7 @@ class StatusBarView: NSView {
                 self?.gitLabel.stringValue = gitResult.label
                 self?.tokensLabel.stringValue = tokenDisplay
                 self?.updateCPULabel(cpuUsage)
+                self?.updateSeparators()
                 self?.onGitStatusChanged?(gitResult.changes)
                 if self?.currentPath != oldPath {
                     self?.onPathChanged?()
@@ -477,10 +489,11 @@ class StatusBarView: NSView {
         return ("", [])
     }
 
-    private func getProcessCPU(pid: pid_t) -> Double {
+    private func getProcessTreeCPU(rootPid: pid_t) -> Double {
+        // Single ps call to get pid, ppid, and cpu for all processes
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/bin/ps")
-        proc.arguments = ["-p", "\(pid)", "-o", "%cpu="]
+        proc.arguments = ["-ax", "-o", "pid=", "-o", "ppid=", "-o", "%cpu="]
         let pipe = Pipe()
         proc.standardOutput = pipe
         proc.standardError = FileHandle.nullDevice
@@ -488,8 +501,30 @@ class StatusBarView: NSView {
             try proc.run()
             proc.waitUntilExit()
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            return Double(output) ?? 0.0
+            let output = String(data: data, encoding: .utf8) ?? ""
+
+            // Parse into (pid, ppid, cpu) tuples and build parent→children map
+            var cpuByPid: [pid_t: Double] = [:]
+            var childrenOf: [pid_t: [pid_t]] = [:]
+            for line in output.split(separator: "\n") {
+                let parts = line.split(whereSeparator: { $0.isWhitespace })
+                guard parts.count >= 3,
+                      let pid = Int32(parts[0]),
+                      let ppid = Int32(parts[1]),
+                      let cpu = Double(parts[2]) else { continue }
+                cpuByPid[pid] = cpu
+                childrenOf[ppid, default: []].append(pid)
+            }
+
+            // BFS from rootPid to sum CPU across the entire tree
+            var total: Double = cpuByPid[rootPid] ?? 0.0
+            var queue = childrenOf[rootPid] ?? []
+            while !queue.isEmpty {
+                let child = queue.removeFirst()
+                total += cpuByPid[child] ?? 0.0
+                queue.append(contentsOf: childrenOf[child] ?? [])
+            }
+            return total
         } catch {
             return 0.0
         }
@@ -572,6 +607,7 @@ class StatusBarView: NSView {
             pulsingDot.isHidden = true
             voiceWaveform.isHidden = true
         }
+        updateSeparators()
     }
 
     func setVoiceAudioLevel(_ level: Float) {
