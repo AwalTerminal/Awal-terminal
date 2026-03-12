@@ -53,8 +53,11 @@ class AIComponentRegistry {
     /// Returns AssemblyResult with all component counts.
     func assemble(
         stacks: Set<String>,
-        registries: [(name: String, url: String, branch: String)]
+        registries: [RegistryConfig],
+        disabledComponents: Set<String> = [],
+        blockedComponents: Set<String> = []
     ) -> AssemblyResult {
+        let skip = disabledComponents.union(blockedComponents)
         var allDirs: [URL] = []
         var totalSkills = 0
         var totalRules = 0
@@ -84,7 +87,8 @@ class AIComponentRegistry {
                     at: pluginDir,
                     regPath: regPath,
                     registryName: reg.name,
-                    stackName: stack
+                    stackName: stack,
+                    skip: skip
                 )
 
                 if counts.total > 0 {
@@ -121,9 +125,11 @@ class AIComponentRegistry {
     /// Returns the path to the generated file, or nil if no content found.
     func generateCombinedMarkdown(
         stacks: Set<String>,
-        registries: [(name: String, url: String, branch: String)],
+        registries: [RegistryConfig],
         prefix: String,
-        projectPath: String
+        projectPath: String,
+        disabledComponents: Set<String> = [],
+        blockedComponents: Set<String> = []
     ) -> URL? {
         var ruleSections: [String] = []
         var skillSections: [String] = []
@@ -192,55 +198,49 @@ class AIComponentRegistry {
     /// List all active components for given stacks and registries.
     func listActiveComponents(
         stacks: Set<String>,
-        registries: [(name: String, url: String, branch: String)]
-    ) -> [(name: String, source: String, stack: String, type: ComponentType)] {
-        var components: [(name: String, source: String, stack: String, type: ComponentType)] = []
+        registries: [RegistryConfig],
+        disabledComponents: Set<String> = []
+    ) -> [(name: String, source: String, stack: String, type: ComponentType, key: String)] {
+        var components: [(name: String, source: String, stack: String, type: ComponentType, key: String)] = []
 
         for reg in registries {
             let regPath = RegistryManager.shared.registryPath(name: reg.name)
             guard fm.fileExists(atPath: regPath.path) else { continue }
 
+            let source = reg.type == .localskills ? "localskills" : reg.name
+
+            func addComponents(names: [String], stack: String, type: ComponentType) {
+                for name in names {
+                    let key = "\(reg.name)/\(stack)/\(type.rawValue)/\(name)"
+                    let displayName: String
+                    if reg.type == .localskills && type == .skill {
+                        let skillDir = RegistryManager.shared.registryPath(name: reg.name)
+                            .appendingPathComponent("\(stack == "common" ? "common/skills" : "stacks/\(stack)/skills")/\(name)")
+                        displayName = localskillsDisplayName(slug: name, skillDir: skillDir)
+                    } else {
+                        displayName = name
+                    }
+                    components.append((name: displayName, source: source, stack: stack, type: type, key: key))
+                }
+            }
+
             // Common components
-            for name in skillNames(in: regPath.appendingPathComponent("common/skills")) {
-                components.append((name: name, source: reg.name, stack: "common", type: .skill))
-            }
-            for name in mdFileNames(in: regPath.appendingPathComponent("common/rules")) {
-                components.append((name: name, source: reg.name, stack: "common", type: .rule))
-            }
-            for name in mdFileNames(in: regPath.appendingPathComponent("common/prompts")) {
-                components.append((name: name, source: reg.name, stack: "common", type: .prompt))
-            }
-            for name in agentNames(in: regPath.appendingPathComponent("common/agents")) {
-                components.append((name: name, source: reg.name, stack: "common", type: .agent))
-            }
-            for name in jsonFileNames(in: regPath.appendingPathComponent("common/mcp-servers")) {
-                components.append((name: name, source: reg.name, stack: "common", type: .mcpServer))
-            }
-            for name in hookNames(in: regPath.appendingPathComponent("common/hooks")) {
-                components.append((name: name, source: reg.name, stack: "common", type: .hook))
-            }
+            addComponents(names: skillNames(in: regPath.appendingPathComponent("common/skills")), stack: "common", type: .skill)
+            addComponents(names: mdFileNames(in: regPath.appendingPathComponent("common/rules")), stack: "common", type: .rule)
+            addComponents(names: mdFileNames(in: regPath.appendingPathComponent("common/prompts")), stack: "common", type: .prompt)
+            addComponents(names: agentNames(in: regPath.appendingPathComponent("common/agents")), stack: "common", type: .agent)
+            addComponents(names: jsonFileNames(in: regPath.appendingPathComponent("common/mcp-servers")), stack: "common", type: .mcpServer)
+            addComponents(names: hookNames(in: regPath.appendingPathComponent("common/hooks")), stack: "common", type: .hook)
 
             // Stack-specific components
             for stack in stacks {
                 let stackPath = regPath.appendingPathComponent("stacks/\(stack)")
-                for name in skillNames(in: stackPath.appendingPathComponent("skills")) {
-                    components.append((name: name, source: reg.name, stack: stack, type: .skill))
-                }
-                for name in mdFileNames(in: stackPath.appendingPathComponent("rules")) {
-                    components.append((name: name, source: reg.name, stack: stack, type: .rule))
-                }
-                for name in mdFileNames(in: stackPath.appendingPathComponent("prompts")) {
-                    components.append((name: name, source: reg.name, stack: stack, type: .prompt))
-                }
-                for name in agentNames(in: stackPath.appendingPathComponent("agents")) {
-                    components.append((name: name, source: reg.name, stack: stack, type: .agent))
-                }
-                for name in jsonFileNames(in: stackPath.appendingPathComponent("mcp-servers")) {
-                    components.append((name: name, source: reg.name, stack: stack, type: .mcpServer))
-                }
-                for name in hookNames(in: stackPath.appendingPathComponent("hooks")) {
-                    components.append((name: name, source: reg.name, stack: stack, type: .hook))
-                }
+                addComponents(names: skillNames(in: stackPath.appendingPathComponent("skills")), stack: stack, type: .skill)
+                addComponents(names: mdFileNames(in: stackPath.appendingPathComponent("rules")), stack: stack, type: .rule)
+                addComponents(names: mdFileNames(in: stackPath.appendingPathComponent("prompts")), stack: stack, type: .prompt)
+                addComponents(names: agentNames(in: stackPath.appendingPathComponent("agents")), stack: stack, type: .agent)
+                addComponents(names: jsonFileNames(in: stackPath.appendingPathComponent("mcp-servers")), stack: stack, type: .mcpServer)
+                addComponents(names: hookNames(in: stackPath.appendingPathComponent("hooks")), stack: stack, type: .hook)
             }
         }
 
@@ -251,23 +251,30 @@ class AIComponentRegistry {
     /// Returns a dictionary of server name → config dict, with names prefixed by registry.
     func collectMcpConfigs(
         stacks: Set<String>,
-        registries: [(name: String, url: String, branch: String)]
+        registries: [RegistryConfig],
+        disabledComponents: Set<String> = [],
+        blockedComponents: Set<String> = []
     ) -> [String: [String: Any]] {
+        let skip = disabledComponents.union(blockedComponents)
         var configs: [String: [String: Any]] = [:]
 
         for reg in registries {
             let regPath = RegistryManager.shared.registryPath(name: reg.name)
             guard fm.fileExists(atPath: regPath.path) else { continue }
 
-            let dirs = [regPath.appendingPathComponent("common/mcp-servers")]
-                + stacks.map { regPath.appendingPathComponent("stacks/\($0)/mcp-servers") }
+            let stackList: [(dir: URL, stack: String)] = [
+                (regPath.appendingPathComponent("common/mcp-servers"), "common")
+            ] + stacks.map { (regPath.appendingPathComponent("stacks/\($0)/mcp-servers"), $0) }
 
-            for dir in dirs {
+            for (dir, stack) in stackList {
                 guard let items = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) else { continue }
                 for item in items where item.pathExtension == "json" {
+                    let name = item.deletingPathExtension().lastPathComponent
+                    let key = "\(reg.name)/\(stack)/mcp-server/\(name)"
+                    guard !skip.contains(key) else { continue }
                     guard let data = try? Data(contentsOf: item),
                           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
-                    let serverName = "awal-\(reg.name)-\(item.deletingPathExtension().lastPathComponent)"
+                    let serverName = "awal-\(reg.name)-\(name)"
                     configs[serverName] = json
                 }
             }
@@ -279,8 +286,11 @@ class AIComponentRegistry {
     /// Collect hook script URLs from all registries for the given stacks.
     func collectHooks(
         stacks: Set<String>,
-        registries: [(name: String, url: String, branch: String)]
+        registries: [RegistryConfig],
+        disabledComponents: Set<String> = [],
+        blockedComponents: Set<String> = []
     ) -> (preSession: [URL], postSession: [URL], beforeCommit: [URL]) {
+        let skip = disabledComponents.union(blockedComponents)
         var pre: [URL] = []
         var post: [URL] = []
         var commit: [URL] = []
@@ -289,13 +299,25 @@ class AIComponentRegistry {
             let regPath = RegistryManager.shared.registryPath(name: reg.name)
             guard fm.fileExists(atPath: regPath.path) else { continue }
 
-            let dirs = [regPath.appendingPathComponent("common/hooks")]
-                + stacks.map { regPath.appendingPathComponent("stacks/\($0)/hooks") }
+            let hookDirs: [(dir: URL, stack: String)] = [
+                (regPath.appendingPathComponent("common/hooks"), "common")
+            ] + stacks.map { (regPath.appendingPathComponent("stacks/\($0)/hooks"), $0) }
 
-            for dir in dirs {
-                pre.append(contentsOf: scriptURLs(in: dir.appendingPathComponent("pre-session")))
-                post.append(contentsOf: scriptURLs(in: dir.appendingPathComponent("post-session")))
-                commit.append(contentsOf: scriptURLs(in: dir.appendingPathComponent("before-commit")))
+            for (dir, stack) in hookDirs {
+                for subdir in ["pre-session", "post-session", "before-commit"] {
+                    for url in scriptURLs(in: dir.appendingPathComponent(subdir)) {
+                        let name = "\(subdir)/\(url.deletingPathExtension().lastPathComponent)"
+                        let key = "\(reg.name)/\(stack)/hook/\(name)"
+                        if !skip.contains(key) {
+                            switch subdir {
+                            case "pre-session": pre.append(url)
+                            case "post-session": post.append(url)
+                            case "before-commit": commit.append(url)
+                            default: break
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -322,7 +344,8 @@ class AIComponentRegistry {
         at pluginDir: URL,
         regPath: URL,
         registryName: String,
-        stackName: String
+        stackName: String,
+        skip: Set<String> = []
     ) -> PluginCounts {
         // Clean and recreate
         try? fm.removeItem(at: pluginDir)
@@ -354,37 +377,46 @@ class AIComponentRegistry {
         let commonPath = regPath.appendingPathComponent("common")
         let stackPath = regPath.appendingPathComponent("stacks/\(stackName)")
 
+        let commonSkip = { (name: String, type: String) -> Bool in
+            skip.contains("\(registryName)/common/\(type)/\(name)")
+        }
+        let stackSkip = { (name: String, type: String) -> Bool in
+            skip.contains("\(registryName)/\(stackName)/\(type)/\(name)")
+        }
+
         // Skills → symlink dirs into skills/ AND expose SKILL.md as commands/<name>.md
-        counts.skills += symlinkSkillsAsCommands(from: commonPath.appendingPathComponent("skills"), skillsDir: skillsDir, commandsDir: commandsDir)
-        counts.skills += symlinkSkillsAsCommands(from: stackPath.appendingPathComponent("skills"), skillsDir: skillsDir, commandsDir: commandsDir)
+        counts.skills += symlinkSkillsAsCommands(from: commonPath.appendingPathComponent("skills"), skillsDir: skillsDir, commandsDir: commandsDir, shouldSkip: { commonSkip($0, "skill") })
+        counts.skills += symlinkSkillsAsCommands(from: stackPath.appendingPathComponent("skills"), skillsDir: skillsDir, commandsDir: commandsDir, shouldSkip: { stackSkip($0, "skill") })
 
         // Commands
         _ = symlinkContents(from: commonPath.appendingPathComponent("commands"), to: commandsDir)
         _ = symlinkContents(from: stackPath.appendingPathComponent("commands"), to: commandsDir)
 
         // Rules → symlink into plugin rules/ dir
-        counts.rules += symlinkContents(from: commonPath.appendingPathComponent("rules"), to: rulesDir)
-        counts.rules += symlinkContents(from: stackPath.appendingPathComponent("rules"), to: rulesDir)
+        counts.rules += symlinkContents(from: commonPath.appendingPathComponent("rules"), to: rulesDir, shouldSkip: { commonSkip($0, "rule") })
+        counts.rules += symlinkContents(from: stackPath.appendingPathComponent("rules"), to: rulesDir, shouldSkip: { stackSkip($0, "rule") })
 
         // Prompts → symlink into commands/ dir (acts as slash commands for Claude)
-        counts.prompts += symlinkContents(from: commonPath.appendingPathComponent("prompts"), to: commandsDir)
-        counts.prompts += symlinkContents(from: stackPath.appendingPathComponent("prompts"), to: commandsDir)
+        counts.prompts += symlinkContents(from: commonPath.appendingPathComponent("prompts"), to: commandsDir, shouldSkip: { commonSkip($0, "prompt") })
+        counts.prompts += symlinkContents(from: stackPath.appendingPathComponent("prompts"), to: commandsDir, shouldSkip: { stackSkip($0, "prompt") })
 
         // Agents → symlink into agents/ dir
-        counts.agents += symlinkContents(from: commonPath.appendingPathComponent("agents"), to: agentsDir)
-        counts.agents += symlinkContents(from: stackPath.appendingPathComponent("agents"), to: agentsDir)
+        counts.agents += symlinkContents(from: commonPath.appendingPathComponent("agents"), to: agentsDir, shouldSkip: { commonSkip($0, "agent") })
+        counts.agents += symlinkContents(from: stackPath.appendingPathComponent("agents"), to: agentsDir, shouldSkip: { stackSkip($0, "agent") })
 
         return counts
     }
 
     /// Symlink all items from source dir into target dir. Returns count of items linked.
-    private func symlinkContents(from source: URL, to target: URL) -> Int {
+    private func symlinkContents(from source: URL, to target: URL, shouldSkip: ((String) -> Bool)? = nil) -> Int {
         guard let items = try? fm.contentsOfDirectory(at: source, includingPropertiesForKeys: nil) else {
             return 0
         }
 
         var count = 0
         for item in items {
+            let name = item.deletingPathExtension().lastPathComponent
+            if shouldSkip?(name) == true { continue }
             let dest = target.appendingPathComponent(item.lastPathComponent)
             if !fm.fileExists(atPath: dest.path) {
                 try? fm.createSymbolicLink(at: dest, withDestinationURL: item)
@@ -396,7 +428,7 @@ class AIComponentRegistry {
 
     /// Symlink skill directories into skills/ dir AND expose each SKILL.md as commands/<name>.md
     /// so Claude Code recognizes them as slash commands.
-    private func symlinkSkillsAsCommands(from source: URL, skillsDir: URL, commandsDir: URL) -> Int {
+    private func symlinkSkillsAsCommands(from source: URL, skillsDir: URL, commandsDir: URL, shouldSkip: ((String) -> Bool)? = nil) -> Int {
         guard let items = try? fm.contentsOfDirectory(at: source, includingPropertiesForKeys: nil) else {
             return 0
         }
@@ -405,6 +437,7 @@ class AIComponentRegistry {
         for item in items {
             var isDir: ObjCBool = false
             guard fm.fileExists(atPath: item.path, isDirectory: &isDir), isDir.boolValue else { continue }
+            if shouldSkip?(item.lastPathComponent) == true { continue }
 
             // Symlink the skill directory into skills/
             let skillDest = skillsDir.appendingPathComponent(item.lastPathComponent)
@@ -580,5 +613,27 @@ class AIComponentRegistry {
             return []
         }
         return items.filter { $0.pathExtension == "sh" }.sorted { $0.lastPathComponent < $1.lastPathComponent }
+    }
+
+    /// Parse the `name` field from SKILL.md frontmatter and return "<name> [<slug>]".
+    /// Falls back to the slug if no name is found.
+    private func localskillsDisplayName(slug: String, skillDir: URL) -> String {
+        let skillMd = skillDir.appendingPathComponent("SKILL.md")
+        guard let content = try? String(contentsOf: skillMd, encoding: .utf8) else { return slug }
+
+        // Parse YAML frontmatter between --- delimiters
+        let lines = content.components(separatedBy: "\n")
+        guard lines.first?.trimmingCharacters(in: .whitespaces) == "---" else { return slug }
+        for line in lines.dropFirst() {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed == "---" { break }
+            if trimmed.hasPrefix("name:") {
+                let value = trimmed.dropFirst("name:".count).trimmingCharacters(in: .whitespaces)
+                if !value.isEmpty {
+                    return "\(value) [\(slug)]"
+                }
+            }
+        }
+        return slug
     }
 }
