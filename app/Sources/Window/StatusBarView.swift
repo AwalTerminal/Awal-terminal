@@ -533,7 +533,7 @@ class StatusBarView: NSView {
 
     // MARK: - AI Components Display
 
-    private var activeAIComponentDetails: [(name: String, source: String, stack: String, type: ComponentType)] = []
+    private var activeAIComponentDetails: [(name: String, source: String, stack: String, type: ComponentType, key: String)] = []
 
     func setAIComponentInfo(
         stacks: Set<String>,
@@ -542,7 +542,7 @@ class StatusBarView: NSView {
         promptCount: Int = 0,
         agentCount: Int = 0,
         mcpServerCount: Int = 0,
-        components: [(name: String, source: String, stack: String, type: ComponentType)]
+        components: [(name: String, source: String, stack: String, type: ComponentType, key: String)]
     ) {
         activeAIComponentDetails = components
         let total = skillCount + ruleCount + promptCount + agentCount + mcpServerCount
@@ -622,14 +622,14 @@ class StatusBarView: NSView {
 
 class AIComponentPopoverController: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
 
-    private let allComponents: [(name: String, source: String, stack: String, type: ComponentType)]
+    private let allComponents: [(name: String, source: String, stack: String, type: ComponentType, key: String)]
     private var populatedTypes: [ComponentType] = []
     private var currentItems: [(name: String, source: String, stack: String)] = []
 
     private let segmentedControl = NSSegmentedControl()
     private let tableView = NSTableView()
 
-    init(components: [(name: String, source: String, stack: String, type: ComponentType)]) {
+    init(components: [(name: String, source: String, stack: String, type: ComponentType, key: String)]) {
         self.allComponents = components
         super.init(nibName: nil, bundle: nil)
     }

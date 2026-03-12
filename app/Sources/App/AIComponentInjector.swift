@@ -55,41 +55,80 @@ enum AIComponentInjector {
             RegistryManager.shared.syncAll(registries: registries)
         }
 
+        // Compute disabled and security-blocked components
+        let disabledComponents = config.aiComponentsDisabled
+        var blockedComponents = Set<String>()
+        if config.aiComponentsBlockCritical {
+            for (_, findings) in RegistryManager.shared.scanResults {
+                for finding in findings where finding.severity == .critical {
+                    blockedComponents.insert(finding.componentKey)
+                }
+            }
+        }
+
         // Collect hooks for all models
-        let hooks = AIComponentRegistry.shared.collectHooks(stacks: stacks, registries: registries)
+        let hooks = AIComponentRegistry.shared.collectHooks(
+            stacks: stacks, registries: registries,
+            disabledComponents: disabledComponents, blockedComponents: blockedComponents
+        )
 
         // Choose injection strategy based on model
+        let result: AIComponentContext?
         switch modelName {
         case "Claude":
-            return injectClaude(stacks: stacks, registries: registries, hooks: hooks)
+            result = injectClaude(stacks: stacks, registries: registries, disabledComponents: disabledComponents, blockedComponents: blockedComponents, hooks: hooks)
         case "Gemini":
-            return injectGeneric(
+            result = injectGeneric(
                 stacks: stacks,
                 registries: registries,
                 prefix: "gemini",
                 projectPath: projectPath,
                 flagName: "--system-instruction-file",
+                disabledComponents: disabledComponents,
+                blockedComponents: blockedComponents,
                 hooks: hooks
             )
         case "Codex":
-            return injectGeneric(
+            result = injectGeneric(
                 stacks: stacks,
                 registries: registries,
                 prefix: "codex",
                 projectPath: projectPath,
                 flagName: "--instructions",
+                disabledComponents: disabledComponents,
+                blockedComponents: blockedComponents,
                 hooks: hooks
             )
         default:
-            return injectGeneric(
+            result = injectGeneric(
                 stacks: stacks,
                 registries: registries,
                 prefix: "generic",
                 projectPath: projectPath,
                 flagName: nil,
+                disabledComponents: disabledComponents,
+                blockedComponents: blockedComponents,
                 hooks: hooks
             )
         }
+
+        // Export to external tool formats if enabled
+        if config.aiComponentsExportEnabled, !config.aiComponentsExportFormats.isEmpty {
+            let formats = config.aiComponentsExportFormats.compactMap { ExportFormat(rawValue: $0) }
+            let target = ExportTarget(rawValue: config.aiComponentsExportTarget) ?? .cache
+            if !formats.isEmpty {
+                _ = ComponentExporter.export(
+                    stacks: stacks,
+                    registries: registries,
+                    formats: formats,
+                    target: target,
+                    projectPath: projectPath,
+                    disabledComponents: disabledComponents
+                )
+            }
+        }
+
+        return result
     }
 
     /// Clean up any injected state (call when session ends).
@@ -103,10 +142,15 @@ enum AIComponentInjector {
 
     private static func injectClaude(
         stacks: Set<String>,
-        registries: [(name: String, url: String, branch: String)],
+        registries: [RegistryConfig],
+        disabledComponents: Set<String>,
+        blockedComponents: Set<String>,
         hooks: (preSession: [URL], postSession: [URL], beforeCommit: [URL])
     ) -> AIComponentContext {
-        let result = AIComponentRegistry.shared.assemble(stacks: stacks, registries: registries)
+        let result = AIComponentRegistry.shared.assemble(
+            stacks: stacks, registries: registries,
+            disabledComponents: disabledComponents, blockedComponents: blockedComponents
+        )
 
         // Set up Claude skill + plugin symlinks and settings
         let home = FileManager.default.homeDirectoryForCurrentUser
@@ -145,7 +189,10 @@ enum AIComponentInjector {
         }
 
         // Update Claude settings: enable plugins and merge MCP servers
-        let mcpConfigs = AIComponentRegistry.shared.collectMcpConfigs(stacks: stacks, registries: registries)
+        let mcpConfigs = AIComponentRegistry.shared.collectMcpConfigs(
+            stacks: stacks, registries: registries,
+            disabledComponents: disabledComponents, blockedComponents: blockedComponents
+        )
         updateClaudeSettings(settingsFile: claudeSettings, pluginPaths: pluginNames, mcpConfigs: mcpConfigs)
 
         // Write hooks to Claude settings
@@ -328,19 +375,25 @@ enum AIComponentInjector {
 
     private static func injectGeneric(
         stacks: Set<String>,
-        registries: [(name: String, url: String, branch: String)],
+        registries: [RegistryConfig],
         prefix: String,
         projectPath: String,
         flagName: String?,
+        disabledComponents: Set<String>,
+        blockedComponents: Set<String>,
         hooks: (preSession: [URL], postSession: [URL], beforeCommit: [URL])
     ) -> AIComponentContext? {
-        let components = AIComponentRegistry.shared.listActiveComponents(stacks: stacks, registries: registries)
+        let components = AIComponentRegistry.shared.listActiveComponents(
+            stacks: stacks, registries: registries, disabledComponents: disabledComponents
+        )
 
         let mdFile = AIComponentRegistry.shared.generateCombinedMarkdown(
             stacks: stacks,
             registries: registries,
             prefix: prefix,
-            projectPath: projectPath
+            projectPath: projectPath,
+            disabledComponents: disabledComponents,
+            blockedComponents: blockedComponents
         )
 
         let skillCount = components.filter { $0.type == .skill }.count
