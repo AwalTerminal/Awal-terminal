@@ -55,6 +55,7 @@ class PreferencesWindow: NSWindowController, NSWindowDelegate {
         ])
 
         tabView.addTabViewItem(createKeybindingsTab())
+        tabView.addTabViewItem(createTabsTab())
         tabView.addTabViewItem(createVoiceTab())
         tabView.addTabViewItem(createFontTab())
         tabView.addTabViewItem(createThemeTab())
@@ -125,6 +126,142 @@ class PreferencesWindow: NSWindowController, NSWindowDelegate {
         guard let key = sender.identifier?.rawValue else { return }
         let hex = colorToHex(sender.color)
         ConfigWriter.updateValue(key: key, value: "\"\(hex)\"")
+    }
+
+    // MARK: - Tabs Tab
+
+    private var paletteSwatchStack: NSStackView?
+
+    private func createTabsTab() -> NSTabViewItem {
+        let item = NSTabViewItem(identifier: "tabs")
+        item.label = "Tabs"
+
+        let view = NSView()
+        let config = AppConfig.shared
+
+        let grid = NSGridView(numberOfColumns: 2, rows: 0)
+        grid.translatesAutoresizingMaskIntoConstraints = false
+        grid.columnSpacing = 12
+        grid.rowSpacing = 10
+
+        // Confirm close toggle
+        let confirmLabel = NSTextField(labelWithString: "Confirm Close")
+        confirmLabel.font = .systemFont(ofSize: 13)
+        let confirmCheck = NSButton(checkboxWithTitle: "Ask before closing a tab", target: self, action: #selector(tabsConfirmCloseChanged(_:)))
+        confirmCheck.state = config.tabsConfirmClose ? .on : .off
+        grid.addRow(with: [confirmLabel, confirmCheck])
+
+        // Random colors toggle
+        let enabledLabel = NSTextField(labelWithString: "Random Colors")
+        enabledLabel.font = .systemFont(ofSize: 13)
+        let enabledCheck = NSButton(checkboxWithTitle: "Assign a random color to each new tab", target: self, action: #selector(tabsRandomColorsChanged(_:)))
+        enabledCheck.state = config.tabsRandomColors ? .on : .off
+        grid.addRow(with: [enabledLabel, enabledCheck])
+
+        // Palette swatches
+        let swatchLabel = NSTextField(labelWithString: "Palette")
+        swatchLabel.font = .systemFont(ofSize: 13)
+        let swatchStack = NSStackView()
+        swatchStack.orientation = .horizontal
+        swatchStack.spacing = 4
+        paletteSwatchStack = swatchStack
+        updatePaletteSwatches(config: config)
+        grid.addRow(with: [swatchLabel, swatchStack])
+
+        // Custom palette field
+        let paletteLabel = NSTextField(labelWithString: "Custom Palette")
+        paletteLabel.font = .systemFont(ofSize: 13)
+        let paletteField = NSTextField(string: "")
+        paletteField.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+        paletteField.placeholderString = "e.g. #E55353, #3498DB, #27AE60"
+        paletteField.identifier = NSUserInterfaceItemIdentifier("tabs.random_color_palette")
+        paletteField.target = self
+        paletteField.action = #selector(tabsPaletteChanged(_:))
+
+        // Load existing palette string from config
+        if let contents = try? String(contentsOf: ConfigWriter.configFile, encoding: .utf8) {
+            let lines = contents.components(separatedBy: "\n")
+            var inSection = false
+            for line in lines {
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                if trimmed == "[tabs]" { inSection = true; continue }
+                if inSection && trimmed.hasPrefix("[") { break }
+                if inSection && (trimmed.hasPrefix("random_color_palette =") || trimmed.hasPrefix("random_color_palette=")) {
+                    var val = String(trimmed.split(separator: "=", maxSplits: 1).last ?? "").trimmingCharacters(in: .whitespaces)
+                    if (val.hasPrefix("\"") && val.hasSuffix("\"")) || (val.hasPrefix("'") && val.hasSuffix("'")) {
+                        val = String(val.dropFirst().dropLast())
+                    }
+                    paletteField.stringValue = val
+                    break
+                }
+            }
+        }
+
+        grid.addRow(with: [paletteLabel, paletteField])
+        grid.column(at: 1).width = 320
+
+        view.addSubview(grid)
+        NSLayoutConstraint.activate([
+            grid.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            grid.topAnchor.constraint(equalTo: view.topAnchor, constant: 20),
+            grid.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -20),
+        ])
+
+        let note = NSTextField(labelWithString: "Leave Custom Palette empty to use the default 8-color palette.\nChanges take effect for new tabs immediately.")
+        note.font = .systemFont(ofSize: 11)
+        note.textColor = .secondaryLabelColor
+        note.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(note)
+        NSLayoutConstraint.activate([
+            note.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            note.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -16),
+        ])
+
+        item.view = view
+        return item
+    }
+
+    private func updatePaletteSwatches(config: AppConfig) {
+        guard let stack = paletteSwatchStack else { return }
+        stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+
+        let colors = config.tabsRandomColorPalette.isEmpty
+            ? TerminalWindowController.defaultTabColorPalette
+            : config.tabsRandomColorPalette
+
+        for color in colors {
+            let swatch = NSView(frame: NSRect(x: 0, y: 0, width: 18, height: 18))
+            swatch.wantsLayer = true
+            swatch.layer?.backgroundColor = color.cgColor
+            swatch.layer?.cornerRadius = 3
+            swatch.translatesAutoresizingMaskIntoConstraints = false
+            swatch.widthAnchor.constraint(equalToConstant: 18).isActive = true
+            swatch.heightAnchor.constraint(equalToConstant: 18).isActive = true
+            stack.addArrangedSubview(swatch)
+        }
+    }
+
+    @objc private func tabsConfirmCloseChanged(_ sender: NSButton) {
+        let enabled = sender.state == .on
+        ConfigWriter.updateValue(key: "tabs.confirm_close", value: enabled ? "true" : "false")
+        AppConfig.reload()
+    }
+
+    @objc private func tabsRandomColorsChanged(_ sender: NSButton) {
+        let enabled = sender.state == .on
+        ConfigWriter.updateValue(key: "tabs.random_colors", value: enabled ? "true" : "false")
+        AppConfig.reload()
+    }
+
+    @objc private func tabsPaletteChanged(_ sender: NSTextField) {
+        let value = sender.stringValue.trimmingCharacters(in: .whitespaces)
+        if value.isEmpty {
+            ConfigWriter.removeValue(key: "tabs.random_color_palette")
+        } else {
+            ConfigWriter.updateValue(key: "tabs.random_color_palette", value: "\"\(value)\"")
+        }
+        AppConfig.reload()
+        updatePaletteSwatches(config: AppConfig.shared)
     }
 
     // MARK: - Font Tab

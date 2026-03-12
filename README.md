@@ -113,6 +113,11 @@ whisper_model = "tiny.en"
 warning_threshold = 100000
 truncate_length = 10000
 
+[tabs]
+random_colors = true
+# random_color_palette = "#E55353, #3498DB, #27AE60"
+confirm_close = true
+
 [ai_components]
 enabled = true
 auto_detect = true

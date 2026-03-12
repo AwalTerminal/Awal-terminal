@@ -861,6 +861,11 @@ dictation_auto_space = true
 warning_threshold = 100000
 truncate_length = 10000
 
+[tabs]
+random_colors = true
+# random_color_palette = "#E55353, #3498DB, #27AE60"
+confirm_close = true
+
 [ai_components]
 enabled = true
 auto_detect = true
@@ -921,6 +926,16 @@ slugs = "ZpDEwZj1Yq"</code></pre>
           </tbody>
         </table>
         <p>Add registries with <code>[ai_components.registry.&lt;name&gt;]</code> sections. Git registries use <code>url</code> and <code>branch</code>; localskills registries use <code>type = "localskills"</code> and <code>slugs</code>; local registries use <code>type = "local"</code> and <code>path</code>.</p>
+
+        <h3>Tab Settings</h3>
+        <table class="doc-table">
+          <thead><tr><th>Key</th><th>Description</th><th>Default</th></tr></thead>
+          <tbody>
+            <tr><td><code>random_colors</code></td><td>Automatically assign a random color to each new tab</td><td><code>false</code></td></tr>
+            <tr><td><code>random_color_palette</code></td><td>Comma-separated hex colors for random assignment (uses built-in 8-color palette if omitted)</td><td>(built-in)</td></tr>
+            <tr><td><code>confirm_close</code></td><td>Show a confirmation dialog before closing a tab</td><td><code>false</code></td></tr>
+          </tbody>
+        </table>
 
         <h3>Paste Settings</h3>
         <table class="doc-table">

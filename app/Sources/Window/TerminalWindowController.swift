@@ -3,6 +3,17 @@ import CAwalTerminal
 
 class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabBarDelegate {
 
+    static let defaultTabColorPalette: [NSColor] = [
+        NSColor(red: 0xE5/255.0, green: 0x53/255.0, blue: 0x53/255.0, alpha: 1),
+        NSColor(red: 0xE8/255.0, green: 0x8A/255.0, blue: 0x3A/255.0, alpha: 1),
+        NSColor(red: 0xD4/255.0, green: 0xAC/255.0, blue: 0x0D/255.0, alpha: 1),
+        NSColor(red: 0x27/255.0, green: 0xAE/255.0, blue: 0x60/255.0, alpha: 1),
+        NSColor(red: 0x34/255.0, green: 0x98/255.0, blue: 0xDB/255.0, alpha: 1),
+        NSColor(red: 0x8E/255.0, green: 0x44/255.0, blue: 0xAD/255.0, alpha: 1),
+        NSColor(red: 0xE8/255.0, green: 0x43/255.0, blue: 0x93/255.0, alpha: 1),
+        NSColor(red: 0x1A/255.0, green: 0xBC/255.0, blue: 0x9C/255.0, alpha: 1),
+    ]
+
     private let tabBar = CustomTabBarView()
     private let contentArea = NSView()
 
@@ -98,6 +109,13 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         aiSidePanel.hide() // Hidden by default
         let tab = TabState(splitContainer: splitContainer, statusBar: statusBar, aiSidePanel: aiSidePanel)
 
+        if AppConfig.shared.tabsRandomColors {
+            let palette = AppConfig.shared.tabsRandomColorPalette.isEmpty
+                ? Self.defaultTabColorPalette
+                : AppConfig.shared.tabsRandomColorPalette
+            tab.tabColor = palette.randomElement()
+        }
+
         wireTerminalCallbacks(rootTerminal, tab: tab)
         wireSplitContainer(splitContainer, tab: tab)
         wireStatusBar(statusBar, tab: tab)
@@ -187,6 +205,16 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
     func closeTab(at index: Int) {
         guard index >= 0 && index < tabs.count else { return }
 
+        if AppConfig.shared.tabsConfirmClose {
+            let alert = NSAlert()
+            alert.messageText = "Close this tab?"
+            alert.informativeText = "The running process in this tab will be terminated."
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: "Close")
+            alert.addButton(withTitle: "Cancel")
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+        }
+
         if tabs.count == 1 {
             // Last tab — close the window
             window?.performClose(nil)
@@ -257,16 +285,8 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
 
         // Tab Color submenu
         let colorMenu = NSMenu(title: "Tab Color")
-        let palette: [(String, NSColor)] = [
-            ("Red",    NSColor(red: 0xE5/255.0, green: 0x53/255.0, blue: 0x53/255.0, alpha: 1)),
-            ("Orange", NSColor(red: 0xE8/255.0, green: 0x8A/255.0, blue: 0x3A/255.0, alpha: 1)),
-            ("Yellow", NSColor(red: 0xD4/255.0, green: 0xAC/255.0, blue: 0x0D/255.0, alpha: 1)),
-            ("Green",  NSColor(red: 0x27/255.0, green: 0xAE/255.0, blue: 0x60/255.0, alpha: 1)),
-            ("Blue",   NSColor(red: 0x34/255.0, green: 0x98/255.0, blue: 0xDB/255.0, alpha: 1)),
-            ("Purple", NSColor(red: 0x8E/255.0, green: 0x44/255.0, blue: 0xAD/255.0, alpha: 1)),
-            ("Pink",   NSColor(red: 0xE8/255.0, green: 0x43/255.0, blue: 0x93/255.0, alpha: 1)),
-            ("Teal",   NSColor(red: 0x1A/255.0, green: 0xBC/255.0, blue: 0x9C/255.0, alpha: 1)),
-        ]
+        let paletteNames = ["Red", "Orange", "Yellow", "Green", "Blue", "Purple", "Pink", "Teal"]
+        let palette = zip(paletteNames, Self.defaultTabColorPalette).map { ($0, $1) }
         for (name, color) in palette {
             let item = NSMenuItem(title: name, action: #selector(contextSetTabColor(_:)), keyEquivalent: "")
             item.target = self
@@ -340,6 +360,16 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
     }
 
     @objc private func contextCloseOthers(_ sender: NSMenuItem) {
+        if AppConfig.shared.tabsConfirmClose {
+            let alert = NSAlert()
+            alert.messageText = "Close other tabs?"
+            alert.informativeText = "All tabs except the selected one will be closed."
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: "Close Others")
+            alert.addButton(withTitle: "Cancel")
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+        }
+
         let keepIndex = sender.tag
         let keepTab = tabs[keepIndex]
         // Uninstall the currently displayed tab

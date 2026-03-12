@@ -57,6 +57,11 @@ struct AppConfig {
     var pasteWarningThreshold: Int = 100_000
     var pasteTruncateLength: Int = 10_000
 
+    // Tabs
+    var tabsRandomColors: Bool = false
+    var tabsRandomColorPalette: [NSColor] = []
+    var tabsConfirmClose: Bool = false
+
     // AI Components
     var aiComponentsEnabled: Bool = true
     var aiComponentsAutoDetect: Bool = true
@@ -168,6 +173,14 @@ struct AppConfig {
         // Paste
         if let v = parsed["paste.warning_threshold"], let n = Int(v) { config.pasteWarningThreshold = n }
         if let v = parsed["paste.truncate_length"], let n = Int(v) { config.pasteTruncateLength = n }
+
+        // Tabs
+        if let v = parsed["tabs.random_colors"] { config.tabsRandomColors = v == "true" }
+        if let v = parsed["tabs.confirm_close"] { config.tabsConfirmClose = v == "true" }
+        if let v = parsed["tabs.random_color_palette"] {
+            config.tabsRandomColorPalette = v.split(separator: ",")
+                .compactMap { parseColor(String($0)) }
+        }
 
         // AI Components
         if let v = parsed["ai_components.enabled"] { config.aiComponentsEnabled = v == "true" }
