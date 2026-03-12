@@ -26,37 +26,24 @@ A native macOS terminal built from scratch with Swift and Rust, designed specifi
 
 ## Features
 
-**GPU-Accelerated Rendering** — Metal-powered rendering at 120fps with a glyph atlas and triple buffering.
-
-**Smart Output Folding** — AI tool calls, code blocks, and diffs auto-collapse into foldable regions. Click to expand.
-
-**AI Side Panel** — Track token usage, costs, context window, file references, and git changes in real time.
-
-**LLM Profiles** — Switch between Claude, Gemini, Codex, or plain shell in one click. Save per-model configurations.
-
-**Voice Input** — Push-to-talk, continuous, or wake word mode. Powered by Whisper for on-device transcription.
-
-**Tabs & Splits** — Native tabs with drag-to-reorder and nested split panes (vertical and horizontal).
-
-**Quick Terminal** — Quake-style dropdown terminal with a global hotkey (`Ctrl+``).
-
-**Find in Terminal** — Search through scrollback with match highlighting and keyboard navigation.
-
-**Syntax Highlighting** — Language-aware coloring for code blocks and diffs inside AI output.
-
-**Git Integration** — Live branch, status, and changed files displayed in the status bar and side panel. Click any changed file to view its diff inline.
-
-**Resume Sessions** — Browse and resume past AI sessions from the startup menu. Claude sessions show turn count and time ago; Codex and Gemini launch their built-in session pickers.
-
-**Smart Notifications** — Desktop alerts when long-running AI tasks complete.
-
-**AI Components** — Auto-detect your project stack and inject skills, rules, prompts, agents, MCP servers, and hooks into AI sessions from shared registries. Supports git, [localskills](https://localskills.dev), and local directory sources. Per-component enable/disable, security scanning, and import/export.
-
-**Sub-Stack Detection** — Automatically detects frameworks like Next.js, Django, Flask, Vapor, NestJS, and more on top of base stack detection for more targeted component injection.
-
-**Large Paste Protection** — Confirmation dialog for large pastes with options to save to file, truncate, or paste all. Configurable threshold.
-
-**Fully Configurable** — Theme colors, fonts, keybindings, and voice settings in a single config file.
+| Feature | Description |
+|---|---|
+| GPU-Accelerated Rendering | Metal-powered rendering at 120fps with a glyph atlas and triple buffering |
+| Smart Output Folding | AI tool calls, code blocks, and diffs auto-collapse into foldable regions. Click to expand |
+| AI Side Panel | Track token usage, costs, context window, file references, and git changes in real time |
+| LLM Profiles | Switch between Claude, Gemini, Codex, or plain shell in one click. Save per-model configurations |
+| Voice Input | Push-to-talk, continuous, or wake word mode. Powered by Whisper for on-device transcription |
+| Tabs & Splits | Native tabs with drag-to-reorder and nested split panes (vertical and horizontal) |
+| Quick Terminal | Quake-style dropdown terminal with a global hotkey (`Ctrl+``) |
+| Find in Terminal | Search through scrollback with match highlighting and keyboard navigation |
+| Syntax Highlighting | Language-aware coloring for code blocks and diffs inside AI output |
+| Git Integration | Live branch, status, and changed files displayed in the status bar and side panel. Click any changed file to view its diff inline |
+| Resume Sessions | Browse and resume past AI sessions from the startup menu. Claude sessions show turn count and time ago; Codex and Gemini launch their built-in session pickers |
+| Smart Notifications | Desktop alerts when long-running AI tasks complete |
+| AI Components | Auto-detect your project stack and inject skills, rules, prompts, agents, MCP servers, and hooks into AI sessions from shared registries. Supports git, [localskills](https://localskills.dev), and local directory sources. Per-component enable/disable, security scanning, and import/export |
+| Sub-Stack Detection | Automatically detects frameworks like Next.js, Django, Flask, Vapor, NestJS, and more on top of base stack detection for more targeted component injection |
+| Large Paste Protection | Confirmation dialog for large pastes with options to save to file, truncate, or paste all. Configurable threshold |
+| Fully Configurable | Theme colors, fonts, keybindings, and voice settings in a single config file |
 
 ## Getting Started
 
