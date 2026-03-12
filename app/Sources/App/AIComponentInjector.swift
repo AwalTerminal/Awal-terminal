@@ -18,8 +18,8 @@ struct AIComponentContext {
 
 /// Injects AI components into AI sessions based on model type.
 /// - Claude: uses plugin system (symlinks + enabledPlugins)
-/// - Gemini: uses --system-instruction-file flag
-/// - Codex: uses --instructions flag
+/// - Gemini: copies skills to ~/.agents/skills/ (shared skills directory)
+/// - Codex: copies skills to ~/.codex/skills/
 enum AIComponentInjector {
 
     /// Inject AI components for the given model and project.
@@ -77,28 +77,8 @@ enum AIComponentInjector {
         switch modelName {
         case "Claude":
             result = injectClaude(stacks: stacks, registries: registries, disabledComponents: disabledComponents, blockedComponents: blockedComponents, hooks: hooks)
-        case "Gemini":
-            result = injectGeneric(
-                stacks: stacks,
-                registries: registries,
-                prefix: "gemini",
-                projectPath: projectPath,
-                flagName: "--system-instruction-file",
-                disabledComponents: disabledComponents,
-                blockedComponents: blockedComponents,
-                hooks: hooks
-            )
-        case "Codex":
-            result = injectGeneric(
-                stacks: stacks,
-                registries: registries,
-                prefix: "codex",
-                projectPath: projectPath,
-                flagName: "--instructions",
-                disabledComponents: disabledComponents,
-                blockedComponents: blockedComponents,
-                hooks: hooks
-            )
+        case "Gemini", "Codex":
+            result = injectAgentsSkills(stacks: stacks, registries: registries, disabledComponents: disabledComponents, blockedComponents: blockedComponents, hooks: hooks)
         default:
             result = injectGeneric(
                 stacks: stacks,
@@ -133,8 +113,13 @@ enum AIComponentInjector {
 
     /// Clean up any injected state (call when session ends).
     static func cleanup(modelName: String) {
-        if modelName == "Claude" {
+        switch modelName {
+        case "Claude":
             cleanupClaude()
+        case "Gemini", "Codex":
+            cleanupAgentsSkills()
+        default:
+            break
         }
     }
 
@@ -161,6 +146,13 @@ enum AIComponentInjector {
 
         try? fm.createDirectory(at: claudeSkillsDir, withIntermediateDirectories: true)
         try? fm.createDirectory(at: claudePluginsDir, withIntermediateDirectories: true)
+
+        // Remove stale awal-* skills from previous sessions
+        if let contents = try? fm.contentsOfDirectory(atPath: claudeSkillsDir.path) {
+            for item in contents where item.hasPrefix("awal-") {
+                try? fm.removeItem(at: claudeSkillsDir.appendingPathComponent(item))
+            }
+        }
 
         // Symlink skill directories into ~/.claude/skills/ (prefixed awal-)
         for pluginDir in result.pluginDirs {
@@ -371,7 +363,110 @@ enum AIComponentInjector {
         }
     }
 
-    // MARK: - Generic (Gemini, Codex, etc.)
+    // MARK: - Shared Agents Skill Injection (Codex + Gemini)
+
+    private static func injectAgentsSkills(
+        stacks: Set<String>,
+        registries: [RegistryConfig],
+        disabledComponents: Set<String>,
+        blockedComponents: Set<String>,
+        hooks: (preSession: [URL], postSession: [URL], beforeCommit: [URL])
+    ) -> AIComponentContext {
+        let result = AIComponentRegistry.shared.assemble(
+            stacks: stacks, registries: registries,
+            disabledComponents: disabledComponents, blockedComponents: blockedComponents
+        )
+
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let agentsSkillsDir = home.appendingPathComponent(".agents/skills")
+        let fm = FileManager.default
+
+        try? fm.createDirectory(at: agentsSkillsDir, withIntermediateDirectories: true)
+
+        // Remove stale awal-* skills from previous sessions
+        if let contents = try? fm.contentsOfDirectory(atPath: agentsSkillsDir.path) {
+            for item in contents where item.hasPrefix("awal-") {
+                try? fm.removeItem(at: agentsSkillsDir.appendingPathComponent(item))
+            }
+        }
+
+        // Legacy cleanup: remove awal-* from ~/.codex/skills/ (no longer written to)
+        let codexSkillsDir = home.appendingPathComponent(".codex/skills")
+        if let contents = try? fm.contentsOfDirectory(atPath: codexSkillsDir.path) {
+            for item in contents where item.hasPrefix("awal-") {
+                try? fm.removeItem(at: codexSkillsDir.appendingPathComponent(item))
+            }
+        }
+
+        // Copy skills into ~/.agents/skills/ (prefixed awal-), adding YAML frontmatter if missing
+        for pluginDir in result.pluginDirs {
+            let skillsSubdir = pluginDir.appendingPathComponent("skills")
+            if let items = try? fm.contentsOfDirectory(at: skillsSubdir, includingPropertiesForKeys: nil) {
+                for item in items {
+                    let skillName = "awal-\(item.lastPathComponent)"
+                    let destDir = agentsSkillsDir.appendingPathComponent(skillName)
+                    try? fm.createDirectory(at: destDir, withIntermediateDirectories: true)
+
+                    let resolved = item.resolvingSymlinksInPath()
+                    let sourceFile = resolved.appendingPathComponent("SKILL.md")
+                    let destFile = destDir.appendingPathComponent("SKILL.md")
+
+                    guard let content = try? String(contentsOf: sourceFile, encoding: .utf8) else { continue }
+
+                    if content.hasPrefix("---\n") {
+                        try? content.write(to: destFile, atomically: true, encoding: .utf8)
+                    } else {
+                        let name = item.lastPathComponent
+                        let description: String
+                        if let firstLine = content.components(separatedBy: "\n").first,
+                           firstLine.hasPrefix("# ") {
+                            description = String(firstLine.dropFirst(2)).trimmingCharacters(in: .whitespaces)
+                        } else {
+                            description = name
+                        }
+                        let wrapped = "---\nname: \(skillName)\ndescription: \(description)\n---\n\n\(content)"
+                        try? wrapped.write(to: destFile, atomically: true, encoding: .utf8)
+                    }
+                }
+            }
+        }
+
+        return AIComponentContext(
+            detectedStacks: stacks,
+            skillCount: result.skillCount,
+            ruleCount: result.ruleCount,
+            promptCount: result.promptCount,
+            agentCount: result.agentCount,
+            mcpServerCount: result.mcpServerCount,
+            commandModifier: nil,
+            preSessionHooks: hooks.preSession,
+            postSessionHooks: hooks.postSession,
+            beforeCommitHooks: hooks.beforeCommit
+        )
+    }
+
+    private static func cleanupAgentsSkills() {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let fm = FileManager.default
+
+        // Remove awal-* from shared ~/.agents/skills/
+        let agentsSkillsDir = home.appendingPathComponent(".agents/skills")
+        if let contents = try? fm.contentsOfDirectory(atPath: agentsSkillsDir.path) {
+            for item in contents where item.hasPrefix("awal-") {
+                try? fm.removeItem(at: agentsSkillsDir.appendingPathComponent(item))
+            }
+        }
+
+        // Legacy cleanup: remove awal-* from ~/.codex/skills/ (no longer written to)
+        let codexSkillsDir = home.appendingPathComponent(".codex/skills")
+        if let contents = try? fm.contentsOfDirectory(atPath: codexSkillsDir.path) {
+            for item in contents where item.hasPrefix("awal-") {
+                try? fm.removeItem(at: codexSkillsDir.appendingPathComponent(item))
+            }
+        }
+    }
+
+    // MARK: - Generic (Gemini, etc.)
 
     private static func injectGeneric(
         stacks: Set<String>,
