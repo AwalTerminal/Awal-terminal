@@ -162,11 +162,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc func setVoiceModeContinuous(_ sender: Any?) {
         VoiceInputController.shared.mode = .continuous
         VoiceInputController.shared.stop()
+        VoiceInputController.shared.isEnabled = true
+        VoiceInputController.shared.startContinuous()
     }
 
     @objc func setVoiceModeWakeWord(_ sender: Any?) {
         VoiceInputController.shared.mode = .wakeWord
         VoiceInputController.shared.stop()
+        VoiceInputController.shared.isEnabled = true
+        VoiceInputController.shared.startContinuous()
     }
 
     func registerVoiceHotKey() {
@@ -246,10 +250,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             menuItem.state = currentMode == .pushToTalk ? .on : .off
         }
         if menuItem.action == #selector(setVoiceModeContinuous(_:)) {
-            menuItem.state = currentMode == .continuous ? .on : .off
+            return false
         }
         if menuItem.action == #selector(setVoiceModeWakeWord(_:)) {
-            menuItem.state = currentMode == .wakeWord ? .on : .off
+            return false
         }
         return true
     }
@@ -390,10 +394,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         let continuousItem = NSMenuItem(title: "Continuous Mode", action: #selector(setVoiceModeContinuous(_:)), keyEquivalent: "")
         continuousItem.target = self
+        continuousItem.isEnabled = false
         voiceMenu.addItem(continuousItem)
 
         let wakeWordItem = NSMenuItem(title: "Wake Word Mode", action: #selector(setVoiceModeWakeWord(_:)), keyEquivalent: "")
         wakeWordItem.target = self
+        wakeWordItem.isEnabled = false
         voiceMenu.addItem(wakeWordItem)
 
         voiceMenuItem.submenu = voiceMenu

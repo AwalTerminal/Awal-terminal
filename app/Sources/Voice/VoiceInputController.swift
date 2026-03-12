@@ -122,8 +122,21 @@ class VoiceInputController {
     /// Start continuous listening mode
     func startContinuous() {
         guard isEnabled, state == .idle else { return }
-        audioManager.startCapture()
         setState(.listening)
+
+        Task {
+            let authorized = await transcriber.requestAccess()
+
+            await MainActor.run {
+                guard authorized else {
+                    NSLog("VoiceInput: continuous mode not authorized, aborting")
+                    self.setState(.idle)
+                    return
+                }
+                self.audioManager.startCapture()
+                NSLog("VoiceInput: continuous listening started")
+            }
+        }
     }
 
     /// Stop all voice input
