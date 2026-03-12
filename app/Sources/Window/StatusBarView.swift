@@ -50,12 +50,23 @@ class StatusBarView: NSView {
     private var generatingWidthConstraint: NSLayoutConstraint!
 
     // Voice controls
-    private let voiceLabel: VoiceClickLabel = {
-        let label = VoiceClickLabel(labelWithString: "MIC")
-        label.isEditable = false
-        label.isBordered = false
-        label.drawsBackground = false
-        return label
+    private let voiceButton: StatusBarButton = {
+        let btn = StatusBarButton()
+        btn.isBordered = false
+        btn.setButtonType(.momentaryChange)
+        btn.image = NSImage(systemSymbolName: "mic", accessibilityDescription: "Voice Input")
+        btn.imagePosition = .imageOnly
+        btn.contentTintColor = NSColor(white: 0.55, alpha: 1.0)
+        btn.toolTip = "Voice Input (⌃⇧Space)"
+        return btn
+    }()
+    private let pulsingDot: NSView = {
+        let dot = NSView(frame: NSRect(x: 0, y: 0, width: 6, height: 6))
+        dot.wantsLayer = true
+        dot.layer?.backgroundColor = NSColor(red: 1.0, green: 0.3, blue: 0.3, alpha: 1.0).cgColor
+        dot.layer?.cornerRadius = 3
+        dot.isHidden = true
+        return dot
     }()
     private let voiceWaveform = WaveformView(frame: .zero)
 
@@ -120,14 +131,13 @@ class StatusBarView: NSView {
         addSubview(generatingLabel)
 
         // Voice controls (between generating and sep1)
-        voiceLabel.font = monoFont
-        voiceLabel.textColor = NSColor(white: 0.7, alpha: 1.0)
-        voiceLabel.translatesAutoresizingMaskIntoConstraints = false
-        voiceLabel.toolTip = "Click to toggle voice input"
-        voiceLabel.onClick = { [weak self] in
-            self?.onVoiceToggle?()
-        }
-        addSubview(voiceLabel)
+        voiceButton.translatesAutoresizingMaskIntoConstraints = false
+        voiceButton.target = self
+        voiceButton.action = #selector(voiceButtonClicked(_:))
+        addSubview(voiceButton)
+
+        pulsingDot.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(pulsingDot)
 
         voiceWaveform.translatesAutoresizingMaskIntoConstraints = false
         addSubview(voiceWaveform)
@@ -183,10 +193,17 @@ class StatusBarView: NSView {
             generatingLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
 
             // Voice controls (after generating, before sep1)
-            voiceLabel.leadingAnchor.constraint(equalTo: generatingLabel.trailingAnchor, constant: 6),
-            voiceLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+            voiceButton.leadingAnchor.constraint(equalTo: generatingLabel.trailingAnchor, constant: 6),
+            voiceButton.centerYAnchor.constraint(equalTo: centerYAnchor),
+            voiceButton.widthAnchor.constraint(equalToConstant: 20),
+            voiceButton.heightAnchor.constraint(equalToConstant: 20),
 
-            voiceWaveform.leadingAnchor.constraint(equalTo: voiceLabel.trailingAnchor, constant: 4),
+            pulsingDot.leadingAnchor.constraint(equalTo: voiceButton.trailingAnchor, constant: -4),
+            pulsingDot.topAnchor.constraint(equalTo: voiceButton.topAnchor, constant: -1),
+            pulsingDot.widthAnchor.constraint(equalToConstant: 6),
+            pulsingDot.heightAnchor.constraint(equalToConstant: 6),
+
+            voiceWaveform.leadingAnchor.constraint(equalTo: voiceButton.trailingAnchor, constant: 4),
             voiceWaveform.centerYAnchor.constraint(equalTo: centerYAnchor),
             voiceWaveform.heightAnchor.constraint(equalToConstant: 14),
             voiceWaveform.widthAnchor.constraint(equalToConstant: 30),
@@ -237,7 +254,8 @@ class StatusBarView: NSView {
         generatingWidthConstraint.isActive = true
 
         // Voice controls start hidden until a session is opened
-        voiceLabel.isHidden = true
+        voiceButton.isHidden = true
+        pulsingDot.isHidden = true
         voiceWaveform.isHidden = true
 
         modelButton.title = "Awal Terminal"
@@ -522,35 +540,62 @@ class StatusBarView: NSView {
     func setVoiceState(_ state: VoiceInputController.State) {
         switch state {
         case .idle:
-            voiceLabel.stringValue = "MIC"
-            voiceLabel.textColor = NSColor(white: 0.55, alpha: 1.0)
+            voiceButton.image = NSImage(systemSymbolName: "mic", accessibilityDescription: "Voice Input")
+            voiceButton.contentTintColor = NSColor(white: 0.55, alpha: 1.0)
+            stopPulsingDot()
             voiceWaveform.stopAnimating()
             voiceWaveform.isHidden = true
         case .listening:
-            voiceLabel.stringValue = "MIC"
-            voiceLabel.textColor = NSColor(red: 120.0/255.0, green: 220.0/255.0, blue: 120.0/255.0, alpha: 1.0)
+            voiceButton.image = NSImage(systemSymbolName: "mic.fill", accessibilityDescription: "Listening")
+            voiceButton.contentTintColor = NSColor(red: 120.0/255.0, green: 220.0/255.0, blue: 120.0/255.0, alpha: 1.0)
+            stopPulsingDot()
             voiceWaveform.isHidden = true
             voiceWaveform.stopAnimating()
         case .recording:
-            voiceLabel.stringValue = "REC"
-            voiceLabel.textColor = NSColor(red: 255.0/255.0, green: 80.0/255.0, blue: 80.0/255.0, alpha: 1.0)
+            voiceButton.image = NSImage(systemSymbolName: "mic.fill", accessibilityDescription: "Recording")
+            voiceButton.contentTintColor = NSColor(red: 255.0/255.0, green: 80.0/255.0, blue: 80.0/255.0, alpha: 1.0)
+            startPulsingDot()
             voiceWaveform.isHidden = false
             voiceWaveform.startAnimating()
         case .processing:
-            voiceLabel.stringValue = "..."
-            voiceLabel.textColor = NSColor(red: 255.0/255.0, green: 200.0/255.0, blue: 50.0/255.0, alpha: 1.0)
+            voiceButton.image = NSImage(systemSymbolName: "ellipsis.circle", accessibilityDescription: "Processing")
+            voiceButton.contentTintColor = NSColor(red: 255.0/255.0, green: 200.0/255.0, blue: 50.0/255.0, alpha: 1.0)
+            stopPulsingDot()
             voiceWaveform.stopAnimating()
             voiceWaveform.isHidden = true
         }
     }
 
     func setVoiceVisible(_ visible: Bool) {
-        voiceLabel.isHidden = !visible
-        voiceWaveform.isHidden = !visible
+        voiceButton.isHidden = !visible
+        if !visible {
+            pulsingDot.isHidden = true
+            voiceWaveform.isHidden = true
+        }
     }
 
     func setVoiceAudioLevel(_ level: Float) {
         voiceWaveform.audioLevel = level
+    }
+
+    @objc private func voiceButtonClicked(_ sender: NSButton) {
+        onVoiceToggle?()
+    }
+
+    private func startPulsingDot() {
+        pulsingDot.isHidden = false
+        let anim = CABasicAnimation(keyPath: "opacity")
+        anim.fromValue = 1.0
+        anim.toValue = 0.2
+        anim.duration = 0.6
+        anim.autoreverses = true
+        anim.repeatCount = .infinity
+        pulsingDot.layer?.add(anim, forKey: "pulsing")
+    }
+
+    private func stopPulsingDot() {
+        pulsingDot.isHidden = true
+        pulsingDot.layer?.removeAnimation(forKey: "pulsing")
     }
 
     private var flashTimer: Timer?
@@ -844,6 +889,14 @@ class AIComponentPopoverController: NSViewController, NSTableViewDataSource, NST
 
     func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
         22
+    }
+}
+
+/// NSButton that refuses first responder so clicking it doesn't steal focus from the terminal.
+class StatusBarButton: NSButton {
+    override var acceptsFirstResponder: Bool { false }
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .pointingHand)
     }
 }
 

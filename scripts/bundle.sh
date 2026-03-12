@@ -16,6 +16,8 @@ die() { red "Error: $*" >&2; exit 1; }
 # --- Resolve build directory -----------------------------------------------
 if [ "${1:-}" = "universal" ]; then
     BUILD_DIR="$ROOT/app/.build/apple/Products/Release"
+elif [ "${1:-}" = "debug" ]; then
+    BUILD_DIR="$ROOT/app/.build/debug"
 else
     BUILD_DIR="$ROOT/app/.build/arm64-apple-macosx/release"
     # Fallback to generic release path
@@ -25,7 +27,7 @@ else
 fi
 
 BINARY="$BUILD_DIR/AwalTerminal"
-[ -f "$BINARY" ] || die "Release binary not found at $BINARY. Run 'just build' first."
+[ -f "$BINARY" ] || die "Binary not found at $BINARY. Run 'swift build' first."
 
 # --- Derive version from tag if not provided --------------------------------
 if [ -z "$VERSION" ]; then

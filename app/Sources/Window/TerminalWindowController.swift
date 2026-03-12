@@ -667,6 +667,9 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         voiceController.onStateChanged = { [weak self] state in
             guard let self else { return }
             self.activeTab.statusBar.setVoiceState(state)
+            if state == .idle {
+                self.transcriptionOverlay.dismiss()
+            }
         }
 
         voiceController.onTranscription = { [weak self] result in
