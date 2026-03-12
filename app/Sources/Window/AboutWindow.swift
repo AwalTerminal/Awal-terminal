@@ -58,7 +58,7 @@ class AboutWindow: NSWindowController {
         root.addSubview(tagline)
 
         // --- Version pill ---
-        let versionText = "v0.2.0"
+        let versionText = Self.appVersion()
         let versionPill = makePill(versionText, color: Theme.accent)
         root.addSubview(versionPill)
 
@@ -269,6 +269,28 @@ class AboutWindow: NSWindowController {
     }
 
     // MARK: - System Info
+
+    private static func appVersion() -> String {
+        if let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String, !v.isEmpty {
+            return "v\(v)"
+        }
+        // Fallback: read latest git tag (useful during debug builds)
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        proc.arguments = ["describe", "--tags", "--abbrev=0"]
+        let pipe = Pipe()
+        proc.standardOutput = pipe
+        proc.standardError = FileHandle.nullDevice
+        do {
+            try proc.run()
+            proc.waitUntilExit()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let tag = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), !tag.isEmpty {
+                return tag
+            }
+        } catch {}
+        return "dev"
+    }
 
     private static func platformString() -> String {
         let version = ProcessInfo.processInfo.operatingSystemVersion
