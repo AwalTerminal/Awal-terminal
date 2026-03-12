@@ -1028,8 +1028,8 @@ class TerminalView: NSView {
             modelCmd = "command -v \(bin) >/dev/null 2>&1 || { echo \"Installing \(model.name)...\"; \(install); } && \(model.command)"
         }
 
-        // For non-Claude models, modify the command with AI component flags
-        if let ctx = aiComponentContext, let cmdModifier = ctx.commandModifier {
+        // For non-Claude models, modify the command with AI component flags (skip for resume commands)
+        if commandOverride == nil, let ctx = aiComponentContext, let cmdModifier = ctx.commandModifier {
             modelCmd = cmdModifier(modelCmd)
         }
         lastAIComponentContext = aiComponentContext
