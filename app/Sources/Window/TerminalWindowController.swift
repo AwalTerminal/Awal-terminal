@@ -471,6 +471,16 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
                 at_surface_set_ai_analysis(surface, isAI)
             }
             tab.statusBar.setVoiceVisible(true)
+            // Auto-open AI side panel for LLM sessions
+            if isAI && !tab.aiSidePanel.isPanelVisible {
+                tab.aiSidePanel.toggle()
+                tab.sidePanelWidthConstraint?.constant = AISidePanelView.defaultWidth
+                NSAnimationContext.runAnimationGroup { context in
+                    context.duration = 0.2
+                    context.allowsImplicitAnimation = true
+                    self.contentArea.layoutSubtreeIfNeeded()
+                }
+            }
             // Update AI component indicator
             if let ctx = terminal.lastAIComponentContext, ctx.totalCount > 0 {
                 let components = AIComponentRegistry.shared.listActiveComponents(
