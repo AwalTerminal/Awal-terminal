@@ -138,6 +138,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         ConfigWriter.updateValue(key: "ai_components.auto_detect", value: current ? "false" : "true")
     }
 
+    @objc func showImportExport(_ sender: Any?) {
+        ImportExportWindow.show()
+    }
+
     // MARK: - Voice Input
 
     private var voicePTTHotKeyRef: EventHotKeyRef?
@@ -231,24 +235,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
         if menuItem.action == #selector(toggleAIComponentsAutoDetect(_:)) {
             menuItem.state = AppConfig.shared.aiComponentsAutoDetect ? .on : .off
-        }
-        // Populate Detected Stacks submenu dynamically
-        if menuItem.title == "Detected Stacks", let submenu = menuItem.submenu {
-            submenu.removeAllItems()
-            var stacks: Set<String> = []
-            if let controller = NSApp.keyWindow?.windowController as? TerminalWindowController {
-                let focused = controller.tabs[controller.activeTabIndex].splitContainer.focusedTerminal
-                if let ctx = focused.lastAIComponentContext {
-                    stacks = ctx.detectedStacks
-                }
-            }
-            if stacks.isEmpty {
-                submenu.addItem(NSMenuItem(title: "(none detected)", action: nil, keyEquivalent: ""))
-            } else {
-                for stack in stacks.sorted() {
-                    submenu.addItem(NSMenuItem(title: stack, action: nil, keyEquivalent: ""))
-                }
-            }
         }
         if menuItem.action == #selector(toggleVoiceInput(_:)) {
             menuItem.state = VoiceInputController.shared.state != .idle ? .on : .off
@@ -377,10 +363,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         aiCompMenu.addItem(NSMenuItem.separator())
 
-        let stacksSubmenuItem = NSMenuItem(title: "Detected Stacks", action: nil, keyEquivalent: "")
-        let stacksSubmenu = NSMenu(title: "Detected Stacks")
-        stacksSubmenuItem.submenu = stacksSubmenu
-        aiCompMenu.addItem(stacksSubmenuItem)
+        let importExportItem = NSMenuItem(title: "Import & Export...", action: #selector(showImportExport(_:)), keyEquivalent: "")
+        aiCompMenu.addItem(importExportItem)
+
+        aiCompMenu.addItem(NSMenuItem.separator())
 
         aiCompMenuItem.submenu = aiCompMenu
         mainMenu.addItem(aiCompMenuItem)
