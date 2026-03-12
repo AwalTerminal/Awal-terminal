@@ -789,6 +789,7 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
+        panel.canCreateDirectories = true
         panel.allowsMultipleSelection = false
         panel.prompt = "Open"
         panel.message = "Select a workspace folder"

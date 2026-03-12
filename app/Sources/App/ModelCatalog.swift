@@ -4,7 +4,7 @@ import Foundation
 enum AIComponentInjectionStrategy {
     case claudePlugin       // Symlink to ~/.claude/plugins/ + enabledPlugins
     case systemInstruction  // --system-instruction-file flag (Gemini)
-    case instructionsFlag   // --instructions flag (Codex)
+    case instructionsFlag   // Reserved for CLI instruction flags
     case none               // No injection (Shell, unknown)
 }
 

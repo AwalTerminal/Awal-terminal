@@ -568,6 +568,7 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
                 let panel = NSOpenPanel()
                 panel.canChooseFiles = false
                 panel.canChooseDirectories = true
+                panel.canCreateDirectories = true
                 panel.allowsMultipleSelection = false
                 if panel.runModal() == .OK, let url = panel.url {
                     pathField.stringValue = url.path

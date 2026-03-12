@@ -671,6 +671,20 @@
           </tbody>
         </table>
 
+        <h3>Model Support</h3>
+        <p>Not all component types are available for every model. The table below shows how each type is injected per model:</p>
+        <table class="doc-table">
+          <thead><tr><th>Component</th><th>Claude</th><th>Codex / Gemini</th></tr></thead>
+          <tbody>
+            <tr><td>Skills</td><td>Plugin symlinks + slash commands</td><td>Copied to <code>~/.agents/skills/</code></td></tr>
+            <tr><td>Rules</td><td>Plugin directory</td><td>Bundled as <code>awal-rules</code> skill</td></tr>
+            <tr><td>Prompts</td><td>Slash commands</td><td>Not supported</td></tr>
+            <tr><td>Agents</td><td>Plugin directory</td><td>Not supported</td></tr>
+            <tr><td>MCP Servers</td><td>Claude settings</td><td>Not supported</td></tr>
+            <tr><td>Hooks</td><td>Claude settings</td><td>Not supported</td></tr>
+          </tbody>
+        </table>
+
         <h3>How It Works</h3>
         <ol>
           <li>Awal detects your project type by scanning for marker files (e.g., <code>go.mod</code>, <code>pubspec.yaml</code>, <code>Package.swift</code>)</li>

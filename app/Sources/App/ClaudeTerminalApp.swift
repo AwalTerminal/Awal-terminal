@@ -131,11 +131,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc func toggleAIComponentsEnabled(_ sender: Any?) {
         let current = AppConfig.shared.aiComponentsEnabled
         ConfigWriter.updateValue(key: "ai_components.enabled", value: current ? "false" : "true")
+        AppConfig.reload()
     }
 
     @objc func toggleAIComponentsAutoDetect(_ sender: Any?) {
         let current = AppConfig.shared.aiComponentsAutoDetect
         ConfigWriter.updateValue(key: "ai_components.auto_detect", value: current ? "false" : "true")
+        AppConfig.reload()
     }
 
     @objc func showImportExport(_ sender: Any?) {
@@ -356,9 +358,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         aiCompMenu.addItem(NSMenuItem.separator())
 
         let enableItem = NSMenuItem(title: "Enable AI Components", action: #selector(toggleAIComponentsEnabled(_:)), keyEquivalent: "")
+        enableItem.target = self
         aiCompMenu.addItem(enableItem)
 
         let autoDetectItem = NSMenuItem(title: "Auto-detect Project Type", action: #selector(toggleAIComponentsAutoDetect(_:)), keyEquivalent: "")
+        autoDetectItem.target = self
         aiCompMenu.addItem(autoDetectItem)
 
         aiCompMenu.addItem(NSMenuItem.separator())

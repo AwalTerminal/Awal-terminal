@@ -920,6 +920,7 @@ class TerminalView: NSView {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
+        panel.canCreateDirectories = true
         panel.allowsMultipleSelection = false
         panel.prompt = "Select"
         panel.message = "Select a project folder to find sessions"
@@ -1078,6 +1079,7 @@ class TerminalView: NSView {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
+        panel.canCreateDirectories = true
         panel.allowsMultipleSelection = false
         panel.prompt = "Open"
         panel.message = "Select a workspace folder"
@@ -1119,40 +1121,25 @@ class TerminalView: NSView {
         let shortened = shortenPath(path)
         if shortened.count <= maxLen { return shortened }
 
-        var components = shortened.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+        let components = shortened.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
         guard components.count > 2 else {
-            // Just prefix/last — truncate the end
             return String(shortened.prefix(maxLen - 1)) + "…"
         }
 
-        // Keep first (~ or root) and last component intact, abbreviate middle ones
-        let first = components.removeFirst()
-        let last = components.removeLast()
-
-        // Progressively shorten middle components from the left
-        var middle = components
-        for i in 0..<middle.count {
-            let current = ([first] + middle + [last]).joined(separator: "/")
-            if current.count <= maxLen { return current }
-            // Abbreviate this component to first char + …
-            if middle[i].count > 2 {
-                middle[i] = String(middle[i].prefix(1)) + "…"
-            }
+        // Try last 2 components: ~/…/parent/last
+        if components.count >= 3 {
+            let last2 = components.suffix(2).joined(separator: "/")
+            let candidate = "~/…/" + last2
+            if candidate.count <= maxLen { return candidate }
         }
 
-        // Still too long — drop middle components
-        var result = ([first] + middle + [last]).joined(separator: "/")
-        while result.count > maxLen && !middle.isEmpty {
-            middle.removeFirst()
-            result = ([first] + ["…"] + middle + [last]).joined(separator: "/")
-        }
-        if result.count > maxLen {
-            result = first + "/…/" + last
-        }
-        if result.count > maxLen {
-            return String(result.prefix(maxLen - 1)) + "…"
-        }
-        return result
+        // Try last component only: ~/…/last
+        let last = components.last!
+        let candidate = "~/…/" + last
+        if candidate.count <= maxLen { return candidate }
+
+        // Final fallback: hard-truncate
+        return String(shortened.prefix(maxLen - 1)) + "…"
     }
 
     // MARK: - Shell & PTY

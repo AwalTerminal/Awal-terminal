@@ -70,6 +70,7 @@ class ConfigEditorWindow: NSWindowController, NSWindowDelegate {
     private var textScroll: NSScrollView!
     private var isTextMode = false
 
+
     // UI bars
     private var tabBar: LLMTabBar!
     private var profileBar: ProfileBar!
