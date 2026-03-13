@@ -14,8 +14,12 @@ class AudioCaptureManager {
     private var totalSamplesWritten: Int = 0
     private let lock = NSLock()
 
-    /// Current RMS audio level (0.0 - 1.0)
-    private(set) var audioLevel: Float = 0
+    /// Current RMS audio level (0.0 - 1.0). Accessed from audio + UI threads.
+    private(set) var audioLevel: Float {
+        get { lock.lock(); defer { lock.unlock() }; return _audioLevel }
+        set { lock.lock(); _audioLevel = newValue; lock.unlock() }
+    }
+    private var _audioLevel: Float = 0
 
     /// Whether audio capture is currently active
     private(set) var isCapturing = false
