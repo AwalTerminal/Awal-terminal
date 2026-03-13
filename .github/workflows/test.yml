@@ -1,0 +1,99 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  rust-tests:
+    name: Rust Tests
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            core/target
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: rust-${{ runner.os }}-${{ hashFiles('core/Cargo.lock') }}
+
+      - name: Run Rust tests
+        run: cd core && cargo test
+
+      - name: Check formatting
+        run: cd core && cargo fmt -- --check
+
+      - name: Run clippy
+        run: cd core && cargo clippy -- -W warnings
+
+  swift-tests:
+    name: Swift Unit Tests
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            core/target
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: rust-${{ runner.os }}-${{ hashFiles('core/Cargo.lock') }}
+
+      - name: Build Rust core (debug)
+        run: cd core && cargo build
+
+      - name: Cache Swift build
+        uses: actions/cache@v4
+        with:
+          path: app/.build
+          key: swift-${{ runner.os }}-${{ hashFiles('app/Package.swift') }}
+
+      - name: Run Swift tests
+        run: cd app && swift test
+
+  swift-build:
+    name: Swift Release Build
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            core/target
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: rust-universal-${{ runner.os }}-${{ hashFiles('core/Cargo.lock') }}
+
+      - name: Build Rust core (universal)
+        run: |
+          cd core
+          cargo build --release --target aarch64-apple-darwin
+          cargo build --release --target x86_64-apple-darwin
+          mkdir -p target/universal-release
+          lipo -create \
+            target/aarch64-apple-darwin/release/libawalterminal.a \
+            target/x86_64-apple-darwin/release/libawalterminal.a \
+            -output target/universal-release/libawalterminal.a
+
+      - name: Build Swift app (universal)
+        run: cd app && swift build -c release --arch arm64 --arch x86_64
