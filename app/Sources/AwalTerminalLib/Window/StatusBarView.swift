@@ -36,7 +36,14 @@ class StatusBarView: NSView {
     }()
     private let cpuLabel = NSTextField(labelWithString: "")
     private let dimsLabel = NSTextField(labelWithString: "")
-    private let tokensLabel = NSTextField(labelWithString: "")
+    private let tokensLabel: VoiceClickLabel = {
+        let label = VoiceClickLabel(labelWithString: "")
+        label.isEditable = false
+        label.isBordered = false
+        label.drawsBackground = false
+        label.toolTip = "Click to view context details"
+        return label
+    }()
     private let timeLabel = NSTextField(labelWithString: "")
 
     private(set) var currentPath: String?
@@ -124,7 +131,7 @@ class StatusBarView: NSView {
         let pathColor = NSColor(white: 0.55, alpha: 1.0)
         let branchColor = NSColor(red: 180.0/255.0, green: 142.0/255.0, blue: 255.0/255.0, alpha: 1.0)
 
-        let labels: [NSTextField] = [gitLabel, cpuLabel, dimsLabel, tokensLabel, timeLabel]
+        let labels: [NSTextField] = [gitLabel, cpuLabel, dimsLabel, timeLabel]
         for label in labels {
             label.font = monoFont
             label.textColor = dimColor
@@ -135,6 +142,16 @@ class StatusBarView: NSView {
             label.translatesAutoresizingMaskIntoConstraints = false
             addSubview(label)
         }
+
+        // Tokens label (clickable — opens context popover)
+        tokensLabel.font = monoFont
+        tokensLabel.textColor = dimColor
+        tokensLabel.lineBreakMode = .byTruncatingMiddle
+        tokensLabel.translatesAutoresizingMaskIntoConstraints = false
+        tokensLabel.onClick = { [weak self] in
+            self?.showContextPopover()
+        }
+        addSubview(tokensLabel)
 
         // Model button styled like a label
         modelButton.font = monoFont
@@ -745,6 +762,26 @@ class StatusBarView: NSView {
         popover.behavior = .applicationDefined
         popover.contentSize = controller.view.frame.size
         popover.show(relativeTo: aiComponentLabel.bounds, of: aiComponentLabel, preferredEdge: .maxY)
+        activePopover = popover
+    }
+
+    private func showContextPopover() {
+        // Toggle behavior — close if already open
+        if let existing = activePopover {
+            existing.performClose(nil)
+            activePopover = nil
+            return
+        }
+
+        let controller = ContextPopoverController(
+            projectPath: currentPath,
+            components: activeAIComponentDetails
+        )
+        let popover = NSPopover()
+        popover.contentViewController = controller
+        popover.behavior = .applicationDefined
+        popover.contentSize = controller.view.frame.size
+        popover.show(relativeTo: tokensLabel.bounds, of: tokensLabel, preferredEdge: .maxY)
         activePopover = popover
     }
 

@@ -38,7 +38,14 @@ class AISidePanelView: NSView {
     // Context window bar
     private let contextBarBackground = NSView()
     private let contextBarFill = NSView()
-    private let contextPercentLabel = NSTextField(labelWithString: "")
+    private let contextPercentLabel: VoiceClickLabel = {
+        let label = VoiceClickLabel(labelWithString: "")
+        label.isEditable = false
+        label.isBordered = false
+        label.drawsBackground = false
+        label.toolTip = "Click to view context details"
+        return label
+    }()
     private var contextBarFillWidth: NSLayoutConstraint?
 
     // Activity section
@@ -69,6 +76,14 @@ class AISidePanelView: NSView {
     var currentCwd: String?
     private var diffPopover: NSPopover?
     private var diffPopoverFilePath: String?
+    private weak var contextPopover: NSPopover?
+
+    // AI component details for context popover
+    private var activeAIComponentDetails: [(name: String, source: String, stack: String, type: ComponentType, key: String)] = []
+
+    func setAIComponentDetails(_ components: [(name: String, source: String, stack: String, type: ComponentType, key: String)]) {
+        activeAIComponentDetails = components
+    }
 
     // Toggle constraints for token section top (collapse danger banner space when hidden)
     private var tokenTopToBanner: NSLayoutConstraint!
@@ -202,7 +217,14 @@ class AISidePanelView: NSView {
         contextPercentLabel.font = monoFontSmall
         contextPercentLabel.textColor = dimColor
         contextPercentLabel.alignment = .right
+        contextPercentLabel.onClick = { [weak self] in
+            self?.showContextPopover()
+        }
         configureLabel(contextPercentLabel)
+
+        // Click gesture on context bar background
+        let barClick = NSClickGestureRecognizer(target: self, action: #selector(contextBarClicked(_:)))
+        contextBarBackground.addGestureRecognizer(barClick)
 
         // Activity section
         activitySectionLabel.font = sectionFont
@@ -557,6 +579,33 @@ class AISidePanelView: NSView {
             contextBarFillWidth = contextBarFill.widthAnchor.constraint(equalToConstant: 0)
         }
         contextBarFillWidth?.isActive = true
+    }
+
+    @objc private func contextBarClicked(_ sender: NSClickGestureRecognizer) {
+        showContextPopover()
+    }
+
+    private func showContextPopover() {
+        // Toggle — close if already open
+        if let existing = contextPopover {
+            existing.performClose(nil)
+            contextPopover = nil
+            return
+        }
+
+        let controller = ContextPopoverController(
+            projectPath: currentCwd,
+            components: activeAIComponentDetails
+        )
+        let popover = NSPopover()
+        popover.contentViewController = controller
+        popover.behavior = .applicationDefined
+        popover.contentSize = controller.view.frame.size
+
+        // Show relative to the context bar
+        let anchor: NSView = contextBarBackground.isHidden ? contextPercentLabel : contextBarBackground
+        popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .minX)
+        contextPopover = popover
     }
 
     func updateActivityDisplay(tools: Int, codeBlocks: Int, diffs: Int) {

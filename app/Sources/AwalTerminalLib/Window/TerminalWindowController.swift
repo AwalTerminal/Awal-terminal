@@ -502,6 +502,7 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
                     mcpServerCount: ctx.mcpServerCount,
                     components: components
                 )
+                tab.aiSidePanel.setAIComponentDetails(components)
             } else {
                 tab.statusBar.clearAIComponentInfo()
             }
