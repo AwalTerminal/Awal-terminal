@@ -297,7 +297,10 @@ final class MetalRenderer {
             UInt8(cc.blueComponent * 255),
             UInt8(cc.alphaComponent * 255)
         )
-        self.commandQueue = device.makeCommandQueue()!
+        guard let queue = device.makeCommandQueue() else {
+            fatalError("Metal: failed to create command queue")
+        }
+        self.commandQueue = queue
         self.frameSemaphore = DispatchSemaphore(value: maxInflightFrames)
 
         // Compile shaders at runtime
@@ -364,8 +367,11 @@ final class MetalRenderer {
         atlas.enableLigatures()
 
         // Uniform buffer
-        self.uniformBuffer = device.makeBuffer(length: MemoryLayout<Uniforms>.size,
-                                                options: .storageModeShared)!
+        guard let ub = device.makeBuffer(length: MemoryLayout<Uniforms>.size,
+                                        options: .storageModeShared) else {
+            fatalError("Metal: failed to create uniform buffer")
+        }
+        self.uniformBuffer = ub
     }
 
     /// Render a frame. Call from display link callback.
@@ -700,7 +706,8 @@ final class MetalRenderer {
         let needed = count * MemoryLayout<BgInstance>.stride
         if bgBufferCapacity < needed {
             let newCap = max(needed, bgBufferCapacity * 2, 4096)
-            bgBuffer = device.makeBuffer(length: newCap, options: .storageModeShared)
+            guard let buf = device.makeBuffer(length: newCap, options: .storageModeShared) else { return }
+            bgBuffer = buf
             bgBufferCapacity = newCap
         }
     }
@@ -710,7 +717,8 @@ final class MetalRenderer {
         let needed = count * MemoryLayout<GlyphInstance>.stride
         if glyphBufferCapacity < needed {
             let newCap = max(needed, glyphBufferCapacity * 2, 4096)
-            glyphBuffer = device.makeBuffer(length: newCap, options: .storageModeShared)
+            guard let buf = device.makeBuffer(length: newCap, options: .storageModeShared) else { return }
+            glyphBuffer = buf
             glyphBufferCapacity = newCap
         }
     }
@@ -720,7 +728,8 @@ final class MetalRenderer {
         let needed = count * MemoryLayout<LineInstance>.stride
         if lineBufferCapacity < needed {
             let newCap = max(needed, lineBufferCapacity * 2, 4096)
-            lineBuffer = device.makeBuffer(length: newCap, options: .storageModeShared)
+            guard let buf = device.makeBuffer(length: newCap, options: .storageModeShared) else { return }
+            lineBuffer = buf
             lineBufferCapacity = newCap
         }
     }

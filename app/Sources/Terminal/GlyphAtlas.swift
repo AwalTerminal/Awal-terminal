@@ -75,7 +75,10 @@ final class GlyphAtlas {
         )
         desc.usage = [.shaderRead]
         desc.storageMode = .shared
-        self.texture = device.makeTexture(descriptor: desc)!
+        guard let tex = device.makeTexture(descriptor: desc) else {
+            fatalError("Metal: failed to create glyph atlas texture")
+        }
+        self.texture = tex
 
         // Clear atlas to zero (transparent)
         let zeroBuffer = [UInt8](repeating: 0, count: atlasWidth * atlasHeight)
