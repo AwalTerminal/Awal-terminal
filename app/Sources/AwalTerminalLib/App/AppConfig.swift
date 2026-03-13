@@ -266,15 +266,13 @@ struct AppConfig {
     // MARK: - Font Resolution
 
     var resolvedFont: NSFont {
-        if fontFamily.isEmpty {
-            return NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
-        }
-        if let font = NSFont(name: fontFamily, size: fontSize) {
+        let family = fontFamily.isEmpty ? BundledFont.defaultFontFamily : fontFamily
+        if let font = NSFont(name: family, size: fontSize) {
             return font
         }
         // Try matching by family name
         if let font = NSFont(descriptor: NSFontDescriptor(fontAttributes: [
-            .family: fontFamily
+            .family: family
         ]), size: fontSize) {
             return font
         }
@@ -282,8 +280,9 @@ struct AppConfig {
     }
 
     var resolvedBoldFont: NSFont {
-        if fontFamily.isEmpty {
-            return NSFont.monospacedSystemFont(ofSize: fontSize, weight: .bold)
+        let family = fontFamily.isEmpty ? BundledFont.defaultFontFamily : fontFamily
+        if let font = NSFont(name: "\(family)-Bold", size: fontSize) {
+            return font
         }
         let regular = resolvedFont
         let boldDesc = regular.fontDescriptor.withSymbolicTraits(.bold)

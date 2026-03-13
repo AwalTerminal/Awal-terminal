@@ -56,6 +56,14 @@ if [ -f "$ICON" ]; then
     cp "$ICON" "$APP_DIR/Contents/Resources/AppIcon.icns"
 fi
 
+# Copy bundled fonts
+FONTS_DIR="$ROOT/app/Sources/AwalTerminalLib/App/Resources/Fonts"
+if [ -d "$FONTS_DIR" ]; then
+    mkdir -p "$APP_DIR/Contents/Resources/Fonts"
+    cp "$FONTS_DIR"/*.ttf "$APP_DIR/Contents/Resources/Fonts/"
+    cp "$FONTS_DIR"/OFL.txt "$APP_DIR/Contents/Resources/Fonts/"
+fi
+
 # --- Write Info.plist with actual version -----------------------------------
 cat > "$APP_DIR/Contents/Info.plist" << PLIST
 <?xml version="1.0" encoding="UTF-8"?>

@@ -278,7 +278,7 @@ class PreferencesWindow: NSWindowController, NSWindowDelegate {
         familyLabel.font = .systemFont(ofSize: 13)
         familyLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        let familyField = NSTextField(string: config.fontFamily.isEmpty ? "(system monospace)" : config.fontFamily)
+        let familyField = NSTextField(string: config.fontFamily.isEmpty ? "JetBrains Mono (bundled)" : config.fontFamily)
         familyField.font = .systemFont(ofSize: 13)
         familyField.translatesAutoresizingMaskIntoConstraints = false
         familyField.identifier = NSUserInterfaceItemIdentifier("font.family")

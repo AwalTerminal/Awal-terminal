@@ -39,6 +39,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
 
     public func applicationDidFinishLaunching(_ notification: Notification) {
         at_init_logging()
+        BundledFont.registerBundledFonts()
 
         // Always start with danger mode disabled
         if AppConfig.shared.dangerModeEnabled {
