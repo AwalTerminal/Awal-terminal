@@ -35,9 +35,9 @@ extension NSAlert {
     }
 }
 
-class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
+public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
-    func applicationDidFinishLaunching(_ notification: Notification) {
+    public func applicationDidFinishLaunching(_ notification: Notification) {
         at_init_logging()
 
         // Always start with danger mode disabled
@@ -80,13 +80,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         controller.window?.makeKeyAndOrderFront(nil)
     }
 
-    func applicationWillTerminate(_ notification: Notification) {
+    public func applicationWillTerminate(_ notification: Notification) {
         QuickTerminalController.shared.unregisterHotKey()
         unregisterVoiceHotKey()
         VoiceInputController.shared.stop()
     }
 
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+    public func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return true
     }
 
@@ -258,7 +258,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
     }
 
-    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+    public func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         if menuItem.action == #selector(toggleNotifications(_:)) {
             menuItem.state = NotificationManager.shared.isEnabled ? .on : .off
         }
@@ -514,20 +514,5 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             item.keyEquivalent = key
             item.keyEquivalentModifierMask = mods
         }
-    }
-}
-
-@main
-enum Main {
-    static func main() {
-        let app = NSApplication.shared
-        app.setActivationPolicy(.regular)
-        ProcessInfo.processInfo.processName = "Awal Terminal"
-
-        let delegate = AppDelegate()
-        app.delegate = delegate
-
-        app.activate(ignoringOtherApps: true)
-        app.run()
     }
 }

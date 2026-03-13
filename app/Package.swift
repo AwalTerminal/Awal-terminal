@@ -6,16 +6,19 @@ let package = Package(
     platforms: [
         .macOS(.v14)
     ],
+    products: [
+        .library(name: "AwalTerminalLib", targets: ["AwalTerminalLib"]),
+    ],
     targets: [
         .systemLibrary(
             name: "CAwalTerminal",
             path: "Sources/CAwalTerminal"
         ),
-        .executableTarget(
-            name: "AwalTerminal",
+        .target(
+            name: "AwalTerminalLib",
             dependencies: ["CAwalTerminal"],
-            path: "Sources",
-            exclude: ["CAwalTerminal", "App/Resources"],
+            path: "Sources/AwalTerminalLib",
+            exclude: ["App/Resources"],
             linkerSettings: [
                 .unsafeFlags([
                     "-L", "../core/target/universal-release",
@@ -29,6 +32,16 @@ let package = Package(
                 .linkedFramework("AVFoundation"),
                 .linkedFramework("Speech"),
             ]
+        ),
+        .executableTarget(
+            name: "AwalTerminal",
+            dependencies: ["AwalTerminalLib"],
+            path: "Sources/AwalTerminalApp"
+        ),
+        .testTarget(
+            name: "AwalTerminalTests",
+            dependencies: ["AwalTerminalLib"],
+            path: "Tests/AwalTerminalTests"
         ),
     ]
 )
