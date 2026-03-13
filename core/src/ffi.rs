@@ -163,8 +163,7 @@ pub extern "C" fn at_surface_process_pty(surface: *mut ATSurface) -> i32 {
 
     match pty.read(&mut surface.read_buf) {
         Ok(n) if n > 0 => {
-            let bytes = surface.read_buf[..n].to_vec();
-            let responses = surface.parser.process(&bytes, &mut surface.screen);
+            let responses = surface.parser.process(&surface.read_buf[..n], &mut surface.screen);
             // Write any terminal responses (DSR, DA1, etc.) back to the PTY
             if let Some(pty) = &surface.pty {
                 for response in responses {
