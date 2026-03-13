@@ -70,6 +70,40 @@ class AISidePanelView: NSView {
     private var diffPopover: NSPopover?
     private var diffPopoverFilePath: String?
 
+    // Toggle constraints for token section top (collapse danger banner space when hidden)
+    private var tokenTopToBanner: NSLayoutConstraint!
+    private var tokenTopToSeparator: NSLayoutConstraint!
+
+    // Danger mode warning banner
+    private let dangerBanner: NSView = {
+        let view = NSView()
+        view.wantsLayer = true
+        view.layer?.backgroundColor = NSColor(red: 1.0, green: 0.6, blue: 0.0, alpha: 0.15).cgColor
+        view.layer?.cornerRadius = 4
+        view.layer?.borderWidth = 1
+        view.layer?.borderColor = NSColor(red: 1.0, green: 0.6, blue: 0.0, alpha: 0.4).cgColor
+        view.isHidden = true
+        return view
+    }()
+    private let dangerBannerLabel: NSTextField = {
+        let label = NSTextField(labelWithString: "Unrestricted Mode")
+        label.font = NSFont.monospacedSystemFont(ofSize: 10.0, weight: .bold)
+        label.textColor = NSColor(red: 1.0, green: 0.65, blue: 0.0, alpha: 1.0)
+        label.isEditable = false
+        label.isBordered = false
+        label.drawsBackground = false
+        return label
+    }()
+    private let dangerDescLabel: NSTextField = {
+        let label = NSTextField(labelWithString: "Tool confirmations are skipped")
+        label.font = NSFont.monospacedSystemFont(ofSize: 9.0, weight: .regular)
+        label.textColor = NSColor(red: 1.0, green: 0.7, blue: 0.3, alpha: 0.7)
+        label.isEditable = false
+        label.isBordered = false
+        label.drawsBackground = false
+        return label
+    }()
+
     // Elapsed time
     private let elapsedLabel = NSTextField(labelWithString: "")
 
@@ -116,6 +150,14 @@ class AISidePanelView: NSView {
         headerLabel.textColor = accentColor
         headerLabel.stringValue = "AI Context"
         configureLabel(headerLabel)
+
+        // Danger mode banner (added to view hierarchy, hidden by default)
+        dangerBanner.translatesAutoresizingMaskIntoConstraints = false
+        dangerBannerLabel.translatesAutoresizingMaskIntoConstraints = false
+        dangerDescLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(dangerBanner)
+        dangerBanner.addSubview(dangerBannerLabel)
+        dangerBanner.addSubview(dangerDescLabel)
 
         // Separator
         separator1.wantsLayer = true
@@ -253,9 +295,18 @@ class AISidePanelView: NSView {
             separator1.topAnchor.constraint(equalTo: headerLabel.bottomAnchor, constant: 8),
             separator1.heightAnchor.constraint(equalToConstant: 1),
 
+            // Danger banner (between separator and token section)
+            dangerBanner.leadingAnchor.constraint(equalTo: leadingAnchor, constant: margin),
+            dangerBanner.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -margin),
+            dangerBanner.topAnchor.constraint(equalTo: separator1.bottomAnchor, constant: 8),
+            dangerBannerLabel.leadingAnchor.constraint(equalTo: dangerBanner.leadingAnchor, constant: 8),
+            dangerBannerLabel.topAnchor.constraint(equalTo: dangerBanner.topAnchor, constant: 6),
+            dangerDescLabel.leadingAnchor.constraint(equalTo: dangerBanner.leadingAnchor, constant: 8),
+            dangerDescLabel.topAnchor.constraint(equalTo: dangerBannerLabel.bottomAnchor, constant: 2),
+            dangerDescLabel.bottomAnchor.constraint(equalTo: dangerBanner.bottomAnchor, constant: -6),
+
             // Token section
             tokenSectionLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: margin),
-            tokenSectionLabel.topAnchor.constraint(equalTo: separator1.bottomAnchor, constant: sectionGap),
 
             tokenUnavailableLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: margin),
             tokenUnavailableLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -margin),
@@ -343,6 +394,12 @@ class AISidePanelView: NSView {
             elapsedLabel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -margin),
         ])
 
+        // Toggle constraints: token section top anchors to banner (visible) or separator (hidden)
+        tokenTopToBanner = tokenSectionLabel.topAnchor.constraint(equalTo: dangerBanner.bottomAnchor, constant: sectionGap)
+        tokenTopToSeparator = tokenSectionLabel.topAnchor.constraint(equalTo: separator1.bottomAnchor, constant: sectionGap)
+        tokenTopToBanner.isActive = false
+        tokenTopToSeparator.isActive = true
+
         // Context bar fill width (starts at 0)
         contextBarFillWidth = contextBarFill.widthAnchor.constraint(equalToConstant: 0)
         contextBarFillWidth?.isActive = true
@@ -395,6 +452,12 @@ class AISidePanelView: NSView {
         } else {
             tokenUnavailableLabel.isHidden = true
         }
+    }
+
+    func setDangerMode(_ enabled: Bool) {
+        dangerBanner.isHidden = !enabled
+        tokenTopToBanner.isActive = enabled
+        tokenTopToSeparator.isActive = !enabled
     }
 
     func resetSession() {
