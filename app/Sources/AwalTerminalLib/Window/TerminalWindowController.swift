@@ -224,19 +224,27 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
             return
         }
 
-        let tab = tabs.remove(at: index)
-        uninstallTab(tab)
+        let closingActiveTab = (index == activeTabIndex)
 
-        // Select adjacent tab
-        let newIndex: Int
-        if index >= tabs.count {
-            newIndex = tabs.count - 1
+        if closingActiveTab {
+            // Uninstall the tab being closed, then install the replacement
+            uninstallTab(tabs[index])
+            tabs.remove(at: index)
+            activeTabIndex = min(index, tabs.count - 1)
+            installTab(activeTab)
         } else {
-            newIndex = index
+            // Closing a background tab — no need to touch the displayed tab
+            tabs.remove(at: index)
+            // Adjust activeTabIndex if the removed tab was before it
+            if index < activeTabIndex {
+                activeTabIndex -= 1
+            }
         }
-        activeTabIndex = newIndex
-        installTab(activeTab)
+
         reloadTabBar()
+
+        // Restore first responder — clicking the tab's close button steals it
+        window?.makeFirstResponder(activeTab.splitContainer.focusedTerminal)
     }
 
     func switchToTab(at index: Int) {

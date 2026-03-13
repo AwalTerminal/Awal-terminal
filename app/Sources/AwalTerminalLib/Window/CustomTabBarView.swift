@@ -166,6 +166,10 @@ final class CustomTabBarView: NSView {
             tabViews.append(tabItem)
         }
 
+        // Force layout to recalculate stack width before positioning the + button
+        stackView.needsLayout = true
+        needsLayout = true
+
         // Auto-scroll to the selected tab after layout
         scrollToSelectedTab()
     }
@@ -184,7 +188,11 @@ final class CustomTabBarView: NSView {
 
     private func updateAddButtonPosition() {
         stackView.layoutSubtreeIfNeeded()
-        let stackWidth = stackView.frame.width
+        // Use the union of arranged subview frames for accurate width after add/remove
+        var stackWidth: CGFloat = 0
+        if let last = stackView.arrangedSubviews.last {
+            stackWidth = last.frame.maxX
+        }
         let buttonSize: CGFloat = 28
         let maxX = bounds.width - 4 - buttonSize
         let buttonX = min(stackWidth + 4, maxX)
