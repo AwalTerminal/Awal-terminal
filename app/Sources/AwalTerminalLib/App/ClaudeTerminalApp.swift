@@ -13,7 +13,7 @@ enum AppIcon {
         let execURL = URL(fileURLWithPath: CommandLine.arguments[0])
         var dir = execURL.deletingLastPathComponent()
         for _ in 0..<8 {
-            let icnsURL = dir.appendingPathComponent("app/Sources/App/Resources/AppIcon.icns")
+            let icnsURL = dir.appendingPathComponent("app/Sources/AwalTerminalLib/App/Resources/AppIcon.icns")
             if FileManager.default.fileExists(atPath: icnsURL.path),
                let icon = NSImage(contentsOf: icnsURL) {
                 return icon

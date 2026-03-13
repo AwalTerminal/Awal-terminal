@@ -51,7 +51,7 @@ if [ -d "$RESOURCE_BUNDLE" ]; then
 fi
 
 # Copy icon if available
-ICON="$ROOT/app/Sources/App/Resources/AppIcon.icns"
+ICON="$ROOT/app/Sources/AwalTerminalLib/App/Resources/AppIcon.icns"
 if [ -f "$ICON" ]; then
     cp "$ICON" "$APP_DIR/Contents/Resources/AppIcon.icns"
 fi
