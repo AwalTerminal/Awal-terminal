@@ -35,9 +35,16 @@ run: build-core-debug build-app-debug
     scripts/bundle.sh
     build/AwalTerminal.app/Contents/MacOS/AwalTerminal
 
-# Run tests
-test:
+# Run all tests
+test: test-rust test-swift
+
+# Run Rust tests
+test-rust:
     cd {{core_dir}} && cargo test
+
+# Run Swift tests
+test-swift: build-core-debug
+    cd {{app_dir}} && swift test
 
 # Clean all build artifacts
 clean:
