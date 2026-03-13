@@ -18,6 +18,7 @@ final class CustomTabBarView: NSView {
     private(set) var selectedIndex: Int = 0
     private var tabViews: [TabItemView] = []
     private let stackView = NSStackView()
+    private let scrollView = NSScrollView()
     private let addButton: NSButton = {
         let btn = NSButton(title: "+", target: nil, action: nil)
         btn.isBordered = false
@@ -53,11 +54,31 @@ final class CustomTabBarView: NSView {
         stackView.spacing = 1
         stackView.alignment = .centerY
         stackView.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(stackView)
+
+        // Wrap stackView in a scroll view for horizontal scrolling
+        scrollView.drawsBackground = false
+        scrollView.hasHorizontalScroller = false
+        scrollView.hasVerticalScroller = false
+        scrollView.horizontalScrollElasticity = .allowed
+        scrollView.verticalScrollElasticity = .none
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.documentView = stackView
+        addSubview(scrollView)
+
+        // Pin stack view edges inside the scroll view's clip view
+        let clipView = scrollView.contentView
+        NSLayoutConstraint.activate([
+            stackView.topAnchor.constraint(equalTo: clipView.topAnchor),
+            stackView.bottomAnchor.constraint(equalTo: clipView.bottomAnchor),
+            stackView.leadingAnchor.constraint(equalTo: clipView.leadingAnchor),
+        ])
 
         addButton.target = self
         addButton.action = #selector(addClicked)
-        addButton.translatesAutoresizingMaskIntoConstraints = false
+        addButton.wantsLayer = true
+        addButton.layer?.backgroundColor = bgColor.cgColor
+        addButton.layer?.cornerRadius = 14
+        // Position managed manually in layout()
         addSubview(addButton)
 
         // Bottom border
@@ -68,14 +89,10 @@ final class CustomTabBarView: NSView {
         addSubview(border)
 
         NSLayoutConstraint.activate([
-            stackView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            stackView.topAnchor.constraint(equalTo: topAnchor),
-            stackView.bottomAnchor.constraint(equalTo: bottomAnchor),
-
-            addButton.leadingAnchor.constraint(equalTo: stackView.trailingAnchor, constant: 4),
-            addButton.centerYAnchor.constraint(equalTo: centerYAnchor),
-            addButton.widthAnchor.constraint(equalToConstant: 28),
-            addButton.heightAnchor.constraint(equalToConstant: 28),
+            scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            scrollView.topAnchor.constraint(equalTo: topAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
 
             border.leadingAnchor.constraint(equalTo: leadingAnchor),
             border.trailingAnchor.constraint(equalTo: trailingAnchor),
@@ -84,13 +101,18 @@ final class CustomTabBarView: NSView {
         ])
     }
 
+    override func layout() {
+        super.layout()
+        updateAddButtonPosition()
+    }
+
     @objc private func addClicked() {
         delegate?.tabBarDidRequestNewTab(self)
     }
 
     // MARK: - Public API
 
-    func reloadTabs(titles: [String], selectedIndex: Int, tabColors: [NSColor?] = []) {
+    func reloadTabs(titles: [String], selectedIndex: Int, tabColors: [NSColor?] = [], dangerFlags: [Bool] = []) {
         self.selectedIndex = selectedIndex
 
         // Remove old tab views
@@ -103,13 +125,15 @@ final class CustomTabBarView: NSView {
         // Create new tab views
         for (i, title) in titles.enumerated() {
             let tabColor = i < tabColors.count ? tabColors[i] : nil
+            let isDanger = i < dangerFlags.count ? dangerFlags[i] : false
             let tabItem = TabItemView(
                 title: title,
                 isSelected: i == selectedIndex,
                 selectedBgColor: selectedBgColor,
                 accentColor: accentColor,
                 bgColor: bgColor,
-                tabColor: tabColor
+                tabColor: tabColor,
+                isDangerMode: isDanger
             )
             tabItem.index = i
             tabItem.onSelect = { [weak self] idx in
@@ -141,6 +165,32 @@ final class CustomTabBarView: NSView {
             stackView.addArrangedSubview(tabItem)
             tabViews.append(tabItem)
         }
+
+        // Auto-scroll to the selected tab after layout
+        scrollToSelectedTab()
+    }
+
+    private func scrollToSelectedTab() {
+        guard selectedIndex >= 0 && selectedIndex < tabViews.count else { return }
+        let tabView = tabViews[selectedIndex]
+        // Delay to ensure layout is complete
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.updateAddButtonPosition()
+            let tabFrame = tabView.convert(tabView.bounds, to: self.stackView)
+            self.scrollView.contentView.scrollToVisible(tabFrame)
+        }
+    }
+
+    private func updateAddButtonPosition() {
+        stackView.layoutSubtreeIfNeeded()
+        let stackWidth = stackView.frame.width
+        let buttonSize: CGFloat = 28
+        let maxX = bounds.width - 4 - buttonSize
+        let buttonX = min(stackWidth + 4, maxX)
+        let buttonY = round((bounds.height - buttonSize) / 2)
+        addButton.frame = NSRect(x: buttonX, y: buttonY, width: buttonSize, height: buttonSize)
+        scrollView.contentInsets.right = (stackWidth + buttonSize + 8 > bounds.width) ? (buttonSize + 8) : 0
     }
 
     func updateTitle(at index: Int, title: String) {
@@ -209,12 +259,15 @@ private class TabItemView: NSView {
     private var dragStartPoint: NSPoint = .zero
     private let dragThreshold: CGFloat = 5.0
 
-    init(title: String, isSelected: Bool, selectedBgColor: NSColor, accentColor: NSColor, bgColor: NSColor, tabColor: NSColor? = nil) {
+    private let isDangerMode: Bool
+
+    init(title: String, isSelected: Bool, selectedBgColor: NSColor, accentColor: NSColor, bgColor: NSColor, tabColor: NSColor? = nil, isDangerMode: Bool = false) {
         self.isSelected = isSelected
         self.selectedBgColor = selectedBgColor
         self.accentColor = accentColor
         self.bgColor = bgColor
         self.tabColor = tabColor
+        self.isDangerMode = isDangerMode
         // Compute effective background with subtle color tint
         if let tc = tabColor {
             let base = isSelected ? selectedBgColor : bgColor
@@ -263,8 +316,9 @@ private class TabItemView: NSView {
         addSubview(closeButton)
 
         accentLine.wantsLayer = true
-        let lineColor = tabColor ?? accentColor
-        accentLine.layer?.backgroundColor = isSelected ? lineColor.cgColor : NSColor.clear.cgColor
+        let dangerColor = NSColor(red: 1.0, green: 0.6, blue: 0.0, alpha: 1.0)
+        let lineColor = isDangerMode ? dangerColor : (tabColor ?? accentColor)
+        accentLine.layer?.backgroundColor = isSelected ? lineColor.cgColor : (isDangerMode ? dangerColor.withAlphaComponent(0.5).cgColor : NSColor.clear.cgColor)
         accentLine.translatesAutoresizingMaskIntoConstraints = false
         addSubview(accentLine)
 
