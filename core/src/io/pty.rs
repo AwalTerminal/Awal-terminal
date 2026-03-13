@@ -68,9 +68,12 @@ impl Pty {
                 let mut stdout_fd = unsafe { OwnedFd::from_raw_fd(libc::STDOUT_FILENO) };
                 let mut stderr_fd = unsafe { OwnedFd::from_raw_fd(libc::STDERR_FILENO) };
 
-                dup2(slave.as_fd(), &mut stdin_fd).unwrap();
-                dup2(slave.as_fd(), &mut stdout_fd).unwrap();
-                dup2(slave.as_fd(), &mut stderr_fd).unwrap();
+                if dup2(slave.as_fd(), &mut stdin_fd).is_err()
+                    || dup2(slave.as_fd(), &mut stdout_fd).is_err()
+                    || dup2(slave.as_fd(), &mut stderr_fd).is_err()
+                {
+                    unsafe { libc::_exit(1) };
+                }
 
                 // Forget the OwnedFds so they don't close stdin/stdout/stderr
                 std::mem::forget(stdin_fd);
@@ -92,23 +95,34 @@ impl Pty {
                 std::env::remove_var("CLAUDECODE");
                 std::env::remove_var("CLAUDE_CODE_ENTRYPOINT");
 
-                // Execute the shell
-                let shell_cstr = CString::new(shell).unwrap();
-                let login_arg = CString::new(format!(
-                    "-{}",
-                    shell.rsplit('/').next().unwrap_or(shell)
-                ))
-                .unwrap();
+                // Execute the shell — use _exit(1) on failure since we're in a
+                // forked child where panic/unwrap would crash silently.
+                let shell_cstr = match CString::new(shell) {
+                    Ok(s) => s,
+                    Err(_) => unsafe { libc::_exit(1) },
+                };
+                let base = shell.rsplit('/').next().unwrap_or(shell);
+                let login_arg = match CString::new(format!("-{}", base)) {
+                    Ok(s) => s,
+                    Err(_) => unsafe { libc::_exit(1) },
+                };
                 #[allow(unreachable_code)]
                 {
                     if let Some(cmd) = command {
-                        let c_flag = CString::new("-c").unwrap();
-                        let c_cmd = CString::new(cmd).unwrap();
-                        execvp(&shell_cstr, &[login_arg, c_flag, c_cmd]).expect("execvp failed");
+                        let c_flag = match CString::new("-c") {
+                            Ok(s) => s,
+                            Err(_) => unsafe { libc::_exit(1) },
+                        };
+                        let c_cmd = match CString::new(cmd) {
+                            Ok(s) => s,
+                            Err(_) => unsafe { libc::_exit(1) },
+                        };
+                        let _ = execvp(&shell_cstr, &[login_arg, c_flag, c_cmd]);
                     } else {
-                        execvp(&shell_cstr, &[login_arg]).expect("execvp failed");
+                        let _ = execvp(&shell_cstr, &[login_arg]);
                     }
-                    unreachable!();
+                    // execvp only returns on failure
+                    unsafe { libc::_exit(1) };
                 }
             }
             ForkResult::Parent { child } => {
