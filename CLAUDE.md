@@ -13,16 +13,23 @@
 
 ## Releasing
 
+Before every release, run all tests and ensure they pass with above 90% code coverage:
+
+```
+just test
+```
+
 The release script `scripts/release.sh <tag>` handles build, bundle, zip, tag, and GitHub release — but it has an interactive prompt, so run the steps manually when automating:
 
-1. Build: `cd app && swift build -c release --arch arm64 --arch x86_64`
-2. Bundle: `scripts/bundle.sh universal`
-3. Zip: `rm -f docs/AwalTerminal.zip && cd build && zip -r ../docs/AwalTerminal.zip AwalTerminal.app`
-4. Commit the updated `docs/AwalTerminal.zip`
-5. Tag: `git tag <tag>`
-6. Push: `git push origin main && git push origin <tag>`
-7. Generate changelog: review all commits since the previous tag (`git log <prev-tag>..HEAD --oneline`) and write a human-readable changelog grouped by category (Features, Fixes, Improvements). Include it in the release notes.
-8. Release: `gh release create <tag> docs/AwalTerminal.zip --title "<tag>" --notes-file <changelog>`
+1. Run tests: `just test` (runs both Rust and Swift tests — must pass before proceeding)
+2. Build: `cd app && swift build -c release --arch arm64 --arch x86_64`
+3. Bundle: `scripts/bundle.sh universal`
+4. Zip: `rm -f docs/AwalTerminal.zip && cd build && zip -r ../docs/AwalTerminal.zip AwalTerminal.app`
+5. Commit the updated `docs/AwalTerminal.zip`
+6. Tag: `git tag <tag>`
+7. Push: `git push origin main && git push origin <tag>`
+8. Generate changelog: review all commits since the previous tag (`git log <prev-tag>..HEAD --oneline`) and write a human-readable changelog grouped by category (Features, Fixes, Improvements). Include it in the release notes.
+9. Release: `gh release create <tag> docs/AwalTerminal.zip --title "<tag>" --notes-file <changelog>`
 
 - Website download link (`docs/index.html`) uses `/releases/latest/download/AwalTerminal.zip` — auto-resolves to newest release
 - Check download counts: `gh api repos/AwalTerminal/Awal-terminal/releases -q '.[].assets[] | "\(.name): \(.download_count) downloads"'`
