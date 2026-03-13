@@ -114,11 +114,11 @@ final class AppConfigTests: XCTestCase {
         // a config TOML with theme.bg and verifying the resulting color
         // Since load() reads from a fixed path, we test defaults instead
         let config = AppConfig()
-        // Default bg should be close to #1e1e1e
+        // Default bg should be close to #2D3039
         let bg = config.themeBg.usingColorSpace(.sRGB)!
-        XCTAssertEqual(bg.redComponent, 30.0/255.0, accuracy: 0.01)
-        XCTAssertEqual(bg.greenComponent, 30.0/255.0, accuracy: 0.01)
-        XCTAssertEqual(bg.blueComponent, 30.0/255.0, accuracy: 0.01)
+        XCTAssertEqual(bg.redComponent, 45.0/255.0, accuracy: 0.01)
+        XCTAssertEqual(bg.greenComponent, 48.0/255.0, accuracy: 0.01)
+        XCTAssertEqual(bg.blueComponent, 57.0/255.0, accuracy: 0.01)
     }
 
     // MARK: - Keybindings dictionary

@@ -26,7 +26,7 @@ struct AppConfig {
     var fontSize: CGFloat = 13.0
 
     // Theme colors
-    var themeBg: NSColor = NSColor(red: 30.0/255.0, green: 30.0/255.0, blue: 30.0/255.0, alpha: 1)
+    var themeBg: NSColor = NSColor(red: 45.0/255.0, green: 48.0/255.0, blue: 57.0/255.0, alpha: 1)
     var themeFg: NSColor = NSColor(white: 0.85, alpha: 1)
     var themeCursor: NSColor = NSColor(red: 0.8, green: 0.8, blue: 0.8, alpha: 0.7)
     var themeSelection: NSColor = NSColor(red: 99.0/255.0, green: 102.0/255.0, blue: 241.0/255.0, alpha: 0.3)
