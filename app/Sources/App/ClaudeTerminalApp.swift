@@ -40,6 +40,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     func applicationDidFinishLaunching(_ notification: Notification) {
         at_init_logging()
 
+        // Always start with danger mode disabled
+        if AppConfig.shared.dangerModeEnabled {
+            ConfigWriter.updateValue(key: "ai_components.danger_mode", value: "false")
+            AppConfig.reload()
+        }
+
         if let icon = AppIcon.image {
             NSApp.applicationIconImage = icon
         }
@@ -137,6 +143,26 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc func toggleAIComponentsAutoDetect(_ sender: Any?) {
         let current = AppConfig.shared.aiComponentsAutoDetect
         ConfigWriter.updateValue(key: "ai_components.auto_detect", value: current ? "false" : "true")
+        AppConfig.reload()
+    }
+
+    @objc func toggleDangerMode(_ sender: Any?) {
+        let current = AppConfig.shared.dangerModeEnabled
+        let newValue = !current
+
+        if newValue {
+            // Show warning dialog every time before enabling
+            let alert = NSAlert()
+            alert.messageText = "Enable Danger Mode?"
+            alert.informativeText = "This will skip all tool confirmation prompts in new AI sessions. The AI will be able to execute commands, edit files, and make changes without asking for permission.\n\nThis applies to new sessions only."
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: "Enable Danger Mode")
+            alert.addButton(withTitle: "Cancel")
+            let response = alert.runModal()
+            guard response == .alertFirstButtonReturn else { return }
+        }
+
+        ConfigWriter.updateValue(key: "ai_components.danger_mode", value: newValue ? "true" : "false")
         AppConfig.reload()
     }
 
@@ -242,6 +268,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if menuItem.action == #selector(toggleAIComponentsAutoDetect(_:)) {
             menuItem.state = AppConfig.shared.aiComponentsAutoDetect ? .on : .off
         }
+        if menuItem.action == #selector(toggleDangerMode(_:)) {
+            menuItem.state = AppConfig.shared.dangerModeEnabled ? .on : .off
+        }
         if menuItem.action == #selector(toggleVoiceInput(_:)) {
             menuItem.state = VoiceInputController.shared.state != .idle ? .on : .off
         }
@@ -341,6 +370,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         viewMenu.addItem(quickTermItem)
 
         viewMenu.addItem(NSMenuItem.separator())
+
+        let dangerItem = NSMenuItem(title: "Danger Mode", action: #selector(toggleDangerMode(_:)), keyEquivalent: "")
+        dangerItem.target = self
+        viewMenu.addItem(dangerItem)
 
         let notifItem = NSMenuItem(title: "Notifications", action: #selector(toggleNotifications(_:)), keyEquivalent: "")
         viewMenu.addItem(notifItem)

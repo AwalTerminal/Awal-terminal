@@ -1,5 +1,6 @@
 import AppKit
 import Metal
+import Quartz
 import QuartzCore
 import CAwalTerminal
 
@@ -74,6 +75,7 @@ class TerminalView: NSView {
     // Deferred launch for new panes (set before adding to window)
     var pendingLaunchModel: MenuItem?
     var pendingLaunchDir: String?
+    var pendingDangerMode: Bool = false
 
     var modelItems: [LLMModel] { ModelCatalog.all }
 
@@ -127,6 +129,8 @@ class TerminalView: NSView {
     private var scrollAccumulator: CGFloat = 0.0
     private var autoScrollTimer: Timer?
     private var autoScrollDelta: Int = 0  // -1 = scroll up, +1 = scroll down
+    /// Safety timer that force-renders if synchronized output mode (2026) is held too long.
+    private var syncOutputTimer: Timer?
 
     // MARK: - Search State
 
@@ -320,10 +324,11 @@ class TerminalView: NSView {
 
     // MARK: - Factory
 
-    static func createTerminalPane(model: MenuItem, workingDir: String?) -> TerminalView {
+    static func createTerminalPane(model: MenuItem, workingDir: String?, dangerMode: Bool = false) -> TerminalView {
         let view = TerminalView(frame: .zero)
         view.pendingLaunchModel = model
         view.pendingLaunchDir = workingDir
+        view.pendingDangerMode = dangerMode
         view.appState = .terminal
         view.menuRenderPending = false
         return view
@@ -422,7 +427,9 @@ class TerminalView: NSView {
                 let dir = self.pendingLaunchDir
                 self.pendingLaunchDir = nil
                 self.recalculateGridSize()
-                self.launchSession(model: model, workingDir: dir)
+                let danger = self.pendingDangerMode
+                self.pendingDangerMode = false
+                self.launchSession(model: model, workingDir: dir, dangerMode: danger)
             }
         }
     }
@@ -876,7 +883,7 @@ class TerminalView: NSView {
         switch entry {
         case .recentWorkspace(let ws):
             let model = modelItems.first { $0.name == ws.lastModel } ?? modelItems[0]
-            launchSession(model: model, workingDir: ws.path)
+            launchSession(model: model, workingDir: ws.path, dangerMode: AppConfig.shared.dangerModeEnabled)
 
         case .modelItem(let item):
             switch menuPhase {
@@ -892,14 +899,14 @@ class TerminalView: NSView {
                     renderMenu()
                 }
             case .pickModel(let folder):
-                launchSession(model: item, workingDir: folder)
+                launchSession(model: item, workingDir: folder, dangerMode: AppConfig.shared.dangerModeEnabled)
             case .pickFolder, .resumeSessions:
                 break
             }
 
         case .recentFolder(let path):
             if case .pickFolder(let model) = menuPhase {
-                launchSession(model: model, workingDir: path)
+                launchSession(model: model, workingDir: path, dangerMode: AppConfig.shared.dangerModeEnabled)
             }
 
         case .openFolder:
@@ -972,7 +979,10 @@ class TerminalView: NSView {
         launchSession(model: model, workingDir: entry.projectPath, commandOverride: cmd)
     }
 
-    private func launchSession(model: MenuItem, workingDir: String?, commandOverride: String? = nil) {
+    /// Whether the current session is running in danger mode (unrestricted permissions).
+    private(set) var isDangerMode: Bool = false
+
+    private func launchSession(model: MenuItem, workingDir: String?, commandOverride: String? = nil, dangerMode: Bool = false) {
         guard let s = surface else { return }
 
         activeModelName = model.name
@@ -1035,6 +1045,12 @@ class TerminalView: NSView {
         }
         lastAIComponentContext = aiComponentContext
 
+        // Danger mode: append skip-permissions flag if supported
+        isDangerMode = dangerMode
+        if dangerMode, commandOverride == nil, let flag = model.dangerFlag, !flag.isEmpty {
+            modelCmd += " \(flag)"
+        }
+
         let hasCommand = !modelCmd.isEmpty
 
         if hasCommand {
@@ -1088,7 +1104,7 @@ class TerminalView: NSView {
         panel.beginSheetModal(for: window) { [weak self] response in
             guard response == .OK, let url = panel.url else { return }
             if case .pickFolder(let model) = self?.menuPhase {
-                self?.launchSession(model: model, workingDir: url.path)
+                self?.launchSession(model: model, workingDir: url.path, dangerMode: AppConfig.shared.dangerModeEnabled)
             } else {
                 self?.menuPhase = .pickModel(url.path)
                 self?.buildMenuEntries()
@@ -1275,15 +1291,31 @@ class TerminalView: NSView {
         }
 
         if totalRead > 0 {
-            // Auto-snap to bottom only if the user hasn't manually scrolled up
+            let isSynchronized = at_surface_is_synchronized(s)
+
+            // Auto-snap to bottom even during sync mode — data is already processed
             if !userScrolledUp {
                 let offset = at_surface_get_viewport_offset(s)
                 if offset > 0 {
                     at_surface_scroll_viewport(s, -offset)
                 }
             }
-            updateCellBuffer()
-            needsRender = true
+
+            // Defer rendering while synchronized output mode (2026) is active
+            if !isSynchronized {
+                updateCellBuffer()
+                needsRender = true
+                syncOutputTimer?.invalidate()
+                syncOutputTimer = nil
+            } else if syncOutputTimer == nil {
+                // Safety timeout: force render if sync mode is held for >2 seconds
+                syncOutputTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
+                    self?.syncOutputTimer = nil
+                    self?.updateCellBuffer()
+                    self?.needsRender = true
+                }
+            }
+
             hadRecentOutput = true
             isWaitingForOutput = false
             if !isGenerating && !activeModelName.isEmpty {
@@ -1866,6 +1898,116 @@ class TerminalView: NSView {
         }
     }
 
+    // MARK: - Kitty Keyboard Protocol helpers
+
+    /// Map macOS keyCode to Kitty keyboard protocol unicode key number.
+    /// Returns (key_number, is_functional_key).
+    private static func kittyKeyNumber(for keyCode: UInt16, chars: String) -> (UInt32, Bool) {
+        switch keyCode {
+        case 53:  return (27, true)     // Escape
+        case 36:  return (13, true)     // Return
+        case 48:  return (9, true)      // Tab
+        case 51:  return (127, true)    // Backspace
+        case 117: return (57355, true)  // Delete (forward)
+        case 123: return (57419, true)  // Left
+        case 124: return (57421, true)  // Right
+        case 125: return (57420, true)  // Down
+        case 126: return (57418, true)  // Up
+        case 115: return (57423, true)  // Home
+        case 119: return (57424, true)  // End
+        case 116: return (57425, true)  // PageUp
+        case 121: return (57426, true)  // PageDown
+        case 114: return (57427, true)  // Insert
+        // Function keys
+        case 122: return (57364, true)  // F1
+        case 120: return (57365, true)  // F2
+        case 99:  return (57366, true)  // F3
+        case 118: return (57367, true)  // F4
+        case 96:  return (57368, true)  // F5
+        case 97:  return (57369, true)  // F6
+        case 98:  return (57370, true)  // F7
+        case 100: return (57371, true)  // F8
+        case 101: return (57372, true)  // F9
+        case 109: return (57373, true)  // F10
+        case 103: return (57374, true)  // F11
+        case 111: return (57375, true)  // F12
+        // Numpad keys
+        case 82: return (57399, true)  // KP_0
+        case 83: return (57400, true)  // KP_1
+        case 84: return (57401, true)  // KP_2
+        case 85: return (57402, true)  // KP_3
+        case 86: return (57403, true)  // KP_4
+        case 87: return (57404, true)  // KP_5
+        case 88: return (57405, true)  // KP_6
+        case 89: return (57406, true)  // KP_7
+        case 91: return (57407, true)  // KP_8
+        case 92: return (57408, true)  // KP_9
+        case 65: return (57409, true)  // KP_Decimal
+        case 75: return (57410, true)  // KP_Divide
+        case 67: return (57411, true)  // KP_Multiply
+        case 69: return (57412, true)  // KP_Add
+        case 78: return (57413, true)  // KP_Subtract
+        case 81: return (57414, true)  // KP_Equal
+        case 76: return (57415, true)  // KP_Enter
+        default:
+            // For regular characters, use the Unicode codepoint
+            if let scalar = chars.unicodeScalars.first {
+                return (scalar.value, false)
+            }
+            return (0, false)
+        }
+    }
+
+    /// Encode a key event using the Kitty keyboard protocol (CSI u format).
+    private func encodeKittyKey(_ event: NSEvent, flags kittyFlags: UInt32) -> [UInt8]? {
+        guard let chars = event.characters, !chars.isEmpty else { return nil }
+        let unmodChars = event.charactersIgnoringModifiers ?? chars
+
+        let modFlags = event.modifierFlags
+        let hasShift = modFlags.contains(.shift)
+        let hasAlt = modFlags.contains(.option)
+        let hasCtrl = modFlags.contains(.control)
+
+        // Kitty modifier encoding: shift=1, alt=2, ctrl=4, super=8
+        var modBits: UInt32 = 0
+        if hasShift { modBits |= 1 }
+        if hasAlt { modBits |= 2 }
+        if hasCtrl { modBits |= 4 }
+        let modParam = modBits + 1  // 1-based (1 = no modifiers)
+
+        let (keyNum, isFunctional) = Self.kittyKeyNumber(for: event.keyCode, chars: unmodChars)
+        guard keyNum != 0 else { return nil }
+
+        let disambiguate = (kittyFlags & 1) != 0
+        let reportAllKeys = (kittyFlags & 8) != 0
+
+        // Only use CSI u for keys that need it
+        let needsCSIu: Bool
+        if isFunctional || modParam > 1 {
+            needsCSIu = true
+        } else if reportAllKeys {
+            needsCSIu = true
+        } else if disambiguate {
+            // Disambiguate mode: only encode keys that are ambiguous in legacy encoding.
+            // Plain printable characters without modifiers are unambiguous — pass through as UTF-8.
+            needsCSIu = isFunctional || keyNum == 27 || keyNum == 13 || keyNum == 9 || keyNum == 127
+        } else {
+            needsCSIu = false
+        }
+
+        guard needsCSIu else { return nil }
+
+        // Build CSI <key> ; <modifiers> u
+        var seq: String
+        if modParam > 1 {
+            seq = "\u{1b}[\(keyNum);\(modParam)u"
+        } else {
+            seq = "\u{1b}[\(keyNum)u"
+        }
+
+        return Array(seq.utf8)
+    }
+
     private func handleTerminalKey(_ event: NSEvent) {
         guard let s = surface else { return }
 
@@ -1876,7 +2018,11 @@ class TerminalView: NSView {
 
         let bytes: [UInt8]
 
-        if let chars = event.characters, !chars.isEmpty {
+        // Check if kitty keyboard protocol is active
+        let kittyFlags = at_surface_get_kitty_keyboard_flags(s)
+        if kittyFlags > 0, let kittyBytes = encodeKittyKey(event, flags: kittyFlags) {
+            bytes = kittyBytes
+        } else if let chars = event.characters, !chars.isEmpty {
             let hasShift = modFlags.contains(.shift)
             let hasCtrl = modFlags.contains(.control)
             let hasAlt = modFlags.contains(.option)
@@ -1956,6 +2102,121 @@ class TerminalView: NSView {
     }
 
     override func flagsChanged(with event: NSEvent) {}
+
+    // MARK: - File Preview (Quick Look)
+
+    /// Extract a file path from terminal text at the given grid position.
+    private func detectFilePath(at col: Int, row: Int) -> String? {
+        guard let s = surface else { return nil }
+
+        // Read the text of the clicked row
+        let rowStart = row * Int(termCols)
+        let rowEnd = min(rowStart + Int(termCols), cellBuffer.count)
+        guard rowStart >= 0, rowEnd <= cellBuffer.count else { return nil }
+
+        var rowText = ""
+        for i in rowStart..<rowEnd {
+            let cp = cellBuffer[i].codepoint
+            if cp == 0 { rowText.append(" ") }
+            else if let scalar = Unicode.Scalar(cp) {
+                rowText.append(Character(scalar))
+            }
+        }
+
+        // Find path-like tokens in the row text
+        // Split by whitespace and check each token
+        let tokens = rowText.split(whereSeparator: { $0.isWhitespace || $0 == "'" || $0 == "\"" || $0 == "(" || $0 == ")" }).map(String.init)
+
+        // Find which token contains the clicked column
+        var offset = 0
+        for token in tokens {
+            let tokenRange = (rowText as NSString).range(of: token, range: NSRange(location: offset, length: rowText.count - offset))
+            if tokenRange.location == NSNotFound { continue }
+
+            let tokenStart = tokenRange.location
+            let tokenEnd = tokenRange.location + tokenRange.length
+            offset = tokenEnd
+
+            // Check if click is within this token
+            if col >= tokenStart && col < tokenEnd {
+                return resolveFilePath(token)
+            }
+        }
+
+        return nil
+    }
+
+    /// Resolve a path string to an absolute path, checking if the file exists.
+    private func resolveFilePath(_ pathStr: String) -> String? {
+        // Strip trailing colon + line number (e.g., "file.rs:42:")
+        var cleaned = pathStr
+        if let colonRange = cleaned.range(of: ":\\d+", options: .regularExpression) {
+            cleaned = String(cleaned[cleaned.startIndex..<colonRange.lowerBound])
+        }
+
+        // Try as absolute path
+        if cleaned.hasPrefix("/") {
+            return FileManager.default.fileExists(atPath: cleaned) ? cleaned : nil
+        }
+
+        // Try relative to CWD (from OSC 7)
+        if let s = surface,
+           let cwdPtr = at_surface_get_working_directory(s) {
+            let cwd = String(cString: cwdPtr)
+            at_free_string(cwdPtr)
+            if !cwd.isEmpty {
+                var resolvedCwd = cwd
+                // Strip file:// URI prefix if present
+                if resolvedCwd.hasPrefix("file://") {
+                    resolvedCwd = String(resolvedCwd.dropFirst(7))
+                    // Remove hostname portion (file://hostname/path)
+                    if let slashIdx = resolvedCwd.firstIndex(of: "/") {
+                        resolvedCwd = String(resolvedCwd[slashIdx...])
+                    }
+                }
+                let fullPath = (resolvedCwd as NSString).appendingPathComponent(cleaned)
+                if FileManager.default.fileExists(atPath: fullPath) {
+                    return fullPath
+                }
+            }
+        }
+
+        // Try relative to home directory for ~/... paths
+        if cleaned.hasPrefix("~/") {
+            let expanded = (cleaned as NSString).expandingTildeInPath
+            return FileManager.default.fileExists(atPath: expanded) ? expanded : nil
+        }
+
+        return nil
+    }
+
+    /// Show Quick Look preview panel for a file path.
+    private var quickLookItems: [URL] = []
+
+    private func showQuickLookPreview(for path: String) {
+        quickLookItems = [URL(fileURLWithPath: path)]
+        let panel = QLPreviewPanel.shared()!
+        if panel.isVisible {
+            panel.reloadData()
+        } else {
+            panel.makeKeyAndOrderFront(nil)
+        }
+    }
+
+    override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool {
+        return true
+    }
+
+    override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) {
+        panel.dataSource = self
+        panel.delegate = self
+    }
+
+    override func endPreviewPanelControl(_ panel: QLPreviewPanel!) {
+        panel.dataSource = nil
+        panel.delegate = nil
+        quickLookItems = []
+    }
 
     // MARK: - Scroll Wheel (Scrollback)
 
@@ -2098,7 +2359,7 @@ class TerminalView: NSView {
             }
         }
 
-        // Cmd+click: open hyperlink
+        // Cmd+click: open hyperlink or preview file
         if event.modifierFlags.contains(.command) {
             let urlPtr = at_surface_get_hyperlink(s, UInt32(col), UInt32(row))
             if let urlPtr, let urlStr = String(cString: urlPtr, encoding: .utf8) {
@@ -2107,6 +2368,12 @@ class TerminalView: NSView {
                     NSWorkspace.shared.open(url)
                     return
                 }
+            }
+
+            // Try to detect a file path at the click position
+            if let filePath = detectFilePath(at: col, row: row) {
+                showQuickLookPreview(for: filePath)
+                return
             }
         }
 
@@ -2666,5 +2933,18 @@ class TerminalView: NSView {
         }
 
         return (highlights, currentIdx)
+    }
+}
+
+// MARK: - Quick Look Preview
+
+extension TerminalView: QLPreviewPanelDataSource, QLPreviewPanelDelegate {
+
+    func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int {
+        quickLookItems.count
+    }
+
+    func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> (any QLPreviewItem)! {
+        quickLookItems[index] as NSURL
     }
 }

@@ -185,7 +185,8 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
     private func reloadTabBar() {
         let titles = tabs.map { $0.title }
         let colors = tabs.map { $0.tabColor }
-        tabBar.reloadTabs(titles: titles, selectedIndex: activeTabIndex, tabColors: colors)
+        let dangers = tabs.map { $0.isDangerMode }
+        tabBar.reloadTabs(titles: titles, selectedIndex: activeTabIndex, tabColors: colors, dangerFlags: dangers)
     }
 
     private func updateWindowTitle() {
@@ -459,13 +460,16 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
     // MARK: - Terminal Callback Wiring
 
     private func wireTerminalCallbacks(_ terminal: TerminalView, tab: TabState) {
-        terminal.onSessionChanged = { [weak self, weak tab] model, provider, cols, rows in
-            guard let self, let tab else { return }
+        terminal.onSessionChanged = { [weak self, weak terminal, weak tab] model, provider, cols, rows in
+            guard let self, let terminal, let tab else { return }
             tab.hasSession = true
+            tab.isDangerMode = terminal.isDangerMode
             TokenTracker.shared.reset()
             tab.statusBar.resetSession()
             tab.statusBar.update(model: model, provider: provider, cols: cols, rows: rows)
+            tab.statusBar.setDangerMode(terminal.isDangerMode)
             tab.aiSidePanel.setModel(model)
+            tab.aiSidePanel.setDangerMode(terminal.isDangerMode)
             tab.aiSidePanel.resetSession()
             // Enable AI analysis for LLM sessions (not plain Shell)
             let isAI = !model.isEmpty && model != "Shell"
@@ -473,8 +477,8 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
                 at_surface_set_ai_analysis(surface, isAI)
             }
             tab.statusBar.setVoiceVisible(true)
-            // Auto-open AI side panel for LLM sessions
-            if isAI && !tab.aiSidePanel.isPanelVisible {
+            // Auto-open AI side panel for LLM sessions (unless user manually closed it)
+            if isAI && !tab.aiSidePanel.isPanelVisible && !tab.userClosedAIPanel {
                 tab.aiSidePanel.toggle()
                 tab.sidePanelWidthConstraint?.constant = AISidePanelView.defaultWidth
                 NSAnimationContext.runAnimationGroup { context in
@@ -650,6 +654,7 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         let tab = activeTab
         guard tab.hasSession else { return }
         tab.aiSidePanel.toggle()
+        tab.userClosedAIPanel = !tab.aiSidePanel.isPanelVisible
 
         let targetWidth: CGFloat = tab.aiSidePanel.isPanelVisible ? AISidePanelView.defaultWidth : 0
         tab.sidePanelWidthConstraint?.constant = targetWidth

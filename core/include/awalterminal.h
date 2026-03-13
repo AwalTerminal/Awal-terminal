@@ -164,6 +164,17 @@ void at_surface_get_cursor(const struct ATSurface *surface,
 bool at_surface_is_dirty(struct ATSurface *surface);
 
 /**
+ * Get the current kitty keyboard protocol flags (0 = legacy mode).
+ */
+uint32_t at_surface_get_kitty_keyboard_flags(const struct ATSurface *surface);
+
+/**
+ * Check if synchronized output mode (mode 2026) is active.
+ * When active, the caller should defer rendering until the mode is reset.
+ */
+bool at_surface_is_synchronized(const struct ATSurface *surface);
+
+/**
  * Feed raw bytes directly into the VT parser (no PTY needed).
  * Used for rendering TUI menus before a shell is spawned.
  */

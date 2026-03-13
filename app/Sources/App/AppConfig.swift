@@ -74,6 +74,9 @@ struct AppConfig {
     var aiComponentsSecurityScan: Bool = true
     var aiComponentsBlockCritical: Bool = true
 
+    // Danger Mode (skip AI tool confirmation prompts)
+    var dangerModeEnabled: Bool = false
+
     // AI Components Export
     var aiComponentsExportEnabled: Bool = false
     var aiComponentsExportFormats: [String] = []
@@ -181,6 +184,9 @@ struct AppConfig {
             config.tabsRandomColorPalette = v.split(separator: ",")
                 .compactMap { parseColor(String($0)) }
         }
+
+        // Danger mode
+        if let v = parsed["ai_components.danger_mode"] { config.dangerModeEnabled = v == "true" }
 
         // AI Components
         if let v = parsed["ai_components.enabled"] { config.aiComponentsEnabled = v == "true" }

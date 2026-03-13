@@ -229,7 +229,27 @@ impl<'a> vte::Perform for ScreenPerformer<'a> {
                 self.screen.save_cursor();
             }
             'u' => {
-                self.screen.restore_cursor();
+                if intermediates.contains(&b'>') {
+                    // CSI > flags u — Push kitty keyboard flags (cap stack depth)
+                    let flags = params.first().copied().unwrap_or(0) as u32;
+                    if self.screen.modes.kitty_keyboard_stack.len() < 64 {
+                        self.screen.modes.kitty_keyboard_stack.push(flags);
+                    }
+                } else if intermediates.contains(&b'<') {
+                    // CSI < count u — Pop kitty keyboard flags
+                    let count = params.first().copied().unwrap_or(1).max(1) as usize;
+                    let stack = &mut self.screen.modes.kitty_keyboard_stack;
+                    for _ in 0..count.min(stack.len()) {
+                        stack.pop();
+                    }
+                } else if intermediates.contains(&b'?') {
+                    // CSI ? u — Query kitty keyboard flags
+                    let flags = self.screen.modes.kitty_keyboard_flags();
+                    self.responses
+                        .push(format!("\x1b[?{}u", flags).into_bytes());
+                } else {
+                    self.screen.restore_cursor();
+                }
             }
             'm' => {
                 self.handle_sgr(&params);
@@ -418,6 +438,7 @@ impl<'a> ScreenPerformer<'a> {
                 1003 => self.screen.modes.mouse_tracking = MouseMode::Any,
                 1006 => self.screen.modes.sgr_mouse = true,
                 2004 => self.screen.modes.bracketed_paste = true,
+                2026 => self.screen.modes.synchronized_output = true,
                 _ => {}
             }
         }
@@ -439,6 +460,10 @@ impl<'a> ScreenPerformer<'a> {
                 9 | 1000 | 1002 | 1003 => self.screen.modes.mouse_tracking = MouseMode::None,
                 1006 => self.screen.modes.sgr_mouse = false,
                 2004 => self.screen.modes.bracketed_paste = false,
+                2026 => {
+                    self.screen.modes.synchronized_output = false;
+                    self.screen.dirty = true;
+                }
                 _ => {}
             }
         }

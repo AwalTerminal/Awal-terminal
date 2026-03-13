@@ -7,6 +7,9 @@ class TabState {
     var customTitle: String?
     var tabColor: NSColor?
     var hasSession = false
+    var isDangerMode = false
+    /// Set when the user manually closes the AI side panel; prevents auto-reopen.
+    var userClosedAIPanel = false
 
     /// Stored constraint for animating side panel width.
     var sidePanelWidthConstraint: NSLayoutConstraint?

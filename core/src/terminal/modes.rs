@@ -21,6 +21,18 @@ pub struct TerminalModes {
     pub insert_mode: bool,
     /// Line feed/new line mode (LNM)
     pub linefeed_mode: bool,
+    /// Synchronized output mode (mode 2026)
+    pub synchronized_output: bool,
+    /// Kitty keyboard protocol flags stack.
+    /// Apps push/pop flags via CSI > u / CSI < u.
+    pub kitty_keyboard_stack: Vec<u32>,
+}
+
+impl TerminalModes {
+    /// Current kitty keyboard flags (top of stack, or 0 if empty).
+    pub fn kitty_keyboard_flags(&self) -> u32 {
+        self.kitty_keyboard_stack.last().copied().unwrap_or(0)
+    }
 }
 
 impl Default for TerminalModes {
@@ -36,6 +48,8 @@ impl Default for TerminalModes {
             origin_mode: false,
             insert_mode: false,
             linefeed_mode: false,
+            synchronized_output: false,
+            kitty_keyboard_stack: Vec::new(),
         }
     }
 }

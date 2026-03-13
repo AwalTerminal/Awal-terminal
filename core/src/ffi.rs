@@ -405,6 +405,21 @@ pub extern "C" fn at_surface_is_dirty(surface: *mut ATSurface) -> bool {
     dirty
 }
 
+/// Get the current kitty keyboard protocol flags (0 = legacy mode).
+#[no_mangle]
+pub extern "C" fn at_surface_get_kitty_keyboard_flags(surface: *const ATSurface) -> u32 {
+    let surface = ref_or!(surface, 0);
+    surface.screen.modes.kitty_keyboard_flags()
+}
+
+/// Check if synchronized output mode (mode 2026) is active.
+/// When active, the caller should defer rendering until the mode is reset.
+#[no_mangle]
+pub extern "C" fn at_surface_is_synchronized(surface: *const ATSurface) -> bool {
+    let surface = ref_or!(surface, false);
+    surface.screen.modes.synchronized_output
+}
+
 /// Feed raw bytes directly into the VT parser (no PTY needed).
 /// Used for rendering TUI menus before a shell is spawned.
 #[no_mangle]

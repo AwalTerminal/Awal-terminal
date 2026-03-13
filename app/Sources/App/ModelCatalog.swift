@@ -17,6 +17,8 @@ struct LLMModel {
     let contextWindow: Int
     let resumeCommand: String?
     let injectionStrategy: AIComponentInjectionStrategy
+    /// CLI flag to skip permission prompts (danger mode). Nil if model doesn't support it.
+    let dangerFlag: String?
 
     var hasConfig: Bool { configPath != nil }
     var storageKey: String { name.lowercased() }
@@ -39,10 +41,10 @@ struct LLMModel {
 
 enum ModelCatalog {
     static let all: [LLMModel] = [
-        LLMModel(name: "Claude",   provider: "Anthropic",       command: "claude",              configPath: "~/.claude/settings.json",       installCommand: "npm install -g @anthropic-ai/claude-code",  contextWindow: 200_000, resumeCommand: "claude --resume",  injectionStrategy: .claudePlugin),
-        LLMModel(name: "Gemini",   provider: "Google",          command: "gemini",              configPath: "~/.config/gemini/settings.json", installCommand: "npm install -g @google/gemini-cli",        contextWindow: 1_000_000, resumeCommand: "gemini --resume", injectionStrategy: .systemInstruction),
-        LLMModel(name: "Codex",    provider: "OpenAI",          command: "codex",               configPath: nil,                             installCommand: "npm install -g @openai/codex",             contextWindow: 200_000, resumeCommand: "codex resume",     injectionStrategy: .instructionsFlag),
-        LLMModel(name: "Shell",    provider: "Terminal",         command: "",                    configPath: nil,                             installCommand: nil,                                        contextWindow: 0, resumeCommand: nil,                      injectionStrategy: .none),
+        LLMModel(name: "Claude",   provider: "Anthropic",       command: "claude",              configPath: "~/.claude/settings.json",       installCommand: "npm install -g @anthropic-ai/claude-code",  contextWindow: 200_000, resumeCommand: "claude --resume",  injectionStrategy: .claudePlugin,       dangerFlag: "--dangerously-skip-permissions"),
+        LLMModel(name: "Gemini",   provider: "Google",          command: "gemini",              configPath: "~/.config/gemini/settings.json", installCommand: "npm install -g @google/gemini-cli",        contextWindow: 1_000_000, resumeCommand: "gemini --resume", injectionStrategy: .systemInstruction, dangerFlag: "--yolo"),
+        LLMModel(name: "Codex",    provider: "OpenAI",          command: "codex",               configPath: nil,                             installCommand: "npm install -g @openai/codex",             contextWindow: 200_000, resumeCommand: "codex resume",     injectionStrategy: .instructionsFlag,   dangerFlag: "--full-auto"),
+        LLMModel(name: "Shell",    provider: "Terminal",         command: "",                    configPath: nil,                             installCommand: nil,                                        contextWindow: 0, resumeCommand: nil,                      injectionStrategy: .none,               dangerFlag: nil),
     ]
 
     static var configurable: [LLMModel] { all.filter { $0.hasConfig } }
