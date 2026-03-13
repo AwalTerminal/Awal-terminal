@@ -14,7 +14,7 @@ class QuickTerminalController {
     private var eventHandler: EventHandlerRef?
 
     private let animationDuration: TimeInterval = 0.15
-    private let heightRatio: CGFloat = 0.4 // 40% of screen height
+    private let heightRatio: CGFloat = 0.65 // 65% of screen height (square)
 
     private init() {}
 
@@ -75,12 +75,12 @@ class QuickTerminalController {
         guard let screen = NSScreen.main else { return }
 
         let screenFrame = screen.frame
-        let height = screenFrame.height * heightRatio
+        let side = min(screenFrame.width, screenFrame.height) * heightRatio
         let visibleFrame = NSRect(
-            x: screenFrame.origin.x,
-            y: screenFrame.origin.y + screenFrame.height - height,
-            width: screenFrame.width,
-            height: height
+            x: screenFrame.origin.x + (screenFrame.width - side) / 2,
+            y: screenFrame.origin.y + screenFrame.height - side,
+            width: side,
+            height: side
         )
 
         // Start above the screen (hidden)
@@ -133,12 +133,12 @@ class QuickTerminalController {
             fatalError("No main screen")
         }
 
-        let height = screen.frame.height * heightRatio
+        let side = min(screen.frame.width, screen.frame.height) * heightRatio
         let frame = NSRect(
-            x: screen.frame.origin.x,
+            x: screen.frame.origin.x + (screen.frame.width - side) / 2,
             y: screen.frame.origin.y + screen.frame.height,
-            width: screen.frame.width,
-            height: height
+            width: side,
+            height: side
         )
 
         let panel = NSPanel(
