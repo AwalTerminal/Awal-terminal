@@ -113,7 +113,9 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
             let palette = AppConfig.shared.tabsRandomColorPalette.isEmpty
                 ? Self.defaultTabColorPalette
                 : AppConfig.shared.tabsRandomColorPalette
-            tab.tabColor = palette.randomElement()
+            let neighborColor = tabs.last?.tabColor
+            let candidates = palette.filter { $0 != neighborColor }
+            tab.tabColor = (candidates.isEmpty ? palette : candidates).randomElement()
         }
 
         wireTerminalCallbacks(rootTerminal, tab: tab)
