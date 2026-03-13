@@ -447,6 +447,9 @@ class TerminalView: NSView {
         if scale != currentScale {
             currentScale = scale
             if let device = metalLayer?.device {
+                // Stop display link while recreating renderer to prevent
+                // the callback from using the renderer mid-swap.
+                stopDisplayLink()
                 renderer = MetalRenderer(
                     device: device,
                     font: font,
@@ -455,6 +458,7 @@ class TerminalView: NSView {
                     cellHeight: cellHeight,
                     scale: scale
                 )
+                startDisplayLink()
             }
         }
 
