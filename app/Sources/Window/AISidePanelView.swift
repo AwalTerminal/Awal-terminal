@@ -74,6 +74,11 @@ class AISidePanelView: NSView {
     private var tokenTopToBanner: NSLayoutConstraint!
     private var tokenTopToSeparator: NSLayoutConstraint!
 
+    // Toggle constraints for activity section top (collapse token section when hidden)
+    private var activityTopToContextBar: NSLayoutConstraint!
+    private var activityTopToBanner: NSLayoutConstraint!
+    private var activityTopToSeparator: NSLayoutConstraint!
+
     // Danger mode warning banner
     private let dangerBanner: NSView = {
         let view = NSView()
@@ -344,7 +349,6 @@ class AISidePanelView: NSView {
 
             // Activity section
             activitySectionLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: margin),
-            activitySectionLabel.topAnchor.constraint(equalTo: contextBarBackground.bottomAnchor, constant: sectionGap),
 
             toolCountLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: margin),
             toolCountLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -margin),
@@ -400,6 +404,14 @@ class AISidePanelView: NSView {
         tokenTopToBanner.isActive = false
         tokenTopToSeparator.isActive = true
 
+        // Toggle constraints: activity section top anchors to context bar (tokens visible) or banner/separator (tokens hidden)
+        activityTopToContextBar = activitySectionLabel.topAnchor.constraint(equalTo: contextBarBackground.bottomAnchor, constant: sectionGap)
+        activityTopToBanner = activitySectionLabel.topAnchor.constraint(equalTo: dangerBanner.bottomAnchor, constant: sectionGap)
+        activityTopToSeparator = activitySectionLabel.topAnchor.constraint(equalTo: separator1.bottomAnchor, constant: sectionGap)
+        activityTopToContextBar.isActive = true
+        activityTopToBanner.isActive = false
+        activityTopToSeparator.isActive = false
+
         // Context bar fill width (starts at 0)
         contextBarFillWidth = contextBarFill.widthAnchor.constraint(equalToConstant: 0)
         contextBarFillWidth?.isActive = true
@@ -438,26 +450,37 @@ class AISidePanelView: NSView {
         headerLabel.stringValue = model.isEmpty ? "AI Context" : "\(model) Session"
 
         let showTokens = (model == "Claude")
+        tokenSectionLabel.isHidden = !showTokens
         inputTokensLabel.isHidden = !showTokens
         outputTokensLabel.isHidden = !showTokens
         totalTokensLabel.isHidden = !showTokens
         costLabel.isHidden = !showTokens
         contextPercentLabel.isHidden = !showTokens
         contextBarBackground.isHidden = !showTokens
+        tokenUnavailableLabel.isHidden = true
 
-        let isLLM = !model.isEmpty && model != "Shell"
-        if isLLM && !showTokens {
-            tokenUnavailableLabel.isHidden = false
-            tokenUnavailableLabel.stringValue = "  Token tracking is Claude-only"
-        } else {
-            tokenUnavailableLabel.isHidden = true
-        }
+        // Toggle token section top constraints (only relevant when tokens visible)
+        let dangerVisible = !dangerBanner.isHidden
+        tokenTopToBanner.isActive = dangerVisible && showTokens
+        tokenTopToSeparator.isActive = !dangerVisible && showTokens
+
+        // Toggle activity section top: attach to context bar (tokens visible) or banner/separator (tokens hidden)
+        activityTopToContextBar.isActive = showTokens
+        activityTopToBanner.isActive = !showTokens && dangerVisible
+        activityTopToSeparator.isActive = !showTokens && !dangerVisible
     }
 
     func setDangerMode(_ enabled: Bool) {
         dangerBanner.isHidden = !enabled
-        tokenTopToBanner.isActive = enabled
-        tokenTopToSeparator.isActive = !enabled
+        let showTokens = hasTokenTracking
+        // Token section top
+        tokenTopToBanner.isActive = enabled && showTokens
+        tokenTopToSeparator.isActive = !enabled && showTokens
+        // Activity section top (when tokens hidden, skip token section)
+        if !showTokens {
+            activityTopToBanner.isActive = enabled
+            activityTopToSeparator.isActive = !enabled
+        }
     }
 
     func resetSession() {
