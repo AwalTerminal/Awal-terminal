@@ -138,7 +138,18 @@ class ProfileStore {
 
     private func profilePath(for model: LLMModel, name: String) -> String {
         let ext = model.configExtension ?? "json"
-        return (modelDir(for: model) as NSString).appendingPathComponent("\(name).\(ext)")
+        let sanitized = sanitizeName(name)
+        return (modelDir(for: model) as NSString).appendingPathComponent("\(sanitized).\(ext)")
+    }
+
+    /// Strip path separators and special components to prevent directory traversal.
+    private func sanitizeName(_ name: String) -> String {
+        let cleaned = name
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "\\", with: "_")
+            .replacingOccurrences(of: "..", with: "_")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleaned.isEmpty ? "Default" : cleaned
     }
 
     private var metaPath: String {
