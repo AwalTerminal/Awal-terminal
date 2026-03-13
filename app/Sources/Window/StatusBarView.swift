@@ -44,6 +44,27 @@ class StatusBarView: NSView {
     /// Pause polling when this tab is in the background
     var isPaused: Bool = false
 
+    // Toggle constraints for generating label leading (collapse danger badge space when hidden)
+    private var generatingLeadingToBadge: NSLayoutConstraint!
+    private var generatingLeadingToModel: NSLayoutConstraint!
+
+    private let dangerBadge: NSTextField = {
+        let label = NSTextField(labelWithString: "DANGER")
+        label.font = NSFont.monospacedSystemFont(ofSize: 9.0, weight: .medium)
+        label.textColor = NSColor(red: 1.0, green: 0.65, blue: 0.0, alpha: 0.9)
+        label.backgroundColor = NSColor(red: 1.0, green: 0.6, blue: 0.0, alpha: 0.12)
+        label.drawsBackground = true
+        label.isBordered = false
+        label.isEditable = false
+        label.wantsLayer = true
+        label.layer?.cornerRadius = 3
+        label.layer?.borderWidth = 1
+        label.layer?.borderColor = NSColor(red: 1.0, green: 0.6, blue: 0.0, alpha: 0.35).cgColor
+        label.alignment = .center
+        label.isHidden = true
+        return label
+    }()
+
     private let generatingLabel = NSTextField(labelWithString: "")
     private var generatingTimer: Timer?
     private var generatingDotCount: Int = 0
@@ -124,6 +145,10 @@ class StatusBarView: NSView {
         modelButton.action = #selector(modelClicked(_:))
         addSubview(modelButton)
 
+        // Danger mode badge (between model and generating)
+        dangerBadge.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(dangerBadge)
+
         // Generating indicator (fixed-width, between model and sep1)
         generatingLabel.font = monoFont
         generatingLabel.textColor = NSColor(red: 120.0/255.0, green: 220.0/255.0, blue: 120.0/255.0, alpha: 1.0)
@@ -192,8 +217,11 @@ class StatusBarView: NSView {
             modelButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
             modelButton.centerYAnchor.constraint(equalTo: centerYAnchor),
 
+            // Danger badge (between model and generating)
+            dangerBadge.leadingAnchor.constraint(equalTo: modelButton.trailingAnchor, constant: 2),
+            dangerBadge.centerYAnchor.constraint(equalTo: centerYAnchor),
+
             // Generating dots (fixed width, collapses to 0 when idle)
-            generatingLabel.leadingAnchor.constraint(equalTo: modelButton.trailingAnchor, constant: 2),
             generatingLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
 
             // Voice controls (after generating, before sep1)
@@ -256,6 +284,12 @@ class StatusBarView: NSView {
 
         generatingWidthConstraint = generatingLabel.widthAnchor.constraint(equalToConstant: 0)
         generatingWidthConstraint.isActive = true
+
+        // Toggle constraints: generating label leading anchors to badge (visible) or model (hidden)
+        generatingLeadingToBadge = generatingLabel.leadingAnchor.constraint(equalTo: dangerBadge.trailingAnchor, constant: 2)
+        generatingLeadingToModel = generatingLabel.leadingAnchor.constraint(equalTo: modelButton.trailingAnchor, constant: 2)
+        generatingLeadingToBadge.isActive = false
+        generatingLeadingToModel.isActive = true
 
         // Voice controls start hidden until a session is opened
         voiceButton.isHidden = true
@@ -712,6 +746,12 @@ class StatusBarView: NSView {
         popover.contentSize = controller.view.frame.size
         popover.show(relativeTo: aiComponentLabel.bounds, of: aiComponentLabel, preferredEdge: .maxY)
         activePopover = popover
+    }
+
+    func setDangerMode(_ enabled: Bool) {
+        dangerBadge.isHidden = !enabled
+        generatingLeadingToBadge.isActive = enabled
+        generatingLeadingToModel.isActive = !enabled
     }
 
     func setGenerating(_ generating: Bool) {
