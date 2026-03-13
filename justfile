@@ -32,7 +32,7 @@ build-debug: build-core-debug build-app-debug
 
 # Run the app (debug build, launched from .app bundle for correct icon/notifications)
 run: build-core-debug build-app-debug
-    scripts/bundle.sh
+    scripts/bundle.sh debug
     build/AwalTerminal.app/Contents/MacOS/AwalTerminal
 
 # Run all tests
