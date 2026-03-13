@@ -747,6 +747,9 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
 
     func windowWillClose(_ notification: Notification) {
         TerminalWindowTracker.shared.remove(self)
+        if TerminalWindowTracker.shared.count == 0 {
+            NSApp.terminate(nil)
+        }
     }
 
     func window(_ window: NSWindow, shouldPopUpDocumentPathMenu menu: NSMenu) -> Bool {
