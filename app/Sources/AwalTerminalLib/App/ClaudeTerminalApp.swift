@@ -95,6 +95,10 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
         AboutWindow.show()
     }
 
+    @objc func showHelpWindow(_ sender: Any?) {
+        HelpWindow.show()
+    }
+
     @objc func showPreferences(_ sender: Any?) {
         PreferencesWindow.show()
     }
@@ -467,8 +471,16 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
         windowMenuItem.submenu = windowMenu
         mainMenu.addItem(windowMenuItem)
 
+        // Help menu
+        let helpMenuItem = NSMenuItem()
+        let helpMenu = NSMenu(title: "Help")
+        helpMenu.addItem(withTitle: "Awal Terminal Help", action: #selector(showHelpWindow(_:)), keyEquivalent: "?")
+        helpMenuItem.submenu = helpMenu
+        mainMenu.addItem(helpMenuItem)
+
         NSApplication.shared.mainMenu = mainMenu
         NSApplication.shared.windowsMenu = windowMenu
+        NSApplication.shared.helpMenu = helpMenu
 
         // Apply user-configured keybindings from TOML config
         applyKeybindings(mainMenu)

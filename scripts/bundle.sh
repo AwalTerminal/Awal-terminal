@@ -64,6 +64,12 @@ if [ -d "$FONTS_DIR" ]; then
     cp "$FONTS_DIR"/OFL.txt "$APP_DIR/Contents/Resources/Fonts/"
 fi
 
+# Copy documentation HTML
+DOC_HTML="$ROOT/docs/documentation.html"
+if [ -f "$DOC_HTML" ]; then
+    cp "$DOC_HTML" "$APP_DIR/Contents/Resources/documentation.html"
+fi
+
 # --- Write Info.plist with actual version -----------------------------------
 cat > "$APP_DIR/Contents/Info.plist" << PLIST
 <?xml version="1.0" encoding="UTF-8"?>
