@@ -242,6 +242,18 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
             return
         }
 
+        let tab = tabs[index]
+
+        // Handle worktree cleanup with prompt if dirty
+        cleanupWorktreeWithPrompt(for: tab) { [weak self] shouldClose in
+            guard let self, shouldClose else { return }
+            self.performCloseTab(at: index)
+        }
+    }
+
+    private func performCloseTab(at index: Int) {
+        guard index >= 0 && index < tabs.count else { return }
+
         let closingActiveTab = (index == activeTabIndex)
 
         if closingActiveTab {
@@ -405,6 +417,7 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         // Cleanup all tabs except the one being kept
         for (i, tab) in tabs.enumerated() where i != keepIndex {
             tab.splitContainer.cleanupAllTerminals()
+            cleanupWorktree(for: tab, force: false)
         }
         // Uninstall the currently displayed tab
         uninstallTab(activeTab)
@@ -491,6 +504,11 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
     // MARK: - Terminal Callback Wiring
 
     private func wireTerminalCallbacks(_ terminal: TerminalView, tab: TabState) {
+        terminal.onWorkspacePicked = { [weak self, weak tab] dir, completion in
+            guard let self, let tab else { completion(dir); return }
+            self.resolveWorktreeForTab(tab, dir: dir, completion: completion)
+        }
+
         terminal.onSessionChanged = { [weak self, weak terminal, weak tab] model, provider, cols, rows in
             guard let self, let terminal, let tab else { return }
             tab.hasSession = true
@@ -499,6 +517,9 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
             tab.statusBar.resetSession()
             tab.statusBar.update(model: model, provider: provider, cols: cols, rows: rows)
             tab.statusBar.setDangerMode(terminal.isDangerMode)
+            if let wt = tab.worktreeInfo, !wt.isOriginal {
+                tab.statusBar.setWorktreeIsolated(true)
+            }
             tab.aiSidePanel.setModel(model)
             tab.aiSidePanel.setDangerMode(terminal.isDangerMode)
             tab.aiSidePanel.resetSession()
@@ -585,6 +606,30 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
     }
 
     private func wireStatusBar(_ statusBar: StatusBarView, tab: TabState) {
+        statusBar.displayPathMapper = { [weak tab] cwd in
+            guard let info = tab?.worktreeInfo, !info.isOriginal else { return cwd }
+            // Map worktree path back to original repo path for display
+            let worktreeRoot = info.worktreePath
+            let repoRoot = info.repoRoot
+            if cwd.hasPrefix(worktreeRoot) {
+                let suffix = String(cwd.dropFirst(worktreeRoot.count))
+                return repoRoot + suffix
+            }
+            // Also handle the .git/awal-worktrees/tab-xxx base path
+            if cwd.contains("/.git/awal-worktrees/") {
+                // Extract relative path after the worktree dir
+                if let range = cwd.range(of: "/.git/awal-worktrees/") {
+                    let afterWorktree = cwd[range.upperBound...]
+                    // Skip the tab-uuid/ part
+                    if let slashIdx = afterWorktree.firstIndex(of: "/") {
+                        let relative = String(afterWorktree[afterWorktree.index(after: slashIdx)...])
+                        return relative.isEmpty ? repoRoot : "\(repoRoot)/\(relative)"
+                    }
+                    return repoRoot
+                }
+            }
+            return cwd
+        }
         statusBar.onFolderSelected = { [weak self] path in
             self?.switchFolder(to: path)
         }
@@ -623,6 +668,168 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         }
         reloadTabBar()
         updateWindowTitle()
+    }
+
+    // MARK: - Worktree Isolation
+
+    private func resolveWorktreeForTab(_ tab: TabState, dir: String, completion: @escaping (String) -> Void) {
+        guard AppConfig.shared.tabsWorktreeIsolation else {
+            completion(dir)
+            return
+        }
+
+        let manager = GitWorktreeManager.shared
+        guard let repoRoot = manager.resolveRepoRoot(for: dir) else {
+            // Not a git repo — proceed normally
+            completion(dir)
+            return
+        }
+
+        guard manager.isProjectAlreadyOpen(repoRoot: repoRoot) else {
+            // First tab for this repo — register and proceed with original dir
+            manager.registerOpen(repoRoot: repoRoot)
+            tab.worktreeInfo = WorktreeInfo(
+                repoRoot: repoRoot,
+                worktreePath: dir,
+                branchName: nil,
+                isOriginal: true
+            )
+            return completion(dir)
+        }
+
+        // Project already open — prompt the user
+        guard let window = self.window else {
+            completion(dir)
+            return
+        }
+
+        let defaultBranch = manager.resolveDefaultBranch(repoRoot: repoRoot)
+
+        let alert = NSAlert.branded()
+        alert.messageText = "This project is already open"
+        alert.informativeText = "This project is already open in another tab. Isolate with a git worktree?"
+        alert.addButton(withTitle: "From Current Branch")
+        if let defaultBranch = defaultBranch {
+            alert.addButton(withTitle: "From \(defaultBranch)")
+        }
+        alert.addButton(withTitle: "No")
+
+        alert.beginSheetModal(for: window) { response in
+            let noButton: NSApplication.ModalResponse = defaultBranch != nil
+                ? .alertThirdButtonReturn
+                : .alertSecondButtonReturn
+
+            if response == noButton {
+                // Declined — use shared directory
+                manager.registerOpen(repoRoot: repoRoot)
+                tab.worktreeInfo = WorktreeInfo(
+                    repoRoot: repoRoot,
+                    worktreePath: dir,
+                    branchName: nil,
+                    isOriginal: true
+                )
+                completion(dir)
+                return
+            }
+
+            // Determine start point
+            let startPoint: String? = (response == .alertSecondButtonReturn && defaultBranch != nil)
+                ? defaultBranch
+                : nil
+
+            // Create worktree
+            if let info = manager.createWorktree(repoRoot: repoRoot, subpath: dir, startPoint: startPoint) {
+                manager.registerOpen(repoRoot: repoRoot)
+                tab.worktreeInfo = info
+                completion(info.worktreePath)
+            } else {
+                // Worktree creation failed — fall back to shared dir
+                manager.registerOpen(repoRoot: repoRoot)
+                tab.worktreeInfo = WorktreeInfo(
+                    repoRoot: repoRoot,
+                    worktreePath: dir,
+                    branchName: nil,
+                    isOriginal: true
+                )
+                completion(dir)
+            }
+        }
+    }
+
+    private func cleanupWorktree(for tab: TabState, force: Bool = false) {
+        guard let info = tab.worktreeInfo, !info.isOriginal else {
+            if let info = tab.worktreeInfo {
+                GitWorktreeManager.shared.registerClose(repoRoot: info.repoRoot)
+            }
+            return
+        }
+
+        let manager = GitWorktreeManager.shared
+        if force {
+            manager.forceRemoveWorktree(info)
+        } else {
+            let result = manager.removeWorktree(info)
+            switch result {
+            case .kept:
+                // Worktree is dirty — leave it (user chose to keep or we're silently closing)
+                break
+            case .removed, .failed:
+                break
+            }
+        }
+        manager.registerClose(repoRoot: info.repoRoot)
+    }
+
+    private func cleanupWorktreeWithPrompt(for tab: TabState, completion: @escaping (Bool) -> Void) {
+        guard let info = tab.worktreeInfo, !info.isOriginal else {
+            if let info = tab.worktreeInfo {
+                GitWorktreeManager.shared.registerClose(repoRoot: info.repoRoot)
+            }
+            completion(true)
+            return
+        }
+
+        let manager = GitWorktreeManager.shared
+        let worktreeRoot = info.worktreePath
+
+        if !manager.isDirty(worktreeRoot) {
+            // Clean — silently remove
+            manager.forceRemoveWorktree(info)
+            manager.registerClose(repoRoot: info.repoRoot)
+            completion(true)
+            return
+        }
+
+        // Dirty — show dialog
+        guard let window = self.window else {
+            manager.registerClose(repoRoot: info.repoRoot)
+            completion(true)
+            return
+        }
+
+        let alert = NSAlert.branded()
+        alert.messageText = "Worktree has uncommitted changes"
+        alert.informativeText = "The worktree at \(info.branchName ?? worktreeRoot) has uncommitted changes."
+        alert.addButton(withTitle: "Keep Worktree")
+        alert.addButton(withTitle: "Discard Changes")
+        alert.addButton(withTitle: "Cancel")
+
+        alert.beginSheetModal(for: window) { response in
+            switch response {
+            case .alertFirstButtonReturn:
+                // Keep worktree
+                manager.registerClose(repoRoot: info.repoRoot)
+                completion(true)
+            case .alertSecondButtonReturn:
+                // Discard changes
+                manager.forceRemoveWorktree(info)
+                manager.registerClose(repoRoot: info.repoRoot)
+                completion(true)
+            default:
+                // Cancel
+                completion(false)
+            }
+        }
     }
 
     // MARK: - Split Actions
@@ -881,6 +1088,7 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         // Cleanup all tabs before window closes
         for tab in tabs {
             tab.splitContainer.cleanupAllTerminals()
+            cleanupWorktree(for: tab, force: false)
         }
         TerminalWindowTracker.shared.remove(self)
         if TerminalWindowTracker.shared.count == 0 {
