@@ -1,7 +1,7 @@
 use crate::io::pty::Pty;
 use crate::io::write_queue::WriteQueue;
 use crate::terminal::ai_analyzer::AiAnalyzer;
-use crate::terminal::cell::{CCell, CellAttrs, Color, default_palette};
+use crate::terminal::cell::{default_palette, CCell, CellAttrs, Color};
 use crate::terminal::parser::Parser;
 use crate::terminal::screen::Screen;
 use std::ffi::CString;
@@ -105,10 +105,19 @@ pub extern "C" fn at_surface_spawn_shell(
     let shell_str = if shell.is_null() {
         "/bin/zsh"
     } else {
-        unsafe { std::ffi::CStr::from_ptr(shell).to_str().unwrap_or("/bin/zsh") }
+        unsafe {
+            std::ffi::CStr::from_ptr(shell)
+                .to_str()
+                .unwrap_or("/bin/zsh")
+        }
     };
 
-    match Pty::spawn(shell_str, surface.screen.cols as u16, surface.screen.rows as u16, &[]) {
+    match Pty::spawn(
+        shell_str,
+        surface.screen.cols as u16,
+        surface.screen.rows as u16,
+        &[],
+    ) {
         Ok(pty) => {
             surface.pty = Some(pty);
             0
@@ -132,11 +141,21 @@ pub extern "C" fn at_surface_spawn_command(
     let shell_str = if shell.is_null() {
         "/bin/zsh"
     } else {
-        unsafe { std::ffi::CStr::from_ptr(shell).to_str().unwrap_or("/bin/zsh") }
+        unsafe {
+            std::ffi::CStr::from_ptr(shell)
+                .to_str()
+                .unwrap_or("/bin/zsh")
+        }
     };
     let cmd_str = unsafe { std::ffi::CStr::from_ptr(command).to_str().unwrap_or("") };
 
-    match Pty::spawn_with_command(shell_str, surface.screen.cols as u16, surface.screen.rows as u16, &[], cmd_str) {
+    match Pty::spawn_with_command(
+        shell_str,
+        surface.screen.cols as u16,
+        surface.screen.rows as u16,
+        &[],
+        cmd_str,
+    ) {
         Ok(pty) => {
             surface.pty = Some(pty);
             0
@@ -159,7 +178,10 @@ pub extern "C" fn at_surface_get_fd(surface: *const ATSurface) -> RawFd {
 #[no_mangle]
 pub extern "C" fn at_surface_get_child_pid(surface: *const ATSurface) -> i32 {
     let surface = ref_or!(surface, -1);
-    surface.pty.as_ref().map_or(-1, |pty| pty.child_pid.as_raw())
+    surface
+        .pty
+        .as_ref()
+        .map_or(-1, |pty| pty.child_pid.as_raw())
 }
 
 /// Read from the PTY and process VT sequences. Returns number of bytes read, 0 if nothing available, -1 on error.
@@ -173,7 +195,9 @@ pub extern "C" fn at_surface_process_pty(surface: *mut ATSurface) -> i32 {
 
     match pty.read(&mut surface.read_buf) {
         Ok(n) if n > 0 => {
-            let responses = surface.parser.process(&surface.read_buf[..n], &mut surface.screen);
+            let responses = surface
+                .parser
+                .process(&surface.read_buf[..n], &mut surface.screen);
             // Write any terminal responses (DSR, DA1, etc.) back to the PTY
             if let Some(pty) = &surface.pty {
                 for response in responses {
@@ -183,11 +207,9 @@ pub extern "C" fn at_surface_process_pty(surface: *mut ATSurface) -> i32 {
             // Run AI analyzer on updated screen content
             if surface.analyzer.is_enabled() {
                 let grid = surface.screen.active_grid();
-                surface.analyzer.analyze(
-                    &surface.screen.scrollback,
-                    &grid.cells,
-                    grid.rows,
-                );
+                surface
+                    .analyzer
+                    .analyze(&surface.screen.scrollback, &grid.cells, grid.rows);
             }
             n as i32
         }
@@ -199,11 +221,7 @@ pub extern "C" fn at_surface_process_pty(surface: *mut ATSurface) -> i32 {
 
 /// Send a key event (raw bytes) to the PTY.
 #[no_mangle]
-pub extern "C" fn at_surface_key_event(
-    surface: *mut ATSurface,
-    data: *const u8,
-    len: u32,
-) -> i32 {
+pub extern "C" fn at_surface_key_event(surface: *mut ATSurface, data: *const u8, len: u32) -> i32 {
     let surface = mut_ref_or!(surface, -1);
     if data.is_null() || len == 0 {
         return -1;
@@ -257,11 +275,7 @@ pub extern "C" fn at_surface_has_pending_writes(surface: *const ATSurface) -> bo
 
 /// Get the screen dimensions.
 #[no_mangle]
-pub extern "C" fn at_surface_get_size(
-    surface: *const ATSurface,
-    cols: *mut u32,
-    rows: *mut u32,
-) {
+pub extern "C" fn at_surface_get_size(surface: *const ATSurface, cols: *mut u32, rows: *mut u32) {
     let surface = ref_or!(surface);
     unsafe {
         *cols = surface.screen.cols as u32;
@@ -313,8 +327,10 @@ pub extern "C" fn at_surface_read_cells(
             let has_inverse = cell.attrs.contains(CellAttrs::INVERSE);
             let has_hidden = cell.attrs.contains(CellAttrs::HIDDEN);
 
-            let (mut fg_r, mut fg_g, mut fg_b) = cell.fg.to_rgb_with_default(palette, surface.default_fg);
-            let (mut bg_r, mut bg_g, mut bg_b) = cell.bg.to_rgb_with_default(palette, surface.default_bg);
+            let (mut fg_r, mut fg_g, mut fg_b) =
+                cell.fg.to_rgb_with_default(palette, surface.default_fg);
+            let (mut bg_r, mut bg_g, mut bg_b) =
+                cell.bg.to_rgb_with_default(palette, surface.default_bg);
 
             if has_inverse {
                 std::mem::swap(&mut fg_r, &mut bg_r);
@@ -332,7 +348,7 @@ pub extern "C" fn at_surface_read_cells(
             // If fg is too close to bg (e.g. ANSI black on dark terminal bg),
             // bump fg to a readable gray. Only affects fg, not bg.
             {
-                let fg_luma = fg_r as i16 * 3 + fg_g as i16 * 6 + fg_b as i16;  // weighted ~10x
+                let fg_luma = fg_r as i16 * 3 + fg_g as i16 * 6 + fg_b as i16; // weighted ~10x
                 let bg_luma = bg_r as i16 * 3 + bg_g as i16 * 6 + bg_b as i16;
                 if (fg_luma - bg_luma).unsigned_abs() < 100 && !has_hidden {
                     if bg_luma < 1280 {
@@ -349,7 +365,11 @@ pub extern "C" fn at_surface_read_cells(
                 }
             }
 
-            let fg_a: u8 = if cell.attrs.contains(CellAttrs::DIM) { 128 } else { 255 };
+            let fg_a: u8 = if cell.attrs.contains(CellAttrs::DIM) {
+                128
+            } else {
+                255
+            };
 
             // Selection highlight: compute absolute row for selection check
             let abs_row = if screen.viewport_offset == 0 || screen.modes.alternate_screen {
@@ -432,11 +452,7 @@ pub extern "C" fn at_surface_is_synchronized(surface: *const ATSurface) -> bool 
 /// Feed raw bytes directly into the VT parser (no PTY needed).
 /// Used for rendering TUI menus before a shell is spawned.
 #[no_mangle]
-pub extern "C" fn at_surface_feed_bytes(
-    surface: *mut ATSurface,
-    data: *const u8,
-    len: u32,
-) {
+pub extern "C" fn at_surface_feed_bytes(surface: *mut ATSurface, data: *const u8, len: u32) {
     let surface = mut_ref_or!(surface);
     if data.is_null() || len == 0 {
         return;
@@ -455,7 +471,13 @@ pub extern "C" fn at_init_logging() {
 
 /// Set a palette color (index 0-255) to an RGB value.
 #[no_mangle]
-pub extern "C" fn at_surface_set_palette_color(surface: *mut ATSurface, index: u8, r: u8, g: u8, b: u8) {
+pub extern "C" fn at_surface_set_palette_color(
+    surface: *mut ATSurface,
+    index: u8,
+    r: u8,
+    g: u8,
+    b: u8,
+) {
     let surface = mut_ref_or!(surface);
     surface.palette[index as usize] = Color::Rgb(r, g, b);
 }
@@ -640,7 +662,9 @@ pub extern "C" fn at_surface_get_hyperlink(
         let abs_row = viewport_start + row;
         if abs_row < scrollback_len {
             // Reading from scrollback (absolute key = base + deque index)
-            screen.scrollback_hyperlinks.get(&(screen.scrollback_hyperlink_base + abs_row, col))
+            screen
+                .scrollback_hyperlinks
+                .get(&(screen.scrollback_hyperlink_base + abs_row, col))
         } else {
             // Reading from active grid
             let grid_row = abs_row - scrollback_len;
@@ -700,7 +724,7 @@ pub struct COutputRegion {
     pub start_row: i32,
     pub end_row: i32,
     pub region_type: u8,
-    pub collapsed: u8,  // 0 = expanded, 1 = collapsed
+    pub collapsed: u8, // 0 = expanded, 1 = collapsed
     pub line_count: u32,
     pub label: *mut c_char,
 }
@@ -806,10 +830,7 @@ pub extern "C" fn at_surface_get_region_summary(
 /// Get a file reference by index from the region summary.
 /// Returns a C string that must be freed with `at_free_string`.
 #[no_mangle]
-pub extern "C" fn at_surface_get_file_ref(
-    surface: *const ATSurface,
-    index: u32,
-) -> *mut c_char {
+pub extern "C" fn at_surface_get_file_ref(surface: *const ATSurface, index: u32) -> *mut c_char {
     let surface = ref_or!(surface, std::ptr::null_mut());
     let summary = surface.analyzer.region_summary();
     let idx = index as usize;
@@ -828,10 +849,8 @@ pub extern "C" fn at_surface_analyze(surface: *mut ATSurface) {
     let surface = mut_ref_or!(surface);
     if surface.analyzer.is_enabled() {
         let grid = surface.screen.active_grid();
-        surface.analyzer.analyze(
-            &surface.screen.scrollback,
-            &grid.cells,
-            grid.rows,
-        );
+        surface
+            .analyzer
+            .analyze(&surface.screen.scrollback, &grid.cells, grid.rows);
     }
 }

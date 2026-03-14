@@ -41,7 +41,10 @@ impl WriteQueue {
                 continue;
             }
 
-            match nix::unistd::write(unsafe { std::os::fd::BorrowedFd::borrow_raw(fd) }, remaining) {
+            match nix::unistd::write(
+                unsafe { std::os::fd::BorrowedFd::borrow_raw(fd) },
+                remaining,
+            ) {
                 Ok(n) => {
                     total += n as i32;
                     self.offset += n;

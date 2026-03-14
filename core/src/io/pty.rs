@@ -161,9 +161,7 @@ impl Pty {
             ws_ypixel: 0,
         };
         let fd = self.master.as_raw_fd();
-        let result = unsafe {
-            libc::ioctl(fd, libc::TIOCSWINSZ as _, &winsize as *const Winsize)
-        };
+        let result = unsafe { libc::ioctl(fd, libc::TIOCSWINSZ as _, &winsize as *const Winsize) };
         if result == -1 {
             Err(nix::Error::last())
         } else {

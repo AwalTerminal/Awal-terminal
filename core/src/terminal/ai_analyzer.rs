@@ -6,33 +6,44 @@ use std::collections::VecDeque;
 #[repr(u8)]
 pub enum RegionType {
     Normal = 0,
-    ToolUse = 1,      // Tool invocation header (Read, Write, Edit, Bash, etc.)
-    ToolOutput = 2,   // Output from a tool
-    CodeBlock = 3,    // Fenced code block (```)
-    Thinking = 4,     // Thinking/reasoning block
-    Prompt = 5,       // AI prompt line (❯)
-    CostSummary = 6,  // Token/cost info line
-    Diff = 7,         // Diff output (+/- lines)
-    Separator = 8,    // Visual separator (─── lines)
+    ToolUse = 1,     // Tool invocation header (Read, Write, Edit, Bash, etc.)
+    ToolOutput = 2,  // Output from a tool
+    CodeBlock = 3,   // Fenced code block (```)
+    Thinking = 4,    // Thinking/reasoning block
+    Prompt = 5,      // AI prompt line (❯)
+    CostSummary = 6, // Token/cost info line
+    Diff = 7,        // Diff output (+/- lines)
+    Separator = 8,   // Visual separator (─── lines)
 }
 
 /// A detected region in the terminal output.
 #[derive(Clone, Debug)]
 pub struct OutputRegion {
-    pub start_row: i64,       // absolute row (negative = scrollback)
+    pub start_row: i64, // absolute row (negative = scrollback)
     pub end_row: i64,
     pub region_type: RegionType,
     pub collapsed: bool,
-    pub label: String,        // e.g., "Read(src/main.rs)" or "```python"
-    pub line_count: usize,    // number of lines in this region
+    pub label: String,     // e.g., "Read(src/main.rs)" or "```python"
+    pub line_count: usize, // number of lines in this region
 }
 
 /// Known tool names used by Claude Code.
 const TOOL_NAMES: &[&str] = &[
-    "Read", "Write", "Edit", "Bash", "Glob", "Grep",
-    "Agent", "WebFetch", "WebSearch", "LSP",
-    "TodoRead", "TodoWrite", "AskUser",
-    "NotebookEdit", "MultiEdit",
+    "Read",
+    "Write",
+    "Edit",
+    "Bash",
+    "Glob",
+    "Grep",
+    "Agent",
+    "WebFetch",
+    "WebSearch",
+    "LSP",
+    "TodoRead",
+    "TodoWrite",
+    "AskUser",
+    "NotebookEdit",
+    "MultiEdit",
 ];
 
 /// AI Output Analyzer — detects Claude Code patterns in terminal cell rows.
@@ -338,9 +349,7 @@ impl AiAnalyzer {
         // Claude Code tool headers contain tool names
         for name in TOOL_NAMES {
             // Pattern: "⏺ ToolName(" or "ToolName:" or "── ToolName"
-            if text.contains(&format!("{}(", name))
-                || text.contains(&format!("{} (", name))
-            {
+            if text.contains(&format!("{}(", name)) || text.contains(&format!("{} (", name)) {
                 return true;
             }
         }
@@ -390,9 +399,7 @@ impl AiAnalyzer {
     }
 
     fn is_prompt_line(&self, text: &str) -> bool {
-        text.starts_with('❯')
-            || text.ends_with(" ❯")
-            || (text.starts_with("> ") && text.len() < 4)
+        text.starts_with('❯') || text.ends_with(" ❯") || (text.starts_with("> ") && text.len() < 4)
     }
 
     fn is_cost_line(&self, text: &str) -> bool {
@@ -427,7 +434,8 @@ impl AiAnalyzer {
             return false;
         }
         // All dashes, all box-drawing horizontal, or all equals
-        text.chars().all(|c| c == '─' || c == '━' || c == '═' || c == '-' || c == '=')
+        text.chars()
+            .all(|c| c == '─' || c == '━' || c == '═' || c == '-' || c == '=')
     }
 
     /// Extract text content from a row of cells.
@@ -482,16 +490,18 @@ impl AiAnalyzer {
         // Look for patterns like: Read(file_path) or Edit(file_path, ...)
         if let Some(paren_start) = label.find('(') {
             let inner = &label[paren_start + 1..];
-            let end = inner.find(|c: char| c == ')' || c == ',').unwrap_or(inner.len());
+            let end = inner
+                .find(|c: char| c == ')' || c == ',')
+                .unwrap_or(inner.len());
             let mut path = inner[..end].trim().trim_matches('"').trim_matches('\'');
             // Strip parameter name prefix like "file_path: " or "path: "
             if let Some(colon_pos) = path.find(':') {
-                path = path[colon_pos + 1..].trim().trim_matches('"').trim_matches('\'');
+                path = path[colon_pos + 1..]
+                    .trim()
+                    .trim_matches('"')
+                    .trim_matches('\'');
             }
-            if !path.is_empty()
-                && path != "null"
-                && (path.contains('/') || path.contains('.'))
-            {
+            if !path.is_empty() && path != "null" && (path.contains('/') || path.contains('.')) {
                 return Some(path.to_string());
             }
         }

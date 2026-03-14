@@ -37,11 +37,11 @@ impl<'a> vte::Perform for ScreenPerformer<'a> {
 
     fn execute(&mut self, byte: u8) {
         match byte {
-            0x08 => self.screen.backspace(),            // BS
+            0x08 => self.screen.backspace(),             // BS
             0x09 => self.screen.tab(),                   // HT
             0x0A | 0x0B | 0x0C => self.screen.newline(), // LF, VT, FF
             0x0D => self.screen.carriage_return(),       // CR
-            0x07 => {}                                    // BEL — ignore for now
+            0x07 => {}                                   // BEL — ignore for now
             _ => {}
         }
     }
@@ -137,13 +137,11 @@ impl<'a> vte::Perform for ScreenPerformer<'a> {
             }
             'B' => {
                 let n = params.first().copied().unwrap_or(1).max(1) as usize;
-                self.screen.cursor.row =
-                    (self.screen.cursor.row + n).min(self.screen.rows - 1);
+                self.screen.cursor.row = (self.screen.cursor.row + n).min(self.screen.rows - 1);
             }
             'C' => {
                 let n = params.first().copied().unwrap_or(1).max(1) as usize;
-                self.screen.cursor.col =
-                    (self.screen.cursor.col + n).min(self.screen.cols - 1);
+                self.screen.cursor.col = (self.screen.cursor.col + n).min(self.screen.cols - 1);
             }
             'D' => {
                 let n = params.first().copied().unwrap_or(1).max(1) as usize;
@@ -151,8 +149,7 @@ impl<'a> vte::Perform for ScreenPerformer<'a> {
             }
             'E' => {
                 let n = params.first().copied().unwrap_or(1).max(1) as usize;
-                self.screen.cursor.row =
-                    (self.screen.cursor.row + n).min(self.screen.rows - 1);
+                self.screen.cursor.row = (self.screen.cursor.row + n).min(self.screen.rows - 1);
                 self.screen.cursor.col = 0;
             }
             'F' => {
@@ -359,8 +356,7 @@ impl<'a> ScreenPerformer<'a> {
                         match params[i + 1] {
                             5 => {
                                 if i + 2 < params.len() {
-                                    self.screen.cursor.fg =
-                                        Color::Indexed(params[i + 2] as u8);
+                                    self.screen.cursor.fg = Color::Indexed(params[i + 2] as u8);
                                     i += 2;
                                 }
                             }
@@ -387,8 +383,7 @@ impl<'a> ScreenPerformer<'a> {
                         match params[i + 1] {
                             5 => {
                                 if i + 2 < params.len() {
-                                    self.screen.cursor.bg =
-                                        Color::Indexed(params[i + 2] as u8);
+                                    self.screen.cursor.bg = Color::Indexed(params[i + 2] as u8);
                                     i += 2;
                                 }
                             }
