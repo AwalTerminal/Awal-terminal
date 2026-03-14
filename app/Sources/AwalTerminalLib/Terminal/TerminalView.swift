@@ -72,6 +72,11 @@ class TerminalView: NSView {
     var onCopied: (() -> Void)?
     var onGeneratingChanged: ((_ isGenerating: Bool) -> Void)?
 
+    /// Called before launching a session to allow the controller to resolve the working directory
+    /// (e.g., creating a git worktree for tab isolation). The callback receives the chosen directory
+    /// and must call the completion with the resolved directory to use.
+    var onWorkspacePicked: ((_ dir: String, _ completion: @escaping (String) -> Void) -> Void)?
+
     // Deferred launch for new panes (set before adding to window)
     var pendingLaunchModel: MenuItem?
     var pendingLaunchDir: String?
@@ -511,7 +516,7 @@ class TerminalView: NSView {
 
         switch menuPhase {
         case .main:
-            let recents = WorkspaceStore.shared.recents()
+            let recents = WorkspaceStore.shared.recents().filter { !$0.path.contains("/.git/awal-worktrees/") }
             if !recents.isEmpty {
                 menuEntries.append(.sectionHeader("Recent Workspaces"))
                 for ws in recents {
@@ -1012,6 +1017,18 @@ class TerminalView: NSView {
     private(set) var isDangerMode: Bool = false
 
     private func launchSession(model: MenuItem, workingDir: String?, commandOverride: String? = nil, dangerMode: Bool = false) {
+        // If a workspace resolution callback is set and we have a working dir, let the controller
+        // resolve the directory first (e.g., to create a git worktree for isolation).
+        if let dir = workingDir, let callback = onWorkspacePicked {
+            callback(dir) { [weak self] resolvedDir in
+                self?.launchSessionDirect(model: model, workingDir: resolvedDir, commandOverride: commandOverride, dangerMode: dangerMode)
+            }
+            return
+        }
+        launchSessionDirect(model: model, workingDir: workingDir, commandOverride: commandOverride, dangerMode: dangerMode)
+    }
+
+    private func launchSessionDirect(model: MenuItem, workingDir: String?, commandOverride: String? = nil, dangerMode: Bool = false) {
         guard let s = surface else { return }
 
         activeModelName = model.name
@@ -1035,8 +1052,8 @@ class TerminalView: NSView {
 
         recalculateGridSize()
 
-        // Save workspace
-        if let dir = workingDir {
+        // Save workspace (skip worktree paths to avoid polluting recent list)
+        if let dir = workingDir, !dir.contains("/.git/awal-worktrees/") {
             WorkspaceStore.shared.save(path: dir, model: model.name)
         }
 

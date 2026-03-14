@@ -8,6 +8,7 @@ class TabState {
     var tabColor: NSColor?
     var hasSession = false
     var isDangerMode = false
+    var worktreeInfo: WorktreeInfo?
     /// Set when the user manually closes the AI side panel; prevents auto-reopen.
     var userClosedAIPanel = false
 
@@ -19,6 +20,9 @@ class TabState {
         let model = statusBar.currentModelName.isEmpty ? "Shell" : statusBar.currentModelName
         if let path = statusBar.currentPath {
             let folder = (path as NSString).lastPathComponent
+            if let wt = worktreeInfo, !wt.isOriginal, let branch = wt.branchName {
+                return "\(model) — \(folder) [\(branch)]"
+            }
             return "\(model) — \(folder)"
         }
         return model

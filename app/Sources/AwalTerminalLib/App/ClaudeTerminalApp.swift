@@ -75,6 +75,9 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
             VoiceInputController.shared.stop()
         }
 
+        // Clean up orphaned worktrees from crashed sessions
+        GitWorktreeManager.shared.pruneOrphaned()
+
         let controller = TerminalWindowController(isInitialTab: true)
         TerminalWindowTracker.shared.register(controller)
         controller.showWindow(nil)

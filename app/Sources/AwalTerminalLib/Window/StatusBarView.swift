@@ -11,6 +11,9 @@ class StatusBarView: NSView {
     var onPathChanged: (() -> Void)?
     var onGitStatusChanged: ((_ changes: [GitFileChange]) -> Void)?
 
+    /// Maps the raw cwd to a display path (e.g., translating worktree paths back to repo root).
+    var displayPathMapper: ((_ cwd: String) -> String)?
+
     private(set) var currentModelName: String = ""
 
     // Left: model | Center-left: path + git | Center-right: dimensions | Right: time
@@ -27,6 +30,17 @@ class StatusBarView: NSView {
         return btn
     }()
     private let gitLabel = NSTextField(labelWithString: "")
+    private let worktreeBadge: NSTextField = {
+        let label = NSTextField(labelWithString: "worktree")
+        label.font = NSFont.monospacedSystemFont(ofSize: 11.0, weight: .regular)
+        label.textColor = NSColor(white: 0.45, alpha: 1.0)
+        label.drawsBackground = false
+        label.isBordered = false
+        label.isEditable = false
+        label.isHidden = true
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
     private let aiComponentLabel: VoiceClickLabel = {
         let label = VoiceClickLabel(labelWithString: "")
         label.isEditable = false
@@ -200,6 +214,8 @@ class StatusBarView: NSView {
 
         gitLabel.textColor = branchColor
 
+        addSubview(worktreeBadge)
+
         // AI component indicator (between git and dims)
         aiComponentLabel.font = monoFont
         aiComponentLabel.textColor = NSColor(red: 100.0/255.0, green: 200.0/255.0, blue: 160.0/255.0, alpha: 1.0)
@@ -266,8 +282,12 @@ class StatusBarView: NSView {
             pathButton.centerYAnchor.constraint(equalTo: centerYAnchor),
             pathButton.widthAnchor.constraint(lessThanOrEqualToConstant: 300),
 
-            // Git (right after path)
-            gitLabel.leadingAnchor.constraint(equalTo: pathButton.trailingAnchor, constant: 8),
+            // Worktree badge (right after path)
+            worktreeBadge.leadingAnchor.constraint(equalTo: pathButton.trailingAnchor, constant: 6),
+            worktreeBadge.centerYAnchor.constraint(equalTo: centerYAnchor),
+
+            // Git (right after worktree badge)
+            gitLabel.leadingAnchor.constraint(equalTo: worktreeBadge.trailingAnchor, constant: 8),
             gitLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
 
             // AI component indicator (right after git)
@@ -368,7 +388,7 @@ class StatusBarView: NSView {
     @objc private func pathClicked(_ sender: NSButton) {
         let menu = NSMenu()
 
-        let recents = WorkspaceStore.shared.recents()
+        let recents = WorkspaceStore.shared.recents().filter { !$0.path.contains("/.git/awal-worktrees/") }
         for ws in recents {
             let title = "\(shortenPath(ws.path)) — \(ws.lastModel)"
             let item = NSMenuItem(title: title, action: #selector(recentFolderSelected(_:)), keyEquivalent: "")
@@ -432,8 +452,9 @@ class StatusBarView: NSView {
 
             DispatchQueue.main.async {
                 let oldPath = self?.currentPath
-                self?.currentPath = cwd.isEmpty ? nil : cwd
-                self?.pathButton.title = self?.shortenPath(cwd) ?? ""
+                let displayCwd = self?.displayPathMapper?(cwd) ?? cwd
+                self?.currentPath = displayCwd.isEmpty ? nil : displayCwd
+                self?.pathButton.title = self?.shortenPath(displayCwd) ?? ""
                 self?.gitLabel.stringValue = gitResult.label
                 self?.tokensLabel.stringValue = tokenDisplay
                 self?.updateCPULabel(cpuUsage)
@@ -789,6 +810,10 @@ class StatusBarView: NSView {
         dangerBadge.isHidden = !enabled
         generatingLeadingToBadge.isActive = enabled
         generatingLeadingToModel.isActive = !enabled
+    }
+
+    func setWorktreeIsolated(_ isolated: Bool) {
+        worktreeBadge.isHidden = !isolated
     }
 
     func setGenerating(_ generating: Bool) {

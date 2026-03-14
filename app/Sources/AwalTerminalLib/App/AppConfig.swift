@@ -61,6 +61,8 @@ struct AppConfig {
     var tabsRandomColors: Bool = false
     var tabsRandomColorPalette: [NSColor] = []
     var tabsConfirmClose: Bool = false
+    var tabsWorktreeIsolation: Bool = true
+    var tabsWorktreeBranchPrefix: String = "awal/tab"
     var quitConfirmClose: Bool = true
 
     // AI Components
@@ -182,6 +184,8 @@ struct AppConfig {
         // Tabs
         if let v = parsed["tabs.random_colors"] { config.tabsRandomColors = v == "true" }
         if let v = parsed["tabs.confirm_close"] { config.tabsConfirmClose = v == "true" }
+        if let v = parsed["tabs.worktree_isolation"] { config.tabsWorktreeIsolation = v == "true" }
+        if let v = parsed["tabs.worktree_branch_prefix"] { config.tabsWorktreeBranchPrefix = v }
         if let v = parsed["quit.confirm_close"] { config.quitConfirmClose = v == "true" }
         if let v = parsed["tabs.random_color_palette"] {
             config.tabsRandomColorPalette = v.split(separator: ",")
