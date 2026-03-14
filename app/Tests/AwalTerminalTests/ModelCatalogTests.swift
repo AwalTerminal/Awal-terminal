@@ -152,17 +152,3 @@ final class ModelCatalogTests: XCTestCase {
     }
 }
 
-// AIComponentInjectionStrategy needs Equatable for test assertions
-extension AIComponentInjectionStrategy: @retroactive Equatable {
-    public static func == (lhs: AIComponentInjectionStrategy, rhs: AIComponentInjectionStrategy) -> Bool {
-        switch (lhs, rhs) {
-        case (.claudePlugin, .claudePlugin),
-             (.systemInstruction, .systemInstruction),
-             (.instructionsFlag, .instructionsFlag),
-             (.none, .none):
-            return true
-        default:
-            return false
-        }
-    }
-}

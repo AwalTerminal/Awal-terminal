@@ -166,7 +166,7 @@ final class VoiceCommandParserTests: XCTestCase {
 
 // MARK: - VoiceAction Equatable conformance for testing
 
-extension VoiceAction: @retroactive Equatable {
+extension VoiceAction: Equatable {
     public static func == (lhs: VoiceAction, rhs: VoiceAction) -> Bool {
         switch (lhs, rhs) {
         case (.scrollUp, .scrollUp),
