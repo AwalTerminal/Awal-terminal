@@ -915,8 +915,21 @@ extension AIComponentsManagerWindow: NSTableViewDataSource, NSTableViewDelegate 
         case "comp_enabled":
             let checkbox = NSButton(checkboxWithTitle: "", target: self, action: #selector(componentToggled(_:)))
             checkbox.tag = row
-            let isDisabled = AppConfig.shared.aiComponentsDisabled.contains(item.key)
-            checkbox.state = isDisabled ? .off : .on
+            // For hooks with approval enabled, checkbox reflects approval status
+            let isHookTab = {
+                let idx = self.segmentedControl.selectedSegment
+                return idx >= 0 && idx < self.tabTypes.count && self.tabTypes[idx] == .hook
+            }()
+            if isHookTab, AppConfig.shared.aiComponentsRequireHookApproval {
+                if let url = resolveHookURL(key: item.key) {
+                    checkbox.state = HookApprovalStore.shared.isApproved(key: item.key, fileURL: url) ? .on : .off
+                } else {
+                    checkbox.state = .off
+                }
+            } else {
+                let isDisabled = AppConfig.shared.aiComponentsDisabled.contains(item.key)
+                checkbox.state = isDisabled ? .off : .on
+            }
             return checkbox
 
         case "comp_name":
@@ -927,7 +940,20 @@ extension AIComponentsManagerWindow: NSTableViewDataSource, NSTableViewDelegate 
             let hasFindings = RegistryManager.shared.scanResults.values
                 .flatMap { $0 }
                 .contains { $0.componentKey == item.key }
-            if hasFindings {
+            // Show hook approval indicator
+            let isHookTab = {
+                let idx = segmentedControl.selectedSegment
+                return idx >= 0 && idx < tabTypes.count && tabTypes[idx] == .hook
+            }()
+            if isHookTab, AppConfig.shared.aiComponentsRequireHookApproval {
+                if let url = resolveHookURL(key: item.key) {
+                    let approved = HookApprovalStore.shared.isApproved(key: item.key, fileURL: url)
+                    let dot = approved ? "\u{1F7E2} " : "\u{1F7E0} "
+                    cell.stringValue = dot + item.name
+                } else {
+                    cell.stringValue = "\u{1F7E0} " + item.name
+                }
+            } else if hasFindings {
                 let hasCritical = RegistryManager.shared.scanResults.values
                     .flatMap { $0 }
                     .contains { $0.componentKey == item.key && $0.severity == .critical }
@@ -960,18 +986,81 @@ extension AIComponentsManagerWindow: NSTableViewDataSource, NSTableViewDelegate 
     @objc private func componentToggled(_ sender: NSButton) {
         let row = sender.tag
         guard row < currentTabItems.count else { return }
-        let key = currentTabItems[row].key
+        let item = currentTabItems[row]
+
+        // Hook approval flow: toggling ON an unapproved hook shows a confirmation alert
+        let isHookTab = {
+            let idx = self.segmentedControl.selectedSegment
+            return idx >= 0 && idx < self.tabTypes.count && self.tabTypes[idx] == .hook
+        }()
+
+        if isHookTab, AppConfig.shared.aiComponentsRequireHookApproval {
+            if sender.state == .on {
+                // Approve: show the script contents for review
+                if let url = resolveHookURL(key: item.key),
+                   let contents = try? String(contentsOf: url, encoding: .utf8) {
+                    let alert = NSAlert()
+                    alert.messageText = "Approve hook script?"
+                    alert.informativeText = "Review the script before approving:\n\n\(contents.prefix(2000))"
+                    alert.alertStyle = .warning
+                    alert.addButton(withTitle: "Approve")
+                    alert.addButton(withTitle: "Cancel")
+                    let response = alert.runModal()
+                    if response == .alertFirstButtonReturn {
+                        HookApprovalStore.shared.approve(key: item.key, fileURL: url)
+                    } else {
+                        sender.state = .off
+                    }
+                } else {
+                    sender.state = .off
+                }
+            } else {
+                // Revoke approval
+                HookApprovalStore.shared.revoke(key: item.key)
+            }
+            componentTableView.reloadData()
+            return
+        }
 
         var disabled = AppConfig.shared.aiComponentsDisabled
         if sender.state == .off {
-            disabled.insert(key)
+            disabled.insert(item.key)
         } else {
-            disabled.remove(key)
+            disabled.remove(item.key)
         }
 
         let value = disabled.sorted().joined(separator: ",")
         ConfigWriter.updateValue(key: "ai_components.disabled", value: "\"\(value)\"")
         AppConfig.reload()
+    }
+
+    /// Resolve a hook component key to its file URL on disk.
+    /// Key format: `registryName/stack/hook/subdir/scriptName`
+    private func resolveHookURL(key: String) -> URL? {
+        let parts = key.split(separator: "/", maxSplits: 3)
+        guard parts.count == 4 else { return nil }
+        let registryName = String(parts[0])
+        let stack = String(parts[1])
+        // parts[2] == "hook"
+        let hookPath = String(parts[3]) // e.g. "pre-session/myscript"
+
+        let regPath = RegistryManager.shared.registryPath(name: registryName)
+        let stackPrefix = stack == "common" ? "common" : "stacks/\(stack)"
+        let baseDir = regPath.appendingPathComponent("\(stackPrefix)/hooks")
+
+        // Try common script extensions
+        for ext in ["sh", "bash", "zsh", "py", "rb"] {
+            let candidate = baseDir.appendingPathComponent("\(hookPath).\(ext)")
+            if FileManager.default.fileExists(atPath: candidate.path) {
+                return candidate
+            }
+        }
+        // Try without extension
+        let noExt = baseDir.appendingPathComponent(hookPath)
+        if FileManager.default.fileExists(atPath: noExt.path) {
+            return noExt
+        }
+        return nil
     }
 }
 

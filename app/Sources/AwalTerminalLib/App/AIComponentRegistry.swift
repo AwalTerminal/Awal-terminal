@@ -289,11 +289,11 @@ class AIComponentRegistry {
         registries: [RegistryConfig],
         disabledComponents: Set<String> = [],
         blockedComponents: Set<String> = []
-    ) -> (preSession: [URL], postSession: [URL], beforeCommit: [URL]) {
+    ) -> (preSession: [(key: String, url: URL)], postSession: [(key: String, url: URL)], beforeCommit: [(key: String, url: URL)]) {
         let skip = disabledComponents.union(blockedComponents)
-        var pre: [URL] = []
-        var post: [URL] = []
-        var commit: [URL] = []
+        var pre: [(key: String, url: URL)] = []
+        var post: [(key: String, url: URL)] = []
+        var commit: [(key: String, url: URL)] = []
 
         for reg in registries {
             let regPath = RegistryManager.shared.registryPath(name: reg.name)
@@ -310,9 +310,9 @@ class AIComponentRegistry {
                         let key = "\(reg.name)/\(stack)/hook/\(name)"
                         if !skip.contains(key) {
                             switch subdir {
-                            case "pre-session": pre.append(url)
-                            case "post-session": post.append(url)
-                            case "before-commit": commit.append(url)
+                            case "pre-session": pre.append((key: key, url: url))
+                            case "post-session": post.append((key: key, url: url))
+                            case "before-commit": commit.append((key: key, url: url))
                             default: break
                             }
                         }

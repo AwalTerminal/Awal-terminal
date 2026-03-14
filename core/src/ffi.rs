@@ -147,7 +147,11 @@ pub extern "C" fn at_surface_spawn_command(
                 .unwrap_or("/bin/zsh")
         }
     };
-    let cmd_str = unsafe { std::ffi::CStr::from_ptr(command).to_str().unwrap_or("") };
+    let cmd_str = if command.is_null() {
+        ""
+    } else {
+        unsafe { std::ffi::CStr::from_ptr(command).to_str().unwrap_or("") }
+    };
 
     match Pty::spawn_with_command(
         shell_str,

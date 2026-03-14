@@ -67,10 +67,35 @@ enum AIComponentInjector {
         }
 
         // Collect hooks for all models
-        let hooks = AIComponentRegistry.shared.collectHooks(
+        let rawHooks = AIComponentRegistry.shared.collectHooks(
             stacks: stacks, registries: registries,
             disabledComponents: disabledComponents, blockedComponents: blockedComponents
         )
+
+        // Filter hooks through approval store when enabled
+        let hooks: (preSession: [URL], postSession: [URL], beforeCommit: [URL])
+        if config.aiComponentsRequireHookApproval {
+            let store = HookApprovalStore.shared
+            let pre = store.filterApproved(hooks: rawHooks.preSession)
+            let post = store.filterApproved(hooks: rawHooks.postSession)
+            let commit = store.filterApproved(hooks: rawHooks.beforeCommit)
+            hooks = (pre.approved, post.approved, commit.approved)
+
+            let allUnapproved = pre.unapproved + post.unapproved + commit.unapproved
+            if !allUnapproved.isEmpty {
+                NotificationCenter.default.post(
+                    name: HookApprovalStore.unapprovedHooksDetectedNotification,
+                    object: nil,
+                    userInfo: ["hooks": allUnapproved]
+                )
+            }
+        } else {
+            hooks = (
+                rawHooks.preSession.map(\.url),
+                rawHooks.postSession.map(\.url),
+                rawHooks.beforeCommit.map(\.url)
+            )
+        }
 
         // Choose injection strategy based on model
         let result: AIComponentContext?

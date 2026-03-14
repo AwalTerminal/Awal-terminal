@@ -74,6 +74,7 @@ struct AppConfig {
     var aiComponentsDisabled: Set<String> = []
     var aiComponentsSecurityScan: Bool = true
     var aiComponentsBlockCritical: Bool = true
+    var aiComponentsRequireHookApproval: Bool = true
 
     // Danger Mode (skip AI tool confirmation prompts)
     var dangerModeEnabled: Bool = false
@@ -206,6 +207,7 @@ struct AppConfig {
         // Security scanning
         if let v = parsed["ai_components.security_scan"] { config.aiComponentsSecurityScan = v == "true" }
         if let v = parsed["ai_components.block_critical"] { config.aiComponentsBlockCritical = v == "true" }
+        if let v = parsed["ai_components.require_hook_approval"] { config.aiComponentsRequireHookApproval = v == "true" }
 
         // Export settings
         if let v = parsed["ai_components.export.enabled"] { config.aiComponentsExportEnabled = v == "true" }
