@@ -86,6 +86,21 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         reloadTabBar()
 
         wireVoiceCallbacks()
+
+        // Observe AI component sync changes
+        componentObserver = NotificationCenter.default.addObserver(
+            forName: RegistryManager.componentsDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            self?.handleComponentsDidChange(notification)
+        }
+    }
+
+    deinit {
+        if let observer = componentObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
     }
 
     required init?(coder: NSCoder) {
@@ -519,6 +534,11 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
                     components: components
                 )
                 tab.aiSidePanel.setAIComponentDetails(components)
+                // Snapshot for sync change detection (captures state before auto-sync completes)
+                self.syncChangeDetector.snapshot(
+                    stacks: ctx.detectedStacks,
+                    registries: AppConfig.shared.aiComponentRegistries
+                )
             } else {
                 tab.statusBar.clearAIComponentInfo()
             }
@@ -696,6 +716,9 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
     private let voiceController = VoiceInputController.shared
     private let voiceDispatcher = VoiceCommandDispatcher()
     private let transcriptionOverlay = TranscriptionOverlayView()
+    private let syncChangeDetector = SyncChangeDetector()
+    private var lastSyncChangeSummary: SyncChangeSummary?
+    private var componentObserver: Any?
 
     func wireVoiceCallbacks() {
         voiceController.onStateChanged = { [weak self] state in
@@ -753,6 +776,46 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
     /// Set search query in focused terminal's search bar.
     func setSearchQueryInFocusedTerminal(_ query: String) {
         activeTab.splitContainer.focusedTerminal.setSearchQuery(query)
+    }
+
+    // MARK: - Sync Change Notification
+
+    /// Snapshot components before a sync so we can diff afterwards.
+    func snapshotComponentsForSync() {
+        let stacks = collectActiveStacks()
+        syncChangeDetector.snapshot(stacks: stacks, registries: AppConfig.shared.aiComponentRegistries)
+    }
+
+    private func handleComponentsDidChange(_ notification: Notification) {
+        // Only one controller should handle this — pick the first one to avoid duplicates
+        let firstController = NSApp.windows.compactMap { $0.windowController as? TerminalWindowController }.first
+        guard firstController === self else { return }
+        // Only show changes if a snapshot was taken (manual sync or session start)
+        guard syncChangeDetector.hasSnapshot else { return }
+
+        let stacks = collectActiveStacks()
+        let summary = syncChangeDetector.computeChanges(
+            stacks: stacks,
+            registries: AppConfig.shared.aiComponentRegistries
+        )
+        guard summary.hasChanges else { return }
+        lastSyncChangeSummary = summary
+        SyncChangeDetailWindow.show(summary: summary)
+    }
+
+    private func collectActiveStacks() -> Set<String> {
+        // Gather detected stacks from all tabs' focused terminals
+        var stacks = Set<String>()
+        for tab in tabs {
+            if let ctx = tab.splitContainer.focusedTerminal.lastAIComponentContext {
+                stacks.formUnion(ctx.detectedStacks)
+            }
+        }
+        // Fall back to all known stacks if none detected
+        if stacks.isEmpty {
+            stacks = Set(ProjectDetector.builtInRules.keys)
+        }
+        return stacks
     }
 
     // MARK: - NSWindowDelegate

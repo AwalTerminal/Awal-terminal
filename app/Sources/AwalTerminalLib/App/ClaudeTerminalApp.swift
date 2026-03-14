@@ -132,22 +132,37 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
 
     @objc func syncAIComponentsNow(_ sender: Any?) {
         let config = AppConfig.shared
+
+        // Snapshot components before sync for change detection
+        let controller = NSApp.windows.compactMap { $0.windowController as? TerminalWindowController }.first
+        controller?.snapshotComponentsForSync()
+
+        // Listen for the components-changed notification to know if changes occurred
+        var changesDetected = false
+        let observer = NotificationCenter.default.addObserver(
+            forName: RegistryManager.componentsDidChange, object: nil, queue: .main
+        ) { _ in
+            changesDetected = true
+        }
+
         RegistryManager.shared.syncAll(registries: config.aiComponentRegistries, force: true) { results in
+            NotificationCenter.default.removeObserver(observer)
+
             let errors = results.compactMap { (name, result) -> String? in
                 if case .failure(let err) = result { return "\(name): \(err.localizedDescription)" }
                 return nil
             }
-            if errors.isEmpty {
-                // Flash confirmation in the active window's status bar
-                if let controller = NSApp.keyWindow?.windowController as? TerminalWindowController {
-                    controller.flashStatusBar("Components synced")
-                }
-            } else {
+            if !errors.isEmpty {
                 let alert = NSAlert.branded()
                 alert.messageText = "Sync Errors"
                 alert.informativeText = errors.joined(separator: "\n")
                 alert.alertStyle = .warning
                 alert.runModal()
+            } else if !changesDetected {
+                // No changes detected — show a brief flash
+                if let controller = NSApp.keyWindow?.windowController as? TerminalWindowController {
+                    controller.flashStatusBar("Components synced — no changes")
+                }
             }
         }
     }

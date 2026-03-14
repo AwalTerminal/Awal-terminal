@@ -425,6 +425,10 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
         syncAllButton.isEnabled = false
         syncAllButton.title = "Syncing..."
 
+        // Snapshot components in the terminal window so the banner can diff after sync
+        let terminalController = NSApp.windows.compactMap { $0.windowController as? TerminalWindowController }.first
+        terminalController?.snapshotComponentsForSync()
+
         RegistryManager.shared.syncAll(registries: config.aiComponentRegistries, force: true) { [weak self] results in
             self?.syncAllButton.isEnabled = true
             self?.syncAllButton.title = "Sync All"

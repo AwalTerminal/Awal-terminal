@@ -41,6 +41,7 @@ class RegistryManager {
     static let shared = RegistryManager()
 
     static let statusDidChange = Notification.Name("RegistryManagerStatusDidChange")
+    static let componentsDidChange = Notification.Name("RegistryManagerComponentsDidChange")
 
     private let fm = FileManager.default
     private let configDir = FileManager.default.homeDirectoryForCurrentUser
@@ -80,9 +81,36 @@ class RegistryManager {
             guard let self else { return }
             var results: [String: Result<Void, RegistrySyncError>] = [:]
 
+            // Snapshot commit hashes before sync for change detection
+            let oldMeta = self.loadMeta()
+            var oldHashes: [String: String] = [:]
+            for reg in registries {
+                oldHashes[reg.name] = oldMeta[reg.name]?["commitHash"] as? String ?? ""
+            }
+
             defer {
                 self.syncInProgress = false
-                DispatchQueue.main.async { completion?(results) }
+
+                // Detect which registries changed by comparing commit hashes
+                let newMeta = self.loadMeta()
+                var changedRegistries: [String] = []
+                for reg in registries {
+                    let newHash = newMeta[reg.name]?["commitHash"] as? String ?? ""
+                    let oldHash = oldHashes[reg.name] ?? ""
+                    if !newHash.isEmpty && newHash != oldHash {
+                        changedRegistries.append(reg.name)
+                    }
+                }
+
+                DispatchQueue.main.async {
+                    if !changedRegistries.isEmpty {
+                        NotificationCenter.default.post(
+                            name: RegistryManager.componentsDidChange,
+                            object: self
+                        )
+                    }
+                    completion?(results)
+                }
             }
 
             for reg in registries {
@@ -551,6 +579,9 @@ class RegistryManager {
     }
 
     private func pullRegistry(at dir: URL, branch: String, name: String) -> Result<Void, RegistrySyncError> {
+        // Reset any local changes before pulling — the clone is a read-only cache
+        resetLocalChanges(at: dir)
+
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/usr/bin/git")
         proc.arguments = ["-C", dir.path, "pull", "--ff-only", "origin", branch]
@@ -571,6 +602,24 @@ class RegistryManager {
         } catch {
             return .failure(.pullFailed(name: name, stderr: error.localizedDescription))
         }
+    }
+
+    private func resetLocalChanges(at dir: URL) {
+        let reset = Process()
+        reset.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        reset.arguments = ["-C", dir.path, "reset", "--hard", "HEAD"]
+        reset.standardOutput = FileHandle.nullDevice
+        reset.standardError = FileHandle.nullDevice
+        try? reset.run()
+        reset.waitUntilExit()
+
+        let clean = Process()
+        clean.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        clean.arguments = ["-C", dir.path, "clean", "-fd"]
+        clean.standardOutput = FileHandle.nullDevice
+        clean.standardError = FileHandle.nullDevice
+        try? clean.run()
+        clean.waitUntilExit()
     }
 
     private func currentCommit(at dir: URL) -> String {
