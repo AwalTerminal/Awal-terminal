@@ -30,6 +30,7 @@ The release script `scripts/release.sh <tag>` handles build, bundle, zip, tag, a
 7. Push: `git push origin main && git push origin <tag>`
 8. Generate changelog: review all commits since the previous tag (`git log <prev-tag>..HEAD --oneline`) and write a human-readable changelog grouped by category (Features, Fixes, Improvements). Include it in the release notes.
 9. Release: `gh release create <tag> docs/AwalTerminal.zip --title "<tag>" --notes-file <changelog>`
+10. Update Homebrew cask: in `homebrew-cask/awal-terminal.rb`, set `version` to the new tag (without `v` prefix) and update `sha256` (`shasum -a 256 docs/AwalTerminal.zip`). Commit and push.
 
 - Website download link (`docs/index.html`) uses `/releases/latest/download/AwalTerminal.zip` — auto-resolves to newest release
 - Check download counts: `gh api repos/AwalTerminal/Awal-terminal/releases -q '.[].assets[] | "\(.name): \(.download_count) downloads"'`
