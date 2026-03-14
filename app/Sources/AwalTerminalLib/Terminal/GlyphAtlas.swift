@@ -161,8 +161,7 @@ final class GlyphAtlas {
             }
             if found == nil {
                 let systemFallback = CTFontCreateForString(ctFont, ch as CFString, CFRangeMake(0, ch.utf16.count))
-                // Skip color emoji fonts — their bitmap glyphs produce solid blocks in our grayscale atlas
-                if !GlyphAtlas.isColorFont(systemFallback), fontHasUsableGlyph(systemFallback, ch) {
+                if fontHasUsableGlyph(systemFallback, ch) {
                     found = systemFallback
                 }
             }
@@ -232,19 +231,20 @@ final class GlyphAtlas {
 
         // BGRA byte order (byteOrder32Little + premultipliedFirst):
         // Memory layout: B, G, R, A per pixel
-        // White text with coverage c: B=c, G=c, R=c, A=c
-        // Use max of all channels for byte-order robustness
+        // Extract perceptual luminance from premultiplied RGB.
+        // For regular white text: R=G=B=A=coverage → luminance == coverage (identical to alpha).
+        // For color emoji: luminance preserves shape detail instead of solid blocks (alpha=255 everywhere).
         let bytes = data.assumingMemoryBound(to: UInt8.self)
         let actualBytesPerRow = ctx.bytesPerRow
         let alphaData = UnsafeMutablePointer<UInt8>.allocate(capacity: bitmapW * bitmapH)
         for y in 0..<bitmapH {
             for x in 0..<bitmapW {
                 let offset = y * actualBytesPerRow + x * 4
-                let b0 = bytes[offset]
-                let b1 = bytes[offset + 1]
-                let b2 = bytes[offset + 2]
-                let b3 = bytes[offset + 3]
-                alphaData[y * bitmapW + x] = max(b0, max(b1, max(b2, b3)))
+                let b = UInt16(bytes[offset])
+                let g = UInt16(bytes[offset + 1])
+                let r = UInt16(bytes[offset + 2])
+                // Perceptual luminance: 0.299R + 0.587G + 0.114B via integer math
+                alphaData[y * bitmapW + x] = UInt8((77 &* r &+ 150 &* g &+ 29 &* b) >> 8)
             }
         }
 
@@ -322,16 +322,6 @@ final class GlyphAtlas {
         var boundingRect = CGRect.zero
         CTFontGetBoundingRectsForGlyphs(ctFont, .default, &glyphs[0], &boundingRect, 1)
         return boundingRect.width > 0 && boundingRect.height > 0
-    }
-
-    /// Check if a font is a color (bitmap emoji) font that can't render in our grayscale atlas.
-    private static func isColorFont(_ ctFont: CTFont) -> Bool {
-        let traits = CTFontGetSymbolicTraits(ctFont)
-        // kCTFontTraitColorGlyphs = 1 << 13
-        if traits.rawValue & (1 << 13) != 0 { return true }
-        // Also check by name as a fallback
-        let name = CTFontCopyFamilyName(ctFont) as String
-        return name.contains("Emoji") || name.contains("Color")
     }
 
     // MARK: - Ligature Support
@@ -462,7 +452,10 @@ final class GlyphAtlas {
         for y in 0..<bitmapH {
             for x in 0..<bitmapW {
                 let offset = y * actualBytesPerRow + x * 4
-                alphaData[y * bitmapW + x] = max(bytes[offset], max(bytes[offset+1], max(bytes[offset+2], bytes[offset+3])))
+                let b = UInt16(bytes[offset])
+                let g = UInt16(bytes[offset + 1])
+                let r = UInt16(bytes[offset + 2])
+                alphaData[y * bitmapW + x] = UInt8((77 &* r &+ 150 &* g &+ 29 &* b) >> 8)
             }
         }
 
