@@ -758,6 +758,16 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
     // MARK: - NSWindowDelegate
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
+        // If this is the last window, show quit confirmation
+        if TerminalWindowTracker.shared.count == 1 && AppConfig.shared.quitConfirmClose {
+            let alert = NSAlert.branded()
+            alert.messageText = "Quit Awal Terminal?"
+            alert.informativeText = "All terminal sessions will be terminated."
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: "Quit")
+            alert.addButton(withTitle: "Cancel")
+            guard alert.runModal() == .alertFirstButtonReturn else { return false }
+        }
         return true
     }
 

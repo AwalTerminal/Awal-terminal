@@ -151,6 +151,13 @@ class PreferencesWindow: NSWindowController, NSWindowDelegate {
         confirmCheck.state = config.tabsConfirmClose ? .on : .off
         grid.addRow(with: [confirmLabel, confirmCheck])
 
+        // Quit confirm toggle
+        let quitConfirmLabel = NSTextField(labelWithString: "")
+        quitConfirmLabel.font = .systemFont(ofSize: 13)
+        let quitConfirmCheck = NSButton(checkboxWithTitle: "Ask before quitting", target: self, action: #selector(quitConfirmCloseChanged(_:)))
+        quitConfirmCheck.state = config.quitConfirmClose ? .on : .off
+        grid.addRow(with: [quitConfirmLabel, quitConfirmCheck])
+
         // Random colors toggle
         let enabledLabel = NSTextField(labelWithString: "Random Colors")
         enabledLabel.font = .systemFont(ofSize: 13)
@@ -244,6 +251,12 @@ class PreferencesWindow: NSWindowController, NSWindowDelegate {
     @objc private func tabsConfirmCloseChanged(_ sender: NSButton) {
         let enabled = sender.state == .on
         ConfigWriter.updateValue(key: "tabs.confirm_close", value: enabled ? "true" : "false")
+        AppConfig.reload()
+    }
+
+    @objc private func quitConfirmCloseChanged(_ sender: NSButton) {
+        let enabled = sender.state == .on
+        ConfigWriter.updateValue(key: "quit.confirm_close", value: enabled ? "true" : "false")
         AppConfig.reload()
     }
 

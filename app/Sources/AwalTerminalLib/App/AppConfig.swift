@@ -61,6 +61,7 @@ struct AppConfig {
     var tabsRandomColors: Bool = false
     var tabsRandomColorPalette: [NSColor] = []
     var tabsConfirmClose: Bool = false
+    var quitConfirmClose: Bool = true
 
     // AI Components
     var aiComponentsEnabled: Bool = true
@@ -180,6 +181,7 @@ struct AppConfig {
         // Tabs
         if let v = parsed["tabs.random_colors"] { config.tabsRandomColors = v == "true" }
         if let v = parsed["tabs.confirm_close"] { config.tabsConfirmClose = v == "true" }
+        if let v = parsed["quit.confirm_close"] { config.quitConfirmClose = v == "true" }
         if let v = parsed["tabs.random_color_palette"] {
             config.tabsRandomColorPalette = v.split(separator: ",")
                 .compactMap { parseColor(String($0)) }

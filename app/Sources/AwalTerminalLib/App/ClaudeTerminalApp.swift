@@ -91,6 +91,19 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
         return true
     }
 
+    @objc func confirmQuit(_ sender: Any?) {
+        if AppConfig.shared.quitConfirmClose {
+            let alert = NSAlert.branded()
+            alert.messageText = "Quit Awal Terminal?"
+            alert.informativeText = "All terminal sessions will be terminated."
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: "Quit")
+            alert.addButton(withTitle: "Cancel")
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+        }
+        NSApp.terminate(nil)
+    }
+
     @objc func showAboutPanel(_ sender: Any?) {
         AboutWindow.show()
     }
@@ -310,7 +323,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
         appMenu.addItem(withTitle: "Preferences…", action: #selector(showPreferences(_:)), keyEquivalent: ",")
         appMenu.addItem(withTitle: "Model Settings…", action: #selector(TerminalWindowController.openSettings(_:)), keyEquivalent: "")
         appMenu.addItem(NSMenuItem.separator())
-        appMenu.addItem(withTitle: "Quit Awal Terminal", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(withTitle: "Quit Awal Terminal", action: #selector(confirmQuit(_:)), keyEquivalent: "q")
         appMenuItem.submenu = appMenu
         mainMenu.addItem(appMenuItem)
 
