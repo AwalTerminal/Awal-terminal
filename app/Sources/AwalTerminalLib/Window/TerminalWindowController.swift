@@ -719,6 +719,8 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
     private let syncChangeDetector = SyncChangeDetector()
     private var lastSyncChangeSummary: SyncChangeSummary?
     private var componentObserver: Any?
+    private var manualSyncPending = false
+    private var syncBannerView: SyncChangeBannerView?
 
     func wireVoiceCallbacks() {
         voiceController.onStateChanged = { [weak self] state in
@@ -780,8 +782,9 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
 
     // MARK: - Sync Change Notification
 
-    /// Snapshot components before a sync so we can diff afterwards.
+    /// Snapshot components before a manual sync so we can diff afterwards.
     func snapshotComponentsForSync() {
+        manualSyncPending = true
         let stacks = collectActiveStacks()
         syncChangeDetector.snapshot(stacks: stacks, registries: AppConfig.shared.aiComponentRegistries)
     }
@@ -800,7 +803,47 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         )
         guard summary.hasChanges else { return }
         lastSyncChangeSummary = summary
-        SyncChangeDetailWindow.show(summary: summary)
+
+        let isManual = manualSyncPending
+        manualSyncPending = false
+
+        if isManual {
+            SyncChangeDetailWindow.show(summary: summary)
+        } else {
+            showSyncBanner(summary: summary)
+        }
+    }
+
+    private func showSyncBanner(summary: SyncChangeSummary) {
+        // Dismiss any existing banner
+        syncBannerView?.dismiss()
+        syncBannerView = nil
+
+        guard let container = window?.contentView else { return }
+
+        let banner = SyncChangeBannerView()
+        banner.translatesAutoresizingMaskIntoConstraints = false
+        banner.configure(summary: summary)
+        banner.onViewChanges = { [weak self, weak banner] in
+            guard let self else { return }
+            if let s = self.lastSyncChangeSummary {
+                SyncChangeDetailWindow.show(summary: s)
+            }
+            banner?.dismiss()
+            self.syncBannerView = nil
+        }
+
+        container.addSubview(banner)
+        NSLayoutConstraint.activate([
+            banner.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
+            banner.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16),
+            banner.bottomAnchor.constraint(equalTo: container.bottomAnchor,
+                                           constant: -(StatusBarView.barHeight + 8)),
+            banner.heightAnchor.constraint(equalToConstant: 36),
+        ])
+
+        syncBannerView = banner
+        banner.showAnimated()
     }
 
     private func collectActiveStacks() -> Set<String> {
