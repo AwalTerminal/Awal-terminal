@@ -149,6 +149,24 @@ gh release create "$VERSION" "$ZIP" --title "$VERSION" --notes-file "$CHANGELOG_
 rm -f "$CHANGELOG_FILE"
 step_done
 
+# --- Update Homebrew cask --------------------------------------------------
+step "Updating Homebrew cask formula..."
+ZIP_SHA=$(shasum -a 256 "$ZIP" | awk '{print $1}')
+CASK_FILE="$ROOT/homebrew-cask/awal-terminal.rb"
+VERSION_NUM="${VERSION#v}"  # strip leading 'v'
+
+if [ -f "$CASK_FILE" ]; then
+    sed -i '' "s/version \".*\"/version \"${VERSION_NUM}\"/" "$CASK_FILE"
+    sed -i '' "s/sha256 \".*\"/sha256 \"${ZIP_SHA}\"/" "$CASK_FILE"
+    green "  Updated $CASK_FILE"
+    echo ""
+    echo "  Next: copy $CASK_FILE to your AwalTerminal/homebrew-tap repo"
+    echo "  as Casks/awal-terminal.rb and push to update the tap."
+else
+    echo "  Cask file not found at $CASK_FILE — skipping."
+fi
+step_done
+
 # --- Summary ---------------------------------------------------------------
 total_elapsed=$(( $(date +%s) - TOTAL_START ))
 echo ""

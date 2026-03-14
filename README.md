@@ -47,7 +47,16 @@ A native macOS terminal built from scratch with Swift and Rust, designed specifi
 
 ## Getting Started
 
-### Download
+### Install with Homebrew (recommended)
+
+```bash
+brew tap AwalTerminal/tap
+brew install --cask awal-terminal
+```
+
+No quarantine workarounds needed — Homebrew handles it automatically.
+
+### Download manually
 
 Grab the latest build from [GitHub Releases](https://github.com/AwalTerminal/Awal-terminal/releases/latest).
 
