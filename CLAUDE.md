@@ -10,6 +10,7 @@
 
 - Never mention AI, Claude, or LLM in commit messages
 - Do not include the `Co-Authored-By` trailer
+- Run `cd core && cargo fmt` before committing Rust code
 
 ## Releasing
 
