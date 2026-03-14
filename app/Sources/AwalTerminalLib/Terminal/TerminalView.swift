@@ -1993,6 +1993,48 @@ class TerminalView: NSView {
         }
     }
 
+    /// Map functional keys to their legacy CSI sequences for kitty protocol.
+    /// Functional keys (arrows, home/end, function keys, etc.) must use their
+    /// legacy encoding — NOT the generic CSI <number> u format.
+    private static func kittyFunctionalKeySequence(keyCode: UInt16, modParam: UInt32) -> [UInt8]? {
+        let hasMod = modParam > 1
+
+        let seq: String
+        switch keyCode {
+        // Arrow keys: CSI 1;mod <letter> (with mod) or CSI <letter> (without)
+        case 126: seq = hasMod ? "\u{1b}[1;\(modParam)A" : "\u{1b}[A"   // Up
+        case 125: seq = hasMod ? "\u{1b}[1;\(modParam)B" : "\u{1b}[B"   // Down
+        case 124: seq = hasMod ? "\u{1b}[1;\(modParam)C" : "\u{1b}[C"   // Right
+        case 123: seq = hasMod ? "\u{1b}[1;\(modParam)D" : "\u{1b}[D"   // Left
+        // Home/End: CSI 1;mod H/F (with mod) or CSI H/F (without)
+        case 115: seq = hasMod ? "\u{1b}[1;\(modParam)H" : "\u{1b}[H"   // Home
+        case 119: seq = hasMod ? "\u{1b}[1;\(modParam)F" : "\u{1b}[F"   // End
+        // Tilde keys: CSI number;mod ~ (with mod) or CSI number ~ (without)
+        case 117: seq = hasMod ? "\u{1b}[3;\(modParam)~" : "\u{1b}[3~"   // Forward Delete
+        case 116: seq = hasMod ? "\u{1b}[5;\(modParam)~" : "\u{1b}[5~"   // PageUp
+        case 121: seq = hasMod ? "\u{1b}[6;\(modParam)~" : "\u{1b}[6~"   // PageDown
+        case 114: seq = hasMod ? "\u{1b}[2;\(modParam)~" : "\u{1b}[2~"   // Insert
+        // F1-F4: CSI 1;mod P/Q/R/S (or SS3 without modifiers)
+        case 122: seq = modParam > 1 ? "\u{1b}[1;\(modParam)P" : "\u{1b}OP"  // F1
+        case 120: seq = modParam > 1 ? "\u{1b}[1;\(modParam)Q" : "\u{1b}OQ"  // F2
+        case 99:  seq = modParam > 1 ? "\u{1b}[1;\(modParam)R" : "\u{1b}OR"  // F3
+        case 118: seq = modParam > 1 ? "\u{1b}[1;\(modParam)S" : "\u{1b}OS"  // F4
+        // F5-F12: CSI number;mod ~ (with mod) or CSI number ~ (without)
+        case 96:  seq = hasMod ? "\u{1b}[15;\(modParam)~" : "\u{1b}[15~"  // F5
+        case 97:  seq = hasMod ? "\u{1b}[17;\(modParam)~" : "\u{1b}[17~"  // F6
+        case 98:  seq = hasMod ? "\u{1b}[18;\(modParam)~" : "\u{1b}[18~"  // F7
+        case 100: seq = hasMod ? "\u{1b}[19;\(modParam)~" : "\u{1b}[19~"  // F8
+        case 101: seq = hasMod ? "\u{1b}[20;\(modParam)~" : "\u{1b}[20~"  // F9
+        case 109: seq = hasMod ? "\u{1b}[21;\(modParam)~" : "\u{1b}[21~"  // F10
+        case 103: seq = hasMod ? "\u{1b}[23;\(modParam)~" : "\u{1b}[23~"  // F11
+        case 111: seq = hasMod ? "\u{1b}[24;\(modParam)~" : "\u{1b}[24~"  // F12
+        // Escape, Return, Tab, Backspace — use CSI u format (no legacy override)
+        default: return nil
+        }
+
+        return Array(seq.utf8)
+    }
+
     /// Encode a key event using the Kitty keyboard protocol (CSI u format).
     private func encodeKittyKey(_ event: NSEvent, flags kittyFlags: UInt32) -> [UInt8]? {
         guard let chars = event.characters, !chars.isEmpty else { return nil }
@@ -2032,7 +2074,13 @@ class TerminalView: NSView {
 
         guard needsCSIu else { return nil }
 
-        // Build CSI <key> ; <modifiers> u
+        // Functional keys must use their legacy CSI sequences per kitty spec,
+        // NOT the generic CSI <number> u format.
+        if isFunctional, let legacySeq = Self.kittyFunctionalKeySequence(keyCode: event.keyCode, modParam: modParam) {
+            return legacySeq
+        }
+
+        // Regular keys use CSI <key> ; <modifiers> u
         var seq: String
         if modParam > 1 {
             seq = "\u{1b}[\(keyNum);\(modParam)u"
