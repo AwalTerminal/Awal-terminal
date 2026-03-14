@@ -564,7 +564,8 @@
           </tbody>
         </table>
 
-        <h3>Split Panes</h3>
+        <h3>Split Panes <span style="color: var(--text-muted); font-size: 0.85em;">(coming soon)</span></h3>
+        <p style="color: var(--text-muted); margin-bottom: 0.75rem;">Split panes are temporarily disabled while a rendering bug is being resolved. The shortcuts below will be available once re-enabled.</p>
         <table class="doc-table">
           <thead><tr><th>Shortcut</th><th>Action</th></tr></thead>
           <tbody>
@@ -657,7 +658,7 @@
       <!-- 7. AI Components -->
       <section class="doc-section" id="ai-components">
         <h2>AI Components</h2>
-        <p>Awal Terminal can auto-detect your project stack (Go, Flutter, Swift, Python, etc.) and inject relevant AI components into your coding sessions. Components are loaded from shared Git registries and injected per model.</p>
+        <p>Awal Terminal can auto-detect your project stack (Go, Flutter, Swift, Python, etc.) and inject relevant AI components into your coding sessions. It also detects sub-stacks &mdash; frameworks like Next.js, Django, Flask, Vapor, NestJS, Remix, and more &mdash; for more targeted component injection. Components are loaded from shared Git registries and injected per model.</p>
 
         <h3>Component Types</h3>
         <table class="doc-table">
@@ -881,6 +882,9 @@ random_colors = true
 # random_color_palette = "#E55353, #3498DB, #27AE60"
 confirm_close = true
 
+[quit]
+confirm_close = true
+
 [ai_components]
 enabled = true
 auto_detect = true
@@ -921,7 +925,7 @@ slugs = "ZpDEwZj1Yq"</code></pre>
           <li><code>new_tab</code>, <code>close_tab</code>, <code>next_tab</code>, <code>prev_tab</code>, <code>rename_tab</code></li>
           <li><code>split_right</code>, <code>split_down</code>, <code>close_pane</code>, <code>next_pane</code>, <code>prev_pane</code></li>
           <li><code>find</code>, <code>copy</code>, <code>paste</code>, <code>preferences</code>, <code>quit</code></li>
-          <li><code>toggle_side_panel</code>, <code>quick_terminal</code>, <code>push_to_talk</code></li>
+          <li><code>toggle_side_panel</code>, <code>quick_terminal</code>, <code>push_to_talk</code>, <code>sync_components</code></li>
         </ul>
 
         <h3>Voice Settings</h3>
@@ -960,6 +964,25 @@ slugs = "ZpDEwZj1Yq"</code></pre>
             <tr><td><code>paste.truncate_length</code></td><td>Number of characters to keep when using "Paste Truncated"</td><td><code>10000</code></td></tr>
           </tbody>
         </table>
+
+        <h3>Quit Settings</h3>
+        <table class="doc-table">
+          <thead><tr><th>Key</th><th>Description</th><th>Default</th></tr></thead>
+          <tbody>
+            <tr><td><code>quit.confirm_close</code></td><td>Show a confirmation dialog before quitting the app</td><td><code>true</code></td></tr>
+          </tbody>
+        </table>
+
+        <h3>Danger Mode</h3>
+        <p>Danger Mode skips all AI tool confirmation prompts, allowing the AI to execute commands, edit files, and make changes without asking for permission. When enabled, new sessions launch with unrestricted permissions (e.g., <code>--dangerously-skip-permissions</code> for Claude).</p>
+        <p>Visual indicators appear when Danger Mode is active: a red accent line on the tab bar, a warning banner in the side panel, and a badge in the status bar.</p>
+        <table class="doc-table">
+          <thead><tr><th>Key</th><th>Description</th><th>Default</th></tr></thead>
+          <tbody>
+            <tr><td><code>ai_components.danger_mode</code></td><td>Enable Danger Mode for new AI sessions</td><td><code>false</code></td></tr>
+          </tbody>
+        </table>
+        <p>You can also toggle Danger Mode from the <strong>View</strong> menu. For safety, Danger Mode always resets to off when the app launches.</p>
       </section>
 
       <!-- 9. Keyboard Shortcuts -->
@@ -978,13 +1001,13 @@ slugs = "ZpDEwZj1Yq"</code></pre>
             <tr><td>Tabs</td><td><code>Cmd+Shift+]</code></td><td>Next tab</td></tr>
             <tr><td>Tabs</td><td><code>Cmd+Shift+[</code></td><td>Previous tab</td></tr>
             <tr><td>Tabs</td><td><code>Cmd+Shift+R</code></td><td>Rename tab</td></tr>
-            <tr><td>Panes</td><td><code>Cmd+D</code></td><td>Split right</td></tr>
-            <tr><td>Panes</td><td><code>Cmd+Shift+D</code></td><td>Split down</td></tr>
-            <tr><td>Panes</td><td><code>Cmd+Shift+W</code></td><td>Close pane</td></tr>
-            <tr><td>Panes</td><td><code>Cmd+]</code></td><td>Next pane</td></tr>
-            <tr><td>Panes</td><td><code>Cmd+[</code></td><td>Previous pane</td></tr>
+            <tr><td>Panes <span style="font-size:0.8em;color:var(--text-muted)">(coming soon)</span></td><td><code>Cmd+D</code></td><td>Split right</td></tr>
+            <tr><td>Panes <span style="font-size:0.8em;color:var(--text-muted)">(coming soon)</span></td><td><code>Cmd+Shift+D</code></td><td>Split down</td></tr>
+            <tr><td>Panes <span style="font-size:0.8em;color:var(--text-muted)">(coming soon)</span></td><td><code>Cmd+Shift+W</code></td><td>Close pane</td></tr>
+            <tr><td>Panes <span style="font-size:0.8em;color:var(--text-muted)">(coming soon)</span></td><td><code>Cmd+]</code></td><td>Next pane</td></tr>
+            <tr><td>Panes <span style="font-size:0.8em;color:var(--text-muted)">(coming soon)</span></td><td><code>Cmd+[</code></td><td>Previous pane</td></tr>
             <tr><td>AI</td><td><code>Cmd+Shift+I</code></td><td>Toggle AI side panel</td></tr>
-            <tr><td>AI</td><td><code>Cmd+Y</code></td><td>Sync AI Components</td></tr>
+            <tr><td>AI</td><td><code>Cmd+Shift+Y</code></td><td>Sync AI Components</td></tr>
             <tr><td>Terminal</td><td><code>Ctrl+`</code></td><td>Quick terminal</td></tr>
             <tr><td>Voice</td><td><code>Ctrl+Shift+Space</code></td><td>Push-to-talk</td></tr>
             <tr><td>Search</td><td><code>Enter</code></td><td>Next match</td></tr>

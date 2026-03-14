@@ -37,12 +37,13 @@ A native macOS terminal built from scratch with Swift and Rust, designed specifi
 | Sub-Stack Detection | Automatically detects frameworks like Next.js, Django, Flask, Vapor, NestJS, and more on top of base stack detection for more targeted component injection |
 | Resume Sessions | Browse and resume past AI sessions from the startup menu. Claude sessions show turn count and time ago; Codex and Gemini launch their built-in session pickers |
 | Smart Notifications | Desktop alerts when long-running AI tasks complete |
-| Tabs & Splits | Native tabs with drag-to-reorder and nested split panes (vertical and horizontal) |
+| Tabs & Splits | Native tabs with drag-to-reorder. Split panes (vertical and horizontal) are temporarily disabled while a rendering bug is being resolved |
 | Quick Terminal | Quake-style dropdown terminal with a global hotkey (`Ctrl+``) |
 | Find in Terminal | Search through scrollback with match highlighting and keyboard navigation |
 | Syntax Highlighting | Language-aware coloring for code blocks and diffs inside AI output |
 | Git Integration | Live branch, status, and changed files displayed in the status bar and side panel. Click any changed file to view its diff inline |
 | Large Paste Protection | Confirmation dialog for large pastes with options to save to file, truncate, or paste all. Configurable threshold |
+| Danger Mode | Skip all AI tool confirmation prompts for unrestricted sessions. Toggle from the View menu; always resets on app launch |
 | Fully Configurable | Theme colors, fonts, keybindings, and voice settings in a single config file |
 
 ## Getting Started
@@ -118,6 +119,9 @@ random_colors = true
 # random_color_palette = "#E55353, #3498DB, #27AE60"
 confirm_close = true
 
+[quit]
+confirm_close = true
+
 [ai_components]
 enabled = true
 auto_detect = true
@@ -153,13 +157,13 @@ docs/       Promotional website (GitHub Pages)
 |---|---|
 | New tab | `Cmd+T` |
 | Close tab | `Cmd+W` |
-| Split right | `Cmd+D` |
-| Split down | `Cmd+Shift+D` |
-| Next/prev pane | `Cmd+]` / `Cmd+[` |
+| Split right | `Cmd+D` (coming soon) |
+| Split down | `Cmd+Shift+D` (coming soon) |
+| Next/prev pane | `Cmd+]` / `Cmd+[` (coming soon) |
 | Find | `Cmd+F` |
 | AI side panel | `Cmd+Shift+I` |
 | Quick terminal | `` Ctrl+` `` |
-| Sync AI components | `Cmd+Y` |
+| Sync AI components | `Cmd+Shift+Y` |
 | Voice input (PTT) | `Ctrl+Shift+Space` |
 
 ## License
