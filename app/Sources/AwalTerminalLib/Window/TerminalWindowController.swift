@@ -504,6 +504,14 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
     // MARK: - Terminal Callback Wiring
 
     private func wireTerminalCallbacks(_ terminal: TerminalView, tab: TabState) {
+        terminal.onProcessExited = { [weak self, weak tab] in
+            guard let self, let tab else { return }
+            guard let model = terminal.currentModel, model.name != "Shell" else { return }
+            if let index = self.tabs.firstIndex(where: { $0 === tab }) {
+                self.closeTab(at: index)
+            }
+        }
+
         terminal.onWorkspacePicked = { [weak self, weak tab] dir, completion in
             guard let self, let tab else { completion(dir); return }
             self.resolveWorktreeForTab(tab, dir: dir, completion: completion)

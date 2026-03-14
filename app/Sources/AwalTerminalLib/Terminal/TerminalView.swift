@@ -75,6 +75,7 @@ class TerminalView: NSView {
     /// Called before launching a session to allow the controller to resolve the working directory
     /// (e.g., creating a git worktree for tab isolation). The callback receives the chosen directory
     /// and must call the completion with the resolved directory to use.
+    var onProcessExited: (() -> Void)?
     var onWorkspacePicked: ((_ dir: String, _ completion: @escaping (String) -> Void) -> Void)?
 
     // Deferred launch for new panes (set before adding to window)
@@ -89,6 +90,7 @@ class TerminalView: NSView {
     private var surface: OpaquePointer?
     private var readSource: DispatchSourceRead?
     private var writeSource: DispatchSourceWrite?
+    private var processSource: DispatchSourceProcess?
     private var displayLink: CVDisplayLink?
 
     private let cellWidth: CGFloat
@@ -258,6 +260,8 @@ class TerminalView: NSView {
         readSource = nil
         writeSource?.cancel()
         writeSource = nil
+        processSource?.cancel()
+        processSource = nil
 
         // 3. Invalidate all timers
         cursorBlinkTimer?.invalidate()
@@ -1278,6 +1282,14 @@ class TerminalView: NSView {
         let childPid = at_surface_get_child_pid(s)
         if childPid > 0 {
             onShellSpawned?(pid_t(childPid))
+
+            let procSource = DispatchSource.makeProcessSource(
+                identifier: pid_t(childPid), eventMask: .exit, queue: .main)
+            procSource.setEventHandler { [weak self] in
+                self?.onProcessExited?()
+            }
+            procSource.resume()
+            self.processSource = procSource
         }
     }
 
