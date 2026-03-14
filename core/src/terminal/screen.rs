@@ -43,7 +43,14 @@ impl Grid {
             .map(|_| (0..cols).map(|_| Cell::default()).collect())
             .collect();
         let wrapped = vec![false; rows];
-        Self { cols, rows, cells, base: 0, hyperlinks: HashMap::new(), wrapped }
+        Self {
+            cols,
+            rows,
+            cells,
+            base: 0,
+            hyperlinks: HashMap::new(),
+            wrapped,
+        }
     }
 
     pub fn cell(&self, row: usize, col: usize) -> &Cell {
@@ -164,7 +171,8 @@ impl Grid {
         self.cols = new_cols;
         self.rows = new_rows;
         // Remove out-of-bounds hyperlinks
-        self.hyperlinks.retain(|&(r, c), _| r < new_rows && c < new_cols);
+        self.hyperlinks
+            .retain(|&(r, c), _| r < new_rows && c < new_cols);
     }
 
     /// Linearize the ring buffer so logical row 0 is at cells[0].
@@ -213,9 +221,15 @@ impl Selection {
         if self.start_row < self.end_row
             || (self.start_row == self.end_row && self.start_col <= self.end_col)
         {
-            ((self.start_col, self.start_row), (self.end_col, self.end_row))
+            (
+                (self.start_col, self.start_row),
+                (self.end_col, self.end_row),
+            )
         } else {
-            ((self.end_col, self.end_row), (self.start_col, self.start_row))
+            (
+                (self.end_col, self.end_row),
+                (self.start_col, self.start_row),
+            )
         }
     }
 
@@ -635,7 +649,12 @@ impl Screen {
         for (i, row) in old_sb.into_iter().enumerate() {
             // Trim trailing spaces from this row before appending
             let mut trimmed = row;
-            while trimmed.last().map_or(false, |c| c.ch == ' ' && c.fg == Color::Default && c.bg == Color::Default && c.attrs == CellAttrs::empty()) {
+            while trimmed.last().map_or(false, |c| {
+                c.ch == ' '
+                    && c.fg == Color::Default
+                    && c.bg == Color::Default
+                    && c.attrs == CellAttrs::empty()
+            }) {
                 trimmed.pop();
             }
             current_line.extend(trimmed);
@@ -773,7 +792,8 @@ impl Screen {
         let row0_hyperlinks: Vec<(usize, String)> = if is_primary && full_region {
             let grid = self.active_grid();
             let phys_row0 = grid.physical_row(0);
-            grid.hyperlinks.iter()
+            grid.hyperlinks
+                .iter()
                 .filter(|&(&(r, _), _)| r == phys_row0)
                 .map(|(&(_, c), v)| (c, v.clone()))
                 .collect()
@@ -790,7 +810,9 @@ impl Screen {
                     let check_idx = self.scrollback.len() - self.scrollback_replay_remaining;
                     if check_idx < self.scrollback.len() {
                         let existing = &self.scrollback[check_idx];
-                        let matches = removed.iter().zip(existing.iter())
+                        let matches = removed
+                            .iter()
+                            .zip(existing.iter())
                             .all(|(a, b)| a.ch == b.ch);
                         if matches {
                             self.scrollback_replay_remaining -= 1;
@@ -814,7 +836,8 @@ impl Screen {
                     self.scrollback.pop_front();
                     self.scrollback_wrapped.pop_front();
                     // Remove hyperlinks for the evicted scrollback line and advance base
-                    self.scrollback_hyperlinks.retain(|&(r, _), _| r != self.scrollback_hyperlink_base);
+                    self.scrollback_hyperlinks
+                        .retain(|&(r, _), _| r != self.scrollback_hyperlink_base);
                     self.scrollback_hyperlink_base += 1;
                 }
                 // If user is scrolled up, keep their viewport stable
@@ -912,7 +935,11 @@ impl Screen {
         } else {
             for row in sr..=er {
                 let row_start = if row == sr { sc } else { 0 };
-                let row_end = if row == er { ec } else { self.cols.saturating_sub(1) };
+                let row_end = if row == er {
+                    ec
+                } else {
+                    self.cols.saturating_sub(1)
+                };
 
                 for col in row_start..=row_end {
                     let cell = self.get_cell_at_absolute(col, row);
@@ -1095,9 +1122,13 @@ mod tests {
         }
 
         // Scrollback should NOT have grown — replayed rows were suppressed
-        assert_eq!(screen.scrollback.len(), sb_before,
+        assert_eq!(
+            screen.scrollback.len(),
+            sb_before,
             "scrollback grew from {} to {} (duplicates not suppressed)",
-            sb_before, screen.scrollback.len());
+            sb_before,
+            screen.scrollback.len()
+        );
     }
 
     #[test]
@@ -1132,8 +1163,10 @@ mod tests {
         }
 
         // Scrollback should have grown — new content was added after mismatch
-        assert!(screen.scrollback.len() > sb_before,
-            "new content should have been added to scrollback");
+        assert!(
+            screen.scrollback.len() > sb_before,
+            "new content should have been added to scrollback"
+        );
     }
 
     #[test]
@@ -1153,12 +1186,16 @@ mod tests {
         // Width change should reflow scrollback (not clear it)
         screen.resize(5, 3);
         // Each 10-char line at width 5 → 2 rows, so scrollback grows
-        assert!(screen.scrollback.len() >= sb_before,
-            "scrollback should be reflowed on width change, not cleared");
+        assert!(
+            screen.scrollback.len() >= sb_before,
+            "scrollback should be reflowed on width change, not cleared"
+        );
         // Content should be preserved: first scrollback row should start with "line0"
         let first_row: String = screen.scrollback[0].iter().map(|c| c.ch).collect();
-        assert!(first_row.starts_with("line0"),
-            "reflowed scrollback should preserve content");
+        assert!(
+            first_row.starts_with("line0"),
+            "reflowed scrollback should preserve content"
+        );
     }
 
     #[test]
@@ -1214,6 +1251,10 @@ mod tests {
         assert!(sb_len > 0, "should have scrollback");
 
         screen.resize(20, 3);
-        assert_eq!(screen.scrollback.len(), sb_len, "scrollback should be preserved on resize");
+        assert_eq!(
+            screen.scrollback.len(),
+            sb_len,
+            "scrollback should be preserved on resize"
+        );
     }
 }
