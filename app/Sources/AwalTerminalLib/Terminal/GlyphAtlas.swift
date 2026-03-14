@@ -49,6 +49,7 @@ final class GlyphAtlas {
     private let italicFont: CTFont
     private let boldItalicFont: CTFont
     private let symbolFont: CTFont?
+    private let fallbackFonts: [CTFont]
     private let scale: CGFloat
     private let cellHeight: CGFloat
 
@@ -66,6 +67,19 @@ final class GlyphAtlas {
 
         // Find an installed Nerd Font for private use area glyphs
         self.symbolFont = GlyphAtlas.findNerdFont(size: font.pointSize)
+
+        // Build explicit fallback font list for symbols that CTFontCreateForString misses.
+        // Exclude color emoji fonts — their bitmap glyphs render as solid blocks in our R8Unorm atlas.
+        let fallbackNames = ["Apple Symbols", "Menlo", "Lucida Grande"]
+        var fonts: [CTFont] = []
+        // System font (SF Pro) isn't loadable by name — use NSFont.systemFont
+        fonts.append(NSFont.systemFont(ofSize: font.pointSize) as CTFont)
+        for name in fallbackNames {
+            if let f = NSFont(name: name, size: font.pointSize) {
+                fonts.append(f as CTFont)
+            }
+        }
+        self.fallbackFonts = fonts
 
         let desc = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: .r8Unorm,
@@ -129,19 +143,31 @@ final class GlyphAtlas {
         let isPUA = (key.codepoint >= 0xE000 && key.codepoint <= 0xF8FF)
             || (key.codepoint >= 0xF0000 && key.codepoint <= 0xFFFFD)
 
-        // Font fallback: primary -> symbol font -> system fallback (non-PUA only) -> skip
+        // Font fallback: primary -> symbol font -> explicit fallbacks -> CTFontCreateForString -> skip
+        // For non-ASCII, use fontHasUsableGlyph to skip fonts with tofu/empty glyphs
+        let isAscii = key.codepoint <= 0x7F
         let renderFont: CTFont
-        if fontHasGlyph(ctFont, ch) {
+        if isAscii ? fontHasGlyph(ctFont, ch) : fontHasUsableGlyph(ctFont, ch) {
             renderFont = ctFont
         } else if let sf = symbolFont, fontHasGlyph(sf, ch) {
             renderFont = sf
         } else if !isPUA {
-            let systemFallback = CTFontCreateForString(ctFont, ch as CFString, CFRangeMake(0, ch.utf16.count))
-            if fontHasGlyph(systemFallback, ch) {
-                renderFont = systemFallback
-            } else {
-                return nil
+            var found: CTFont?
+            for fb in fallbackFonts {
+                if fontHasUsableGlyph(fb, ch) {
+                    found = fb
+                    break
+                }
             }
+            if found == nil {
+                let systemFallback = CTFontCreateForString(ctFont, ch as CFString, CFRangeMake(0, ch.utf16.count))
+                // Skip color emoji fonts — their bitmap glyphs produce solid blocks in our grayscale atlas
+                if !GlyphAtlas.isColorFont(systemFallback), fontHasUsableGlyph(systemFallback, ch) {
+                    found = systemFallback
+                }
+            }
+            guard let f = found else { return nil }
+            renderFont = f
         } else {
             return nil // PUA glyph with no matching font — render nothing
         }
@@ -283,6 +309,29 @@ final class GlyphAtlas {
         let chars = Array(ch.utf16)
         var glyphs = [CGGlyph](repeating: 0, count: chars.count)
         return CTFontGetGlyphsForCharacters(ctFont, chars, &glyphs, chars.count) && glyphs[0] != 0
+    }
+
+    /// Check if a font has a glyph with actual drawn content (non-empty bounding box).
+    /// This catches fonts that map a codepoint but render it as an empty .notdef/tofu square.
+    private func fontHasUsableGlyph(_ ctFont: CTFont, _ ch: String) -> Bool {
+        let chars = Array(ch.utf16)
+        var glyphs = [CGGlyph](repeating: 0, count: chars.count)
+        guard CTFontGetGlyphsForCharacters(ctFont, chars, &glyphs, chars.count), glyphs[0] != 0 else {
+            return false
+        }
+        var boundingRect = CGRect.zero
+        CTFontGetBoundingRectsForGlyphs(ctFont, .default, &glyphs[0], &boundingRect, 1)
+        return boundingRect.width > 0 && boundingRect.height > 0
+    }
+
+    /// Check if a font is a color (bitmap emoji) font that can't render in our grayscale atlas.
+    private static func isColorFont(_ ctFont: CTFont) -> Bool {
+        let traits = CTFontGetSymbolicTraits(ctFont)
+        // kCTFontTraitColorGlyphs = 1 << 13
+        if traits.rawValue & (1 << 13) != 0 { return true }
+        // Also check by name as a fallback
+        let name = CTFontCopyFamilyName(ctFont) as String
+        return name.contains("Emoji") || name.contains("Color")
     }
 
     // MARK: - Ligature Support
