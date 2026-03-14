@@ -60,7 +60,11 @@ No quarantine workarounds needed — Homebrew handles it automatically.
 
 Grab the latest build from [GitHub Releases](https://github.com/AwalTerminal/Awal-terminal/releases/latest).
 
-Since the app is not yet notarized with Apple, macOS will block it on first launch. After unzipping, run:
+Since the app is not yet notarized with Apple, macOS will block it on first launch. To bypass this:
+
+1. **Right-click** (or Control-click) the app and choose **Open**, then click **Open** in the dialog.
+
+If that doesn't work, run this in Terminal:
 
 ```bash
 xattr -cr AwalTerminal.app
