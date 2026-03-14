@@ -173,7 +173,10 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         tab.statusBar.isPaused = false
     }
 
-    private func uninstallTab(_ tab: TabState) {
+    private func uninstallTab(_ tab: TabState, cleanup: Bool = false) {
+        if cleanup {
+            tab.splitContainer.cleanupAllTerminals()
+        }
         tab.splitContainer.removeFromSuperview()
         tab.statusBar.removeFromSuperview()
         tab.aiSidePanel.removeFromSuperview()
@@ -227,13 +230,14 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         let closingActiveTab = (index == activeTabIndex)
 
         if closingActiveTab {
-            // Uninstall the tab being closed, then install the replacement
-            uninstallTab(tabs[index])
+            // Uninstall the tab being closed with cleanup
+            uninstallTab(tabs[index], cleanup: true)
             tabs.remove(at: index)
             activeTabIndex = min(index, tabs.count - 1)
             installTab(activeTab)
         } else {
-            // Closing a background tab — no need to touch the displayed tab
+            // Closing a background tab — cleanup its terminals
+            tabs[index].splitContainer.cleanupAllTerminals()
             tabs.remove(at: index)
             // Adjust activeTabIndex if the removed tab was before it
             if index < activeTabIndex {
@@ -383,6 +387,10 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
 
         let keepIndex = sender.tag
         let keepTab = tabs[keepIndex]
+        // Cleanup all tabs except the one being kept
+        for (i, tab) in tabs.enumerated() where i != keepIndex {
+            tab.splitContainer.cleanupAllTerminals()
+        }
         // Uninstall the currently displayed tab
         uninstallTab(activeTab)
         tabs = [keepTab]
@@ -754,6 +762,10 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
     }
 
     func windowWillClose(_ notification: Notification) {
+        // Cleanup all tabs before window closes
+        for tab in tabs {
+            tab.splitContainer.cleanupAllTerminals()
+        }
         TerminalWindowTracker.shared.remove(self)
         if TerminalWindowTracker.shared.count == 0 {
             NSApp.terminate(nil)

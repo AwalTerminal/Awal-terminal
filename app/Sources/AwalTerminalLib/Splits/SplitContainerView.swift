@@ -33,6 +33,7 @@ class SplitContainerView: NSView, NSSplitViewDelegate {
         guard leaves.count > 1 else { return false }
 
         let target = focusedTerminal
+        target.cleanup()
         guard let newRoot = rootNode.removeLeaf(target: target) else { return false }
         rootNode = newRoot
 
@@ -44,6 +45,13 @@ class SplitContainerView: NSView, NSSplitViewDelegate {
         }
 
         return true
+    }
+
+    /// Cleanup all terminal panes (call before removing the tab).
+    func cleanupAllTerminals() {
+        for terminal in rootNode.allLeaves() {
+            terminal.cleanup()
+        }
     }
 
     func focusNext() {

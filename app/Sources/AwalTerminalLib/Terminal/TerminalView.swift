@@ -105,6 +105,7 @@ class TerminalView: NSView {
     private var idleTimer: Timer?
     private var ptyResizeTimer: Timer?
     private var hadRecentOutput: Bool = false
+    private var isCleanedUp: Bool = false
     private var isSuspendedForSleep: Bool = false
     private var isWaitingForOutput: Bool = false
     private var isLoadingResumeSessions: Bool = false
@@ -238,20 +239,44 @@ class TerminalView: NSView {
         fatalError("init(coder:) not implemented")
     }
 
-    deinit {
-        NSWorkspace.shared.notificationCenter.removeObserver(self)
-        cursorBlinkTimer?.invalidate()
-        idleTimer?.invalidate()
+    /// Explicit cleanup — must be called before removing the view.
+    /// Idempotent: safe to call multiple times.
+    func cleanup() {
+        guard !isCleanedUp else { return }
+        isCleanedUp = true
+
+        // 1. Stop display link first to prevent use-after-free in callback
         stopDisplayLink()
-        if let source = readSource {
-            source.cancel()
-        }
-        if let source = writeSource {
-            source.cancel()
-        }
+
+        // 2. Cancel dispatch sources
+        readSource?.cancel()
+        readSource = nil
+        writeSource?.cancel()
+        writeSource = nil
+
+        // 3. Invalidate all timers
+        cursorBlinkTimer?.invalidate()
+        cursorBlinkTimer = nil
+        idleTimer?.invalidate()
+        idleTimer = nil
+        ptyResizeTimer?.invalidate()
+        ptyResizeTimer = nil
+        syncOutputTimer?.invalidate()
+        syncOutputTimer = nil
+
+        // 4. Remove notification observers
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
+
+        // 5. Terminate child process, then destroy surface
         if let s = surface {
+            at_surface_terminate(s)
             at_surface_destroy(s)
+            surface = nil
         }
+    }
+
+    deinit {
+        cleanup()
     }
 
     // MARK: - Sleep/Wake
@@ -1281,6 +1306,7 @@ class TerminalView: NSView {
     }
 
     private func readPTY() {
+        guard !isCleanedUp else { return }
         guard let s = surface else { return }
 
         var totalRead: Int32 = 0
@@ -1713,6 +1739,7 @@ class TerminalView: NSView {
     // MARK: - Metal Rendering (Display Link)
 
     private func renderFrame() {
+        guard !isCleanedUp else { return }
         guard needsRender else { return }
         // Don't present any frame to screen while the menu is still
         // waiting for layout to settle — Metal drawables bypass view alpha.
@@ -1790,14 +1817,16 @@ class TerminalView: NSView {
         guard let dl = link else { return }
 
         let callback: CVDisplayLinkOutputCallback = { _, _, _, _, _, userInfo -> CVReturn in
+            // Display link holds a strong reference via passRetained — safe to use
             let view = Unmanaged<TerminalView>.fromOpaque(userInfo!).takeUnretainedValue()
-            DispatchQueue.main.async {
-                view.renderFrame()
+            DispatchQueue.main.async { [weak view] in
+                view?.renderFrame()
             }
             return kCVReturnSuccess
         }
 
-        CVDisplayLinkSetOutputCallback(dl, callback, Unmanaged.passUnretained(self).toOpaque())
+        // passRetained: display link holds a strong ref so the pointer can't dangle
+        CVDisplayLinkSetOutputCallback(dl, callback, Unmanaged.passRetained(self).toOpaque())
         CVDisplayLinkStart(dl)
         self.displayLink = dl
 
@@ -1810,6 +1839,8 @@ class TerminalView: NSView {
         if let dl = displayLink {
             CVDisplayLinkStop(dl)
             displayLink = nil
+            // Balance the passRetained from startDisplayLink
+            Unmanaged.passUnretained(self).release()
         }
     }
 

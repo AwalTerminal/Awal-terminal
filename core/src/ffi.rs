@@ -75,6 +75,16 @@ pub extern "C" fn at_surface_new(cols: u32, rows: u32) -> *mut ATSurface {
     Box::into_raw(surface)
 }
 
+/// Terminate the child process (PTY) without destroying the surface.
+/// Safe to call multiple times — subsequent calls are no-ops.
+#[no_mangle]
+pub extern "C" fn at_surface_terminate(surface: *mut ATSurface) {
+    let surface = mut_ref_or!(surface);
+    if let Some(pty) = surface.pty.take() {
+        drop(pty); // triggers Pty::drop which sends SIGHUP/SIGKILL and reaps
+    }
+}
+
 /// Destroy a terminal surface.
 #[no_mangle]
 pub extern "C" fn at_surface_destroy(surface: *mut ATSurface) {

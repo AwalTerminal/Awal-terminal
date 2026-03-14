@@ -69,6 +69,12 @@ struct ATSurface *at_surface_new(uint32_t cols,
                                  uint32_t rows);
 
 /**
+ * Terminate the child process (PTY) without destroying the surface.
+ * Safe to call multiple times — subsequent calls are no-ops.
+ */
+void at_surface_terminate(struct ATSurface *surface);
+
+/**
  * Destroy a terminal surface.
  */
 void at_surface_destroy(struct ATSurface *surface);
