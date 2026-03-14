@@ -186,21 +186,24 @@ impl Drop for Pty {
         // Send SIGHUP (hangup) to the child process group
         let _ = kill(pid, Signal::SIGHUP);
 
-        // Try non-blocking reap
-        match waitpid(pid, Some(WaitPidFlag::WNOHANG)) {
-            Ok(nix::sys::wait::WaitStatus::StillAlive) => {
-                // Give it a brief moment, then force-kill
-                std::thread::sleep(std::time::Duration::from_millis(50));
-                match waitpid(pid, Some(WaitPidFlag::WNOHANG)) {
-                    Ok(nix::sys::wait::WaitStatus::StillAlive) => {
-                        let _ = kill(pid, Signal::SIGKILL);
-                        let _ = waitpid(pid, None); // blocking reap
+        // Reap in background thread to avoid blocking the main thread
+        std::thread::spawn(move || {
+            // Try non-blocking reap
+            match waitpid(pid, Some(WaitPidFlag::WNOHANG)) {
+                Ok(nix::sys::wait::WaitStatus::StillAlive) => {
+                    // Give it a brief moment, then force-kill
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                    match waitpid(pid, Some(WaitPidFlag::WNOHANG)) {
+                        Ok(nix::sys::wait::WaitStatus::StillAlive) => {
+                            let _ = kill(pid, Signal::SIGKILL);
+                            let _ = waitpid(pid, None); // blocking reap
+                        }
+                        _ => {} // already reaped
                     }
-                    _ => {} // already reaped
                 }
+                _ => {} // already reaped or error
             }
-            _ => {} // already reaped or error
-        }
+        });
     }
 }
 
