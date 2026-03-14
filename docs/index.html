@@ -555,25 +555,42 @@
       position: absolute;
       inset: 0;
       transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1),
-                  opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1);
-      transform: translateX(3%) rotateZ(2deg) scale(0.95);
-      opacity: 0.5;
+                  opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+                  z-index 0s 0.3s;
+      transform: translateX(0) rotateZ(0deg) scale(0.88);
+      opacity: 0;
+      z-index: 0;
+    }
+
+    .card-stack-item.pos-center {
+      transform: translateX(0) rotateZ(0deg) scale(1);
+      opacity: 1;
+      z-index: 3;
+    }
+
+    .card-stack-item.pos-left {
+      transform: translateX(-6%) rotateZ(-4deg) scale(0.92);
+      opacity: 0.6;
       z-index: 1;
     }
 
-    .card-stack-item.active {
-      transform: translateX(-3%) rotateZ(-2deg) scale(0.95);
-      opacity: 1;
+    .card-stack-item.pos-right {
+      transform: translateX(6%) rotateZ(4deg) scale(0.92);
+      opacity: 0.6;
       z-index: 2;
     }
 
     /* On hover: fan out more */
-    .card-stack:hover .card-stack-item.active {
-      transform: translateX(-5%) rotateZ(-3deg) scale(0.93);
+    .card-stack:hover .card-stack-item.pos-center {
+      transform: translateX(0) rotateZ(0deg) scale(1);
     }
-    .card-stack:hover .card-stack-item:not(.active) {
-      transform: translateX(5%) rotateZ(3deg) scale(0.93);
-      opacity: 0.7;
+    .card-stack:hover .card-stack-item.pos-left {
+      transform: translateX(-10%) rotateZ(-6deg) scale(0.90);
+      opacity: 0.75;
+    }
+    .card-stack:hover .card-stack-item.pos-right {
+      transform: translateX(10%) rotateZ(6deg) scale(0.90);
+      opacity: 0.75;
     }
 
     .card-stack-inner {
@@ -1034,16 +1051,16 @@
       .card-stack-item {
         position: relative;
         transform: none !important;
-        opacity: 1;
+        opacity: 1 !important;
         display: none;
+        z-index: auto !important;
       }
       .card-stack-item.active {
         display: block;
       }
-      .card-stack:hover .card-stack-item.active,
-      .card-stack:hover .card-stack-item:not(.active) {
+      .card-stack:hover .card-stack-item {
         transform: none !important;
-        opacity: 1;
+        opacity: 1 !important;
       }
       .screenshot-caption {
         position: static;
@@ -1506,8 +1523,17 @@ brew install --cask awal-terminal</code></pre>
       function setActive(index) {
         active = (index + items.length) % items.length;
         items.forEach((item, i) => {
-          item.classList.toggle('active', i === active);
-          item.setAttribute('aria-hidden', i !== active);
+          item.classList.remove('active', 'pos-center', 'pos-left', 'pos-right');
+          item.setAttribute('aria-hidden', 'true');
+          const diff = (i - active + items.length) % items.length;
+          if (diff === 0) {
+            item.classList.add('active', 'pos-center');
+            item.setAttribute('aria-hidden', 'false');
+          } else if (diff === items.length - 1) {
+            item.classList.add('pos-left');
+          } else {
+            item.classList.add('pos-right');
+          }
         });
         dotBtns.forEach((dot, i) => dot.classList.toggle('active', i === active));
       }
@@ -1526,6 +1552,8 @@ brew install --cask awal-terminal</code></pre>
         if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); setActive(active + 1); }
         if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); setActive(active - 1); }
       });
+
+      setActive(0);
     })();
   </script>
 
