@@ -1,6 +1,6 @@
 import AppKit
 
-class StatusBarView: NSView {
+class StatusBarView: NSView, NSMenuDelegate {
 
     static let barHeight: CGFloat = 26.0
 
@@ -211,6 +211,11 @@ class StatusBarView: NSView {
         pathButton.target = self
         pathButton.action = #selector(pathClicked(_:))
         addSubview(pathButton)
+
+        // Right-click context menu for path
+        let pathContextMenu = NSMenu()
+        pathContextMenu.delegate = self
+        pathButton.menu = pathContextMenu
 
         gitLabel.textColor = branchColor
 
@@ -834,6 +839,56 @@ class StatusBarView: NSView {
             generatingWidthConstraint.constant = 0
             generatingLabel.stringValue = ""
         }
+    }
+}
+
+// MARK: - Path Context Menu (NSMenuDelegate)
+
+extension StatusBarView {
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        guard menu == pathButton.menu else { return }
+        menu.removeAllItems()
+
+        let copyItem = NSMenuItem(title: "Copy Path", action: #selector(copyFullPath(_:)), keyEquivalent: "")
+        copyItem.target = self
+        menu.addItem(copyItem)
+
+        let copyShortItem = NSMenuItem(title: "Copy Short Path", action: #selector(copyShortPath(_:)), keyEquivalent: "")
+        copyShortItem.target = self
+        menu.addItem(copyShortItem)
+
+        menu.addItem(NSMenuItem.separator())
+
+        let finderItem = NSMenuItem(title: "Open in Finder", action: #selector(openInFinder(_:)), keyEquivalent: "")
+        finderItem.target = self
+        menu.addItem(finderItem)
+
+        menu.addItem(NSMenuItem.separator())
+
+        let openFolderItem = NSMenuItem(title: "Open Folder...", action: #selector(openFolderClicked(_:)), keyEquivalent: "")
+        openFolderItem.target = self
+        menu.addItem(openFolderItem)
+    }
+
+    @objc private func copyFullPath(_ sender: NSMenuItem) {
+        guard let path = currentPath else { return }
+        let expandedPath = (path as NSString).expandingTildeInPath
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(expandedPath, forType: .string)
+        showFlash("Copied!")
+    }
+
+    @objc private func copyShortPath(_ sender: NSMenuItem) {
+        guard let path = currentPath else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(shortenPath(path), forType: .string)
+        showFlash("Copied!")
+    }
+
+    @objc private func openInFinder(_ sender: NSMenuItem) {
+        guard let path = currentPath else { return }
+        let expandedPath = (path as NSString).expandingTildeInPath
+        NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: expandedPath)
     }
 }
 
