@@ -386,13 +386,13 @@ pub extern "C" fn at_surface_read_cells(
 
             let selected = screen.selection.contains(col, abs_row);
             if selected {
-                // Invert colors for selection
-                fg_r = 255 - fg_r;
-                fg_g = 255 - fg_g;
-                fg_b = 255 - fg_b;
-                bg_r = 79;
-                bg_g = 70;
-                bg_b = 229;
+                // Selection: white background, grey text
+                fg_r = 128;
+                fg_g = 128;
+                fg_b = 128;
+                bg_r = 255;
+                bg_g = 255;
+                bg_b = 255;
             }
 
             out_slice[idx] = CCell {

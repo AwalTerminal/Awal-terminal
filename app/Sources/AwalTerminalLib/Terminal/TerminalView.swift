@@ -732,14 +732,14 @@ class TerminalView: NSView {
                         let truncPath = compactPath(ws.path, maxLen: maxPathLen)
                         let nameField = truncPath.padding(toLength: max(maxPathLen, 1), withPad: " ", startingAt: 0)
                         out += itemPadStr
-                        out += "\u{1b}[48;2;79;70;229m"
+                        out += "\u{1b}[48;2;45;127;212m"
                         out += "\u{1b}[1;37m"
                         out += " \(arrow) \(nameField)"
                         out += "\u{1b}[0;37m"
-                        out += "\u{1b}[48;2;79;70;229m"
+                        out += "\u{1b}[48;2;45;127;212m"
                         out += " \(modelStr)"
                         out += "\u{1b}[90m"
-                        out += "\u{1b}[48;2;79;70;229m"
+                        out += "\u{1b}[48;2;45;127;212m"
                         out += " ⌫ "
                         out += "\u{1b}[0m"
                     } else {
@@ -764,7 +764,7 @@ class TerminalView: NSView {
                 if isSelected {
                     let nameField = truncPath.padding(toLength: max(maxPathLen, 1), withPad: " ", startingAt: 0)
                     out += itemPadStr
-                    out += "\u{1b}[48;2;79;70;229m"
+                    out += "\u{1b}[48;2;45;127;212m"
                     out += "\u{1b}[1;37m"
                     out += " \(arrow) \(nameField)"
                     out += " "
@@ -784,11 +784,11 @@ class TerminalView: NSView {
 
                 if isSelected {
                     out += itemPadStr
-                    out += "\u{1b}[48;2;79;70;229m"
+                    out += "\u{1b}[48;2;45;127;212m"
                     out += "\u{1b}[1;37m"
                     out += " \(arrow) \(nameField)"
                     out += "\u{1b}[0;37m"
-                    out += "\u{1b}[48;2;79;70;229m"
+                    out += "\u{1b}[48;2;45;127;212m"
                     let provPad = itemWidth - 4 - nameField.count - providerField.count
                     out += String(repeating: " ", count: max(1, provPad))
                     out += providerField + " "
@@ -811,7 +811,7 @@ class TerminalView: NSView {
 
                 if isSelected {
                     out += itemPadStr
-                    out += "\u{1b}[48;2;79;70;229m"
+                    out += "\u{1b}[48;2;45;127;212m"
                     out += "\u{1b}[1;37m"
                     out += " \(arrow) \(text)"
                     let pad = itemWidth - 4 - text.count
@@ -834,7 +834,7 @@ class TerminalView: NSView {
                 if isSelected {
                     let pad = itemWidth - 4 - text.count - suffix.count
                     out += itemPadStr
-                    out += "\u{1b}[48;2;79;70;229m"
+                    out += "\u{1b}[48;2;45;127;212m"
                     out += "\u{1b}[1;37m"
                     out += " \(arrow) \(text)"
                     out += String(repeating: " ", count: max(1, pad))
@@ -859,10 +859,10 @@ class TerminalView: NSView {
                 if isSelected {
                     let pad = itemWidth - 4 - 8 - summaryStr.count
                     out += itemPadStr
-                    out += "\u{1b}[48;2;79;70;229m"
+                    out += "\u{1b}[48;2;45;127;212m"
                     out += "\u{1b}[1;37m"
                     out += " \(arrow) \(modelField)"
-                    out += "\u{1b}[0;37m\u{1b}[48;2;79;70;229m"
+                    out += "\u{1b}[0;37m\u{1b}[48;2;45;127;212m"
                     out += summaryStr
                     out += String(repeating: " ", count: max(1, pad))
                     out += " "
