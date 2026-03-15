@@ -579,47 +579,49 @@ class RegistryManager {
     }
 
     private func pullRegistry(at dir: URL, branch: String, name: String) -> Result<Void, RegistrySyncError> {
-        // Reset any local changes before pulling — the clone is a read-only cache
-        resetLocalChanges(at: dir)
-
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-        proc.arguments = ["-C", dir.path, "pull", "--ff-only", "origin", branch]
-        proc.standardOutput = FileHandle.nullDevice
-        let stderrPipe = Pipe()
-        proc.standardError = stderrPipe
+        // Fetch latest from remote, then hard-reset to match.
+        // The clone is a read-only cache so we always want to mirror the remote exactly.
+        let fetch = Process()
+        fetch.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        fetch.arguments = ["-C", dir.path, "fetch", "origin", branch]
+        fetch.standardOutput = FileHandle.nullDevice
+        let fetchStderrPipe = Pipe()
+        fetch.standardError = fetchStderrPipe
 
         do {
-            try proc.run()
-            proc.waitUntilExit()
-            let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+            try fetch.run()
+            fetch.waitUntilExit()
+            let stderrData = fetchStderrPipe.fileHandleForReading.readDataToEndOfFile()
             let stderrStr = String(data: stderrData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 
-            if proc.terminationStatus != 0 {
+            if fetch.terminationStatus != 0 {
+                return .failure(.pullFailed(name: name, stderr: stderrStr))
+            }
+        } catch {
+            return .failure(.pullFailed(name: name, stderr: error.localizedDescription))
+        }
+
+        // Reset local branch to match the fetched remote state
+        let reset = Process()
+        reset.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        reset.arguments = ["-C", dir.path, "reset", "--hard", "origin/\(branch)"]
+        reset.standardOutput = FileHandle.nullDevice
+        let resetStderrPipe = Pipe()
+        reset.standardError = resetStderrPipe
+
+        do {
+            try reset.run()
+            reset.waitUntilExit()
+            let stderrData = resetStderrPipe.fileHandleForReading.readDataToEndOfFile()
+            let stderrStr = String(data: stderrData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+            if reset.terminationStatus != 0 {
                 return .failure(.pullFailed(name: name, stderr: stderrStr))
             }
             return .success(())
         } catch {
             return .failure(.pullFailed(name: name, stderr: error.localizedDescription))
         }
-    }
-
-    private func resetLocalChanges(at dir: URL) {
-        let reset = Process()
-        reset.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-        reset.arguments = ["-C", dir.path, "reset", "--hard", "HEAD"]
-        reset.standardOutput = FileHandle.nullDevice
-        reset.standardError = FileHandle.nullDevice
-        try? reset.run()
-        reset.waitUntilExit()
-
-        let clean = Process()
-        clean.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-        clean.arguments = ["-C", dir.path, "clean", "-fd"]
-        clean.standardOutput = FileHandle.nullDevice
-        clean.standardError = FileHandle.nullDevice
-        try? clean.run()
-        clean.waitUntilExit()
     }
 
     private func currentCommit(at dir: URL) -> String {
