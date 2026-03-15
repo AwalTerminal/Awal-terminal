@@ -363,7 +363,7 @@ struct AppConfig {
         NSColor(red: 0xa6/255.0, green: 0xe2/255.0, blue: 0x2e/255.0, alpha: 1), // 2 green
         NSColor(red: 0xe6/255.0, green: 0xdb/255.0, blue: 0x74/255.0, alpha: 1), // 3 yellow
         NSColor(red: 0x66/255.0, green: 0xd9/255.0, blue: 0xef/255.0, alpha: 1), // 4 blue
-        NSColor(red: 0xae/255.0, green: 0x81/255.0, blue: 0xff/255.0, alpha: 1), // 5 magenta
+        NSColor(red: 0x0d/255.0, green: 0x3a/255.0, blue: 0x5c/255.0, alpha: 1), // 5 magenta
         NSColor(red: 0xa1/255.0, green: 0xef/255.0, blue: 0xe4/255.0, alpha: 1), // 6 cyan
         NSColor(red: 0xf8/255.0, green: 0xf8/255.0, blue: 0xf2/255.0, alpha: 1), // 7 white
         // Bright 8-15
@@ -372,7 +372,7 @@ struct AppConfig {
         NSColor(red: 0xa6/255.0, green: 0xe2/255.0, blue: 0x2e/255.0, alpha: 1), // 10 bright green
         NSColor(red: 0xe6/255.0, green: 0xdb/255.0, blue: 0x74/255.0, alpha: 1), // 11 bright yellow
         NSColor(red: 0x66/255.0, green: 0xd9/255.0, blue: 0xef/255.0, alpha: 1), // 12 bright blue
-        NSColor(red: 0xae/255.0, green: 0x81/255.0, blue: 0xff/255.0, alpha: 1), // 13 bright magenta
+        NSColor(red: 0x0d/255.0, green: 0x3a/255.0, blue: 0x5c/255.0, alpha: 1), // 13 bright magenta
         NSColor(red: 0xa1/255.0, green: 0xef/255.0, blue: 0xe4/255.0, alpha: 1), // 14 bright cyan
         NSColor(red: 0xf9/255.0, green: 0xf8/255.0, blue: 0xf5/255.0, alpha: 1), // 15 bright white
     ]
