@@ -63,6 +63,7 @@ final class MetalRenderer {
     private let bgPipeline: MTLRenderPipelineState
     private let glyphPipeline: MTLRenderPipelineState
     private let linePipeline: MTLRenderPipelineState
+    private let vignettePipeline: MTLRenderPipelineState
     let atlas: GlyphAtlas
 
     // Triple buffering
@@ -245,13 +246,26 @@ final class MetalRenderer {
             float(inst.color[3]) / 255.0
         );
         out.uv = corner;
-        // Use reserved bit: if w == h and both <= 20px, treat as circle
+        // Mode detection: w == h triggers special rendering
+        // minDim <= 20 → circle (cornerRadius 1.0), minDim > 20 → glow (cornerRadius 2.0)
         float minDim = min(rect.z, rect.w);
-        out.cornerRadius = (rect.z == rect.w && minDim <= 20.0) ? 1.0 : 0.0;
+        if (rect.z == rect.w && minDim > 20.0) {
+            out.cornerRadius = 2.0; // glow mode
+        } else {
+            out.cornerRadius = (rect.z == rect.w && minDim <= 20.0) ? 1.0 : 0.0;
+        }
         return out;
     }
 
     fragment float4 line_fragment(LineVertexOut in [[stage_in]]) {
+        if (in.cornerRadius >= 2.0) {
+            // Glow mode: Gaussian radial falloff
+            float2 centered = in.uv * 2.0 - 1.0;
+            float dist2 = dot(centered, centered);
+            float sigma = 0.55;
+            float glow = exp(-dist2 / (2.0 * sigma * sigma));
+            return float4(in.color.rgb, in.color.a * glow);
+        }
         if (in.cornerRadius > 0.0) {
             // SDF circle: discard pixels outside radius
             float2 centered = in.uv * 2.0 - 1.0; // -1..1
@@ -262,6 +276,55 @@ final class MetalRenderer {
             return float4(in.color.rgb, in.color.a * alpha);
         }
         return in.color;
+    }
+
+    // --- Vignette (fullscreen darkened edges) ---
+
+    struct VignetteVertexOut {
+        float4 position [[position]];
+        float2 uv;
+    };
+
+    vertex VignetteVertexOut vignette_vertex(uint vertexID [[vertex_id]]) {
+        float2 positions[] = {
+            float2(-1, -1), float2( 1, -1), float2(-1,  1),
+            float2(-1,  1), float2( 1, -1), float2( 1,  1)
+        };
+        float2 uvs[] = {
+            float2(0, 1), float2(1, 1), float2(0, 0),
+            float2(0, 0), float2(1, 1), float2(1, 0)
+        };
+        VignetteVertexOut out;
+        out.position = float4(positions[vertexID], 0.0, 1.0);
+        out.uv = uvs[vertexID];
+        return out;
+    }
+
+    fragment float4 vignette_fragment(VignetteVertexOut in [[stage_in]],
+                                     constant float2& viewportSize [[buffer(0)]]) {
+        // --- Grid pattern ---
+        float2 pixel = in.position.xy;
+        float gridSpacing = 24.0;
+        float lineWidth = 1.0;
+        float gx = step(fmod(pixel.x, gridSpacing), lineWidth);
+        float gy = step(fmod(pixel.y, gridSpacing), lineWidth);
+        float grid = max(gx, gy) * 0.04; // 4% white overlay on grid lines
+
+        // --- Vignette ---
+        float2 centered = in.uv * 2.0 - 1.0;
+        float dist = length(centered);
+        float darken = smoothstep(0.0, 1.4, dist) * 0.45;
+
+        // Dithering
+        float noise = fract(sin(dot(pixel, float2(12.9898, 78.233))) * 43758.5453);
+        darken += (noise - 0.5) * (2.0 / 255.0);
+
+        // Combine: grid lightens, vignette darkens
+        float3 color = float3(grid);
+        float alpha = max(darken, grid);
+        // Blend: dark vignette + bright grid lines
+        float3 finalColor = float3(grid) / max(alpha, 0.001);
+        return float4(finalColor * alpha, alpha);
     }
     """
 
@@ -360,6 +423,23 @@ final class MetalRenderer {
             linePipeline = try device.makeRenderPipelineState(descriptor: lineDesc)
         } catch {
             fatalError("Failed to create line pipeline: \(error)")
+        }
+
+        // Vignette pipeline (alpha-blended fullscreen overlay)
+        let vignetteDesc = MTLRenderPipelineDescriptor()
+        vignetteDesc.vertexFunction = library.makeFunction(name: "vignette_vertex")
+        vignetteDesc.fragmentFunction = library.makeFunction(name: "vignette_fragment")
+        vignetteDesc.colorAttachments[0].pixelFormat = .bgra8Unorm
+        vignetteDesc.colorAttachments[0].isBlendingEnabled = true
+        vignetteDesc.colorAttachments[0].sourceRGBBlendFactor = .sourceAlpha
+        vignetteDesc.colorAttachments[0].destinationRGBBlendFactor = .oneMinusSourceAlpha
+        vignetteDesc.colorAttachments[0].sourceAlphaBlendFactor = .one
+        vignetteDesc.colorAttachments[0].destinationAlphaBlendFactor = .oneMinusSourceAlpha
+
+        do {
+            vignettePipeline = try device.makeRenderPipelineState(descriptor: vignetteDesc)
+        } catch {
+            fatalError("Failed to create vignette pipeline: \(error)")
         }
 
         // Atlas — rasterize glyphs at native pixel resolution
@@ -620,6 +700,7 @@ final class MetalRenderer {
                 posX: Float(cursorCol), posY: Float(cursorRow),
                 r: cursorColor.0, g: cursorColor.1, b: cursorColor.2, a: cursorColor.3
             ))
+
         }
 
         // Ensure GPU buffers are large enough
@@ -661,6 +742,12 @@ final class MetalRenderer {
             frameSemaphore.signal()
             return
         }
+
+        // Draw vignette + grid pattern before everything else
+        encoder.setRenderPipelineState(vignettePipeline)
+        var vpSize = SIMD2<Float>(Float(viewportSize.width), Float(viewportSize.height))
+        encoder.setFragmentBytes(&vpSize, length: MemoryLayout<SIMD2<Float>>.size, index: 0)
+        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
 
         // Draw backgrounds (including cursor)
         if !bgInstances.isEmpty, let buf = bgBuffer {

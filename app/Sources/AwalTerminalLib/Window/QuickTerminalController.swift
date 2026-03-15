@@ -152,8 +152,8 @@ class QuickTerminalController {
         panel.isMovableByWindowBackground = true
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        panel.isOpaque = true
-        panel.backgroundColor = AppConfig.shared.themeBg
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
         panel.hidesOnDeactivate = false
 
         let tv = TerminalView(frame: frame)

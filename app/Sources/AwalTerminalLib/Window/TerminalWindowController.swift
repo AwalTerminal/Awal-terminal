@@ -42,8 +42,8 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         )
         window.title = "Awal Terminal"
         window.center()
-        window.backgroundColor = AppConfig.shared.themeTabBarBg
-        window.isOpaque = true
+        window.backgroundColor = .clear
+        window.isOpaque = false
         window.minSize = NSSize(width: 800, height: 500)
 
         // Disable native tabs

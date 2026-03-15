@@ -23,8 +23,8 @@ final class CustomTabBarView: NSView {
         let btn = NSButton(title: "+", target: nil, action: nil)
         btn.isBordered = false
         btn.setButtonType(.momentaryChange)
-        btn.font = NSFont.systemFont(ofSize: 16, weight: .light)
-        btn.contentTintColor = NSColor(white: 0.5, alpha: 1.0)
+        btn.font = NSFont.systemFont(ofSize: 16, weight: .medium)
+        btn.contentTintColor = NSColor(white: 0.85, alpha: 1.0)
         return btn
     }()
 
@@ -48,7 +48,20 @@ final class CustomTabBarView: NSView {
 
     private func setup() {
         wantsLayer = true
-        layer?.backgroundColor = bgColor.cgColor
+
+        // Frosted glass background
+        let vibrancy = NSVisualEffectView()
+        vibrancy.material = .hudWindow
+        vibrancy.blendingMode = .behindWindow
+        vibrancy.state = .active
+        vibrancy.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(vibrancy, positioned: .below, relativeTo: nil)
+        NSLayoutConstraint.activate([
+            vibrancy.leadingAnchor.constraint(equalTo: leadingAnchor),
+            vibrancy.trailingAnchor.constraint(equalTo: trailingAnchor),
+            vibrancy.topAnchor.constraint(equalTo: topAnchor),
+            vibrancy.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
 
         stackView.orientation = .horizontal
         stackView.spacing = 1
@@ -76,7 +89,7 @@ final class CustomTabBarView: NSView {
         addButton.target = self
         addButton.action = #selector(addClicked)
         addButton.wantsLayer = true
-        addButton.layer?.backgroundColor = bgColor.cgColor
+        addButton.layer?.backgroundColor = NSColor.clear.cgColor
         addButton.layer?.cornerRadius = 14
         // Position managed manually in layout()
         addSubview(addButton)
@@ -256,6 +269,7 @@ private class TabItemView: NSView {
         return btn
     }()
     private let accentLine = NSView()
+    private let glowView = NSView()
     private let isSelected: Bool
     private let selectedBgColor: NSColor
     private let accentColor: NSColor
@@ -330,6 +344,31 @@ private class TabItemView: NSView {
         accentLine.translatesAutoresizingMaskIntoConstraints = false
         addSubview(accentLine)
 
+        // Active tab glow — gradient radiating upward from accent line
+        glowView.wantsLayer = true
+        glowView.translatesAutoresizingMaskIntoConstraints = false
+        let gradientLayer = CAGradientLayer()
+        gradientLayer.colors = [
+            lineColor.withAlphaComponent(0.85).cgColor,
+            lineColor.withAlphaComponent(0.0).cgColor,
+        ]
+        gradientLayer.startPoint = CGPoint(x: 0.5, y: 1.0)
+        gradientLayer.endPoint = CGPoint(x: 0.5, y: 0.0)
+        glowView.layer = gradientLayer
+        glowView.isHidden = !isSelected
+        addSubview(glowView, positioned: .below, relativeTo: accentLine)
+
+        if isSelected {
+            let pulse = CABasicAnimation(keyPath: "opacity")
+            pulse.fromValue = 0.3
+            pulse.toValue = 1.0
+            pulse.duration = 2.0
+            pulse.autoreverses = true
+            pulse.repeatCount = .infinity
+            pulse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            glowView.layer?.add(pulse, forKey: "glowPulse")
+        }
+
         let trackingArea = NSTrackingArea(
             rect: .zero,
             options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
@@ -356,6 +395,11 @@ private class TabItemView: NSView {
             accentLine.trailingAnchor.constraint(equalTo: trailingAnchor),
             accentLine.bottomAnchor.constraint(equalTo: bottomAnchor),
             accentLine.heightAnchor.constraint(equalToConstant: 2),
+
+            glowView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            glowView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            glowView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            glowView.heightAnchor.constraint(equalToConstant: 30),
         ])
     }
 
