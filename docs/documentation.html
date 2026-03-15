@@ -534,6 +534,10 @@
             <span>OSC 8 hyperlink support. Cmd+click to open links in your browser.</span>
           </div>
           <div class="feature-card">
+            <strong>Status Bar</strong>
+            <span>Right-click the path in the status bar for a context menu with quick navigation options.</span>
+          </div>
+          <div class="feature-card">
             <strong>Drag & Drop</strong>
             <span>Drag a file into the terminal to paste its shell-escaped path.</span>
           </div>
@@ -564,6 +568,17 @@
             <tr><td>Drag tab</td><td>Reorder</td></tr>
           </tbody>
         </table>
+
+        <h3>Custom Tab Colors &amp; Titles</h3>
+        <p>Right-click any tab to change its color from an 8-color palette or pick a custom color. You can also set a custom title for each tab via the right-click context menu.</p>
+
+        <h3>Worktree Isolation</h3>
+        <p>Each tab can optionally get its own git worktree, allowing you to work on multiple branches simultaneously without stashing or switching. Enable per-tab worktrees in your config:</p>
+        <pre><code>[tabs]
+worktree_isolation = true
+worktree_branch_prefix = "awal/tab"  # default prefix for worktree branches</code></pre>
+        <p>When creating a new tab with worktree isolation enabled, a prompt dialog lets you select the base branch for the worktree. Manage all worktrees from <strong>Shell &gt; Manage Worktrees</strong>, which provides a status overview, cleanup actions, and orphan worktree pruning.</p>
+        <p>Tabs automatically close when their LLM session process exits.</p>
 
         <h3>Split Panes <span style="color: var(--text-muted); font-size: 0.85em;">(coming soon)</span></h3>
         <p style="color: var(--text-muted); margin-bottom: 0.75rem;">Split panes are temporarily disabled while a rendering bug is being resolved. The shortcuts below will be available once re-enabled.</p>
@@ -750,7 +765,11 @@ path = "/path/to/local/registry"</code></pre>
 disabled = "my-registry/common/skill/some-skill, my-registry/node/rule/some-rule"</code></pre>
 
         <h3>Import &amp; Export</h3>
-        <p>Share your registry configurations with teammates. Use <strong>AI Components &gt; Import &amp; Export</strong> to export your current setup or import a shared configuration bundle.</p>
+        <p>Share your registry configurations with teammates. Use <strong>AI Components &gt; Import &amp; Export</strong> to export your current setup or import a shared configuration bundle. Configure export behavior in your config:</p>
+        <pre><code>[ai_components.export]
+enabled = true          # Enable export functionality
+formats = "json,toml"   # Supported export formats
+target = "clipboard"     # Export target: "clipboard" or "file"</code></pre>
 
         <h3>Hooks</h3>
         <p>Hooks are shell scripts that run automatically at specific points in an AI session. Place them in the appropriate directory under your registry's stack folder:</p>
@@ -760,9 +779,11 @@ disabled = "my-registry/common/skill/some-skill, my-registry/node/rule/some-rule
           <li><strong>Before-commit</strong> (<code>hooks/before-commit/</code>) &mdash; Runs before Bash tool calls (Claude only, via PreToolUse). Example: format staged files before they're committed.</li>
         </ul>
         <p>Hooks are injected into Claude's settings automatically. For other models, pre-session and post-session hooks are executed directly by Awal Terminal.</p>
+        <p><strong>Hook Approval Gate:</strong> Hooks from registries require explicit user approval before first execution. This prevents untrusted registries from running arbitrary scripts. Disable this with <code>require_hook_approval = false</code> in your <code>[ai_components]</code> config (default: <code>true</code>).</p>
 
         <h3>AI Components Manager</h3>
         <p>Open the dedicated manager window from <strong>AI Components &gt; Manage Components</strong> in the menu bar. The manager lets you browse all loaded components across registries, view component details, and manage sync settings. You can also trigger a manual sync with <code>Cmd+Y</code>.</p>
+        <p>After a sync, a notification banner shows what changed &mdash; added, removed, and updated components &mdash; so you can review exactly what was modified.</p>
 
         <h3>Stack Overrides</h3>
         <p>Force specific stacks for a project path instead of auto-detection:</p>
@@ -799,12 +820,12 @@ truncate_length = 10000      # Characters to keep when truncating</code></pre>
             <span>Hold Ctrl+Shift+Space (configurable) to record. Release to transcribe.</span>
           </div>
           <div class="feature-card">
-            <strong>Continuous Listening</strong>
-            <span>Always-on with Voice Activity Detection (VAD) gating.</span>
+            <strong>Continuous Listening <span style="color: var(--text-muted); font-size: 0.85em;">(coming soon)</span></strong>
+            <span>Always-on with Voice Activity Detection (VAD) gating. Currently disabled.</span>
           </div>
           <div class="feature-card">
-            <strong>Wake Word Mode</strong>
-            <span>Configurable trigger phrase (default: "hey terminal").</span>
+            <strong>Wake Word Mode <span style="color: var(--text-muted); font-size: 0.85em;">(coming soon)</span></strong>
+            <span>Configurable trigger phrase (default: "hey terminal"). Currently disabled.</span>
           </div>
           <div class="feature-card">
             <strong>Dictation Mode</strong>
@@ -904,6 +925,8 @@ truncate_length = 10000
 random_colors = true
 # random_color_palette = "#E55353, #3498DB, #27AE60"
 confirm_close = true
+worktree_isolation = false
+# worktree_branch_prefix = "awal/tab"
 
 [quit]
 confirm_close = true
@@ -915,6 +938,7 @@ auto_sync = true
 sync_interval = 3600
 security_scan = true
 block_critical = true
+require_hook_approval = true
 
 [ai_components.registry.awal-components]
 url = "https://github.com/AwalTerminal/awal-ai-components-registry.git"
@@ -949,10 +973,11 @@ slugs = "ZpDEwZj1Yq"</code></pre>
           <li><code>split_right</code>, <code>split_down</code>, <code>close_pane</code>, <code>next_pane</code>, <code>prev_pane</code></li>
           <li><code>find</code>, <code>copy</code>, <code>paste</code>, <code>preferences</code>, <code>quit</code></li>
           <li><code>toggle_side_panel</code>, <code>quick_terminal</code>, <code>push_to_talk</code>, <code>sync_components</code></li>
+          <li><code>settings</code>, <code>manage_components</code></li>
         </ul>
 
         <h3>Voice Settings</h3>
-        <p>Enable voice input by setting <code>enabled = true</code> under <code>[voice]</code>. Configure the mode (<code>push_to_talk</code>, <code>continuous</code>, <code>wake_word</code>, <code>dictation</code>), sensitivity threshold, language, and wake word phrase.</p>
+        <p>Enable voice input by setting <code>enabled = true</code> under <code>[voice]</code>. Available modes: <code>push_to_talk</code> and <code>dictation</code>. The <code>continuous</code> and <code>wake_word</code> modes are currently disabled and will be available in a future release. Configure sensitivity threshold, language, and wake word phrase.</p>
 
         <h3>AI Components Settings</h3>
         <table class="doc-table">
@@ -965,6 +990,7 @@ slugs = "ZpDEwZj1Yq"</code></pre>
             <tr><td><code>security_scan</code></td><td>Scan registries for dangerous patterns</td><td><code>true</code></td></tr>
             <tr><td><code>block_critical</code></td><td>Block components with critical security findings</td><td><code>true</code></td></tr>
             <tr><td><code>disabled</code></td><td>Comma-separated list of disabled component keys</td><td>(empty)</td></tr>
+            <tr><td><code>require_hook_approval</code></td><td>Require explicit approval before running registry hooks</td><td><code>true</code></td></tr>
           </tbody>
         </table>
         <p>Add registries with <code>[ai_components.registry.&lt;name&gt;]</code> sections. Git registries use <code>url</code> and <code>branch</code>; localskills registries use <code>type = "localskills"</code> and <code>slugs</code>; local registries use <code>type = "local"</code> and <code>path</code>.</p>
@@ -976,6 +1002,8 @@ slugs = "ZpDEwZj1Yq"</code></pre>
             <tr><td><code>random_colors</code></td><td>Automatically assign a random color to each new tab</td><td><code>false</code></td></tr>
             <tr><td><code>random_color_palette</code></td><td>Comma-separated hex colors for random assignment (uses built-in 8-color palette if omitted)</td><td>(built-in)</td></tr>
             <tr><td><code>confirm_close</code></td><td>Show a confirmation dialog before closing a tab</td><td><code>false</code></td></tr>
+            <tr><td><code>worktree_isolation</code></td><td>Give each new tab its own git worktree</td><td><code>false</code></td></tr>
+            <tr><td><code>worktree_branch_prefix</code></td><td>Branch name prefix for tab worktrees</td><td><code>"awal/tab"</code></td></tr>
           </tbody>
         </table>
 
@@ -989,6 +1017,7 @@ slugs = "ZpDEwZj1Yq"</code></pre>
         </table>
 
         <h3>Quit Settings</h3>
+        <p>When <code>quit.confirm_close</code> is enabled, Awal Terminal shows a confirmation dialog before quitting if any tabs have active sessions. This prevents accidentally losing in-progress work.</p>
         <table class="doc-table">
           <thead><tr><th>Key</th><th>Description</th><th>Default</th></tr></thead>
           <tbody>
@@ -1031,6 +1060,7 @@ slugs = "ZpDEwZj1Yq"</code></pre>
             <tr><td>Panes <span style="font-size:0.8em;color:var(--text-muted)">(coming soon)</span></td><td><code>Cmd+[</code></td><td>Previous pane</td></tr>
             <tr><td>AI</td><td><code>Cmd+Shift+I</code></td><td>Toggle AI side panel</td></tr>
             <tr><td>AI</td><td><code>Cmd+Shift+Y</code></td><td>Sync AI Components</td></tr>
+            <tr><td>AI</td><td><code>Cmd+Shift+M</code></td><td>Manage AI Components</td></tr>
             <tr><td>Terminal</td><td><code>Ctrl+`</code></td><td>Quick terminal</td></tr>
             <tr><td>Voice</td><td><code>Ctrl+Shift+Space</code></td><td>Push-to-talk</td></tr>
             <tr><td>Search</td><td><code>Enter</code></td><td>Next match</td></tr>

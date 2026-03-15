@@ -28,20 +28,20 @@ A native macOS terminal built from scratch with Swift and Rust, designed specifi
 
 | Feature | Description |
 |---|---|
-| GPU-Accelerated Rendering | Metal-powered rendering at 120fps with a glyph atlas and triple buffering |
+| GPU-Accelerated Rendering | Metal-powered rendering at 120fps with a glyph atlas and triple buffering. 10,000-line scrollback buffer |
 | LLM Profiles | Switch between Claude, Gemini, Codex, or plain shell in one click. Save per-model configurations |
 | AI Side Panel | Track token usage, costs, context window, file references, and git changes in real time |
 | Smart Output Folding | AI tool calls, code blocks, and diffs auto-collapse into foldable regions. Click to expand |
-| Voice Input | Push-to-talk, continuous, or wake word mode. Powered by Whisper for on-device transcription |
-| AI Components | Auto-detect your project stack and inject skills, rules, prompts, agents, MCP servers, and hooks into AI sessions from shared registries. Supports git, [localskills](https://localskills.dev), and local directory sources. Per-component enable/disable, security scanning, and import/export |
+| Voice Input | Push-to-talk voice input powered by on-device speech recognition. Continuous and wake word modes coming soon |
+| AI Components | Auto-detect your project stack and inject skills, rules, prompts, agents, MCP servers, and hooks into AI sessions from shared registries. Supports git, [localskills](https://localskills.dev), and local directory sources. Per-component enable/disable, security scanning, hook approval gate, and import/export |
 | Sub-Stack Detection | Automatically detects frameworks like Next.js, Django, Flask, Vapor, NestJS, and more on top of base stack detection for more targeted component injection |
 | Resume Sessions | Browse and resume past AI sessions from the startup menu. Claude sessions show turn count and time ago; Codex and Gemini launch their built-in session pickers |
 | Smart Notifications | Desktop alerts when long-running AI tasks complete |
-| Tabs & Splits | Native tabs with drag-to-reorder. Split panes (vertical and horizontal) are temporarily disabled while a rendering bug is being resolved |
+| Tabs & Splits | Native tabs with drag-to-reorder, custom tab colors, and per-tab titles. Split panes (vertical and horizontal) are temporarily disabled while a rendering bug is being resolved |
 | Quick Terminal | Quake-style dropdown terminal with a global hotkey (`Ctrl+``) |
-| Find in Terminal | Search through scrollback with match highlighting and keyboard navigation |
+| Find in Terminal | Search through scrollback with match highlighting and keyboard navigation. OSC 8 hyperlinks and drag-and-drop file pasting |
 | Syntax Highlighting | Language-aware coloring for code blocks and diffs inside AI output |
-| Git Integration | Live branch, status, and changed files displayed in the status bar and side panel. Click any changed file to view its diff inline |
+| Git Integration | Live branch, status, and changed files displayed in the status bar and side panel. Click any changed file to view its diff inline. Per-tab worktree isolation for parallel workstreams |
 | Large Paste Protection | Confirmation dialog for large pastes with options to save to file, truncate, or paste all. Configurable threshold |
 | Danger Mode | Skip all AI tool confirmation prompts for unrestricted sessions. Toggle from the View menu; always resets on app launch |
 | Automatic Updates | Checks GitHub Releases for new versions and shows an indicator in the status bar. Supports Homebrew and direct download updates |
@@ -119,6 +119,8 @@ truncate_length = 10000
 random_colors = true
 # random_color_palette = "#E55353, #3498DB, #27AE60"
 confirm_close = true
+worktree_isolation = false
+# worktree_branch_prefix = "awal/tab"
 
 [quit]
 confirm_close = true
@@ -128,6 +130,7 @@ enabled = true
 auto_detect = true
 auto_sync = true
 security_scan = true
+require_hook_approval = true
 
 [ai_components.registry.awal-components]
 url = "https://github.com/AwalTerminal/awal-ai-components-registry.git"
@@ -166,6 +169,8 @@ docs/       Promotional website (GitHub Pages)
 | Quick terminal | `` Ctrl+` `` |
 | Sync AI components | `Cmd+Shift+Y` |
 | Voice input (PTT) | `Ctrl+Shift+Space` |
+| Preferences | `Cmd+,` |
+| Manage AI Components | `Cmd+Shift+M` |
 
 ## License
 
