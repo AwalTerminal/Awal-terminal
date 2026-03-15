@@ -798,7 +798,7 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         }
 
         let manager = GitWorktreeManager.shared
-        let worktreeRoot = info.worktreePath
+        let worktreeRoot = info.worktreeRoot
 
         if !manager.isDirty(worktreeRoot) {
             // Clean — silently remove

@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 struct WorktreeInfo {
@@ -5,6 +6,28 @@ struct WorktreeInfo {
     let worktreePath: String
     let branchName: String?
     let isOriginal: Bool
+
+    /// The worktree root directory (without any subpath suffix).
+    var worktreeRoot: String {
+        if worktreePath.contains("/.git/awal-worktrees/") {
+            if let range = worktreePath.range(of: "/.git/awal-worktrees/") {
+                let after = worktreePath[range.upperBound...]
+                if let slash = after.firstIndex(of: "/") {
+                    return String(worktreePath[..<slash])
+                }
+            }
+            return worktreePath
+        }
+        return worktreePath
+    }
+
+    /// The UUID extracted from the branch name.
+    var uuid: String? {
+        guard let branch = branchName else { return nil }
+        guard let lastHyphen = branch.lastIndex(of: "-") else { return nil }
+        let uuidPart = branch[branch.index(after: lastHyphen)...]
+        return uuidPart.isEmpty ? nil : String(uuidPart)
+    }
 }
 
 enum WorktreeCleanupResult {
@@ -20,9 +43,95 @@ class GitWorktreeManager {
     private let queue = DispatchQueue(label: "com.awal.worktree", qos: .userInitiated)
 
     /// Tracks repo roots that currently have an open tab.
+    /// All access must go through `queue` for thread safety.
     private var openRepoRoots: [String: Int] = [:]
 
+    /// Resolved path to the git executable.
+    private let gitPath: String = {
+        // Prefer user-installed git (Homebrew, Xcode CLT) over /usr/bin/git
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = ["which", "git"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
+            if process.terminationStatus == 0 {
+                if let path = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                   !path.isEmpty {
+                    return path
+                }
+            }
+        } catch {}
+        return "/usr/bin/git"
+    }()
+
+    /// Age threshold for removing dirty orphaned worktrees (7 days).
+    private let dirtyOrphanMaxAge: TimeInterval = 7 * 24 * 60 * 60
+
+    /// Interval for periodic prune (30 minutes).
+    private let pruneInterval: TimeInterval = 30 * 60
+
+    private var pruneTimer: DispatchSourceTimer?
+
     private init() {}
+
+    // MARK: - Known Repos Persistence
+
+    private var knownReposURL: URL {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        return appSupport.appendingPathComponent("Awal Terminal/known-worktree-repos.json")
+    }
+
+    func loadKnownRepos() -> Set<String> {
+        guard let data = try? Data(contentsOf: knownReposURL),
+              let repos = try? JSONDecoder().decode([String].self, from: data) else {
+            return []
+        }
+        return Set(repos)
+    }
+
+    private func saveKnownRepos(_ repos: Set<String>) {
+        let dir = knownReposURL.deletingLastPathComponent()
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        if let data = try? JSONEncoder().encode(Array(repos).sorted()) {
+            try? data.write(to: knownReposURL, options: .atomic)
+        }
+    }
+
+    private func trackRepo(_ repoRoot: String) {
+        var repos = loadKnownRepos()
+        if repos.insert(repoRoot).inserted {
+            saveKnownRepos(repos)
+        }
+    }
+
+    private func untrackRepoIfEmpty(_ repoRoot: String) {
+        let awalDir = "\(repoRoot)/.git/awal-worktrees"
+        let hasEntries = (try? FileManager.default.contentsOfDirectory(atPath: awalDir))?.isEmpty == false
+        if !hasEntries {
+            var repos = loadKnownRepos()
+            if repos.remove(repoRoot) != nil {
+                saveKnownRepos(repos)
+            }
+        }
+    }
+
+    // MARK: - Periodic Prune
+
+    func startPeriodicPrune() {
+        guard pruneTimer == nil else { return }
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now() + pruneInterval, repeating: pruneInterval)
+        timer.setEventHandler { [weak self] in
+            self?.pruneOrphanedSync()
+        }
+        timer.resume()
+        pruneTimer = timer
+    }
 
     // MARK: - Repo Detection
 
@@ -35,21 +144,27 @@ class GitWorktreeManager {
     // MARK: - Open Tracking
 
     func registerOpen(repoRoot: String) {
-        openRepoRoots[repoRoot, default: 0] += 1
+        queue.sync {
+            openRepoRoots[repoRoot, default: 0] += 1
+        }
     }
 
     func registerClose(repoRoot: String) {
-        if let count = openRepoRoots[repoRoot] {
-            if count <= 1 {
-                openRepoRoots.removeValue(forKey: repoRoot)
-            } else {
-                openRepoRoots[repoRoot] = count - 1
+        queue.sync {
+            if let count = openRepoRoots[repoRoot] {
+                if count <= 1 {
+                    openRepoRoots.removeValue(forKey: repoRoot)
+                } else {
+                    openRepoRoots[repoRoot] = count - 1
+                }
             }
         }
     }
 
     func isProjectAlreadyOpen(repoRoot: String) -> Bool {
-        return (openRepoRoots[repoRoot] ?? 0) > 0
+        return queue.sync {
+            (openRepoRoots[repoRoot] ?? 0) > 0
+        }
     }
 
     // MARK: - Branch Resolution
@@ -98,6 +213,9 @@ class GitWorktreeManager {
         )
         guard result != nil else { return nil }
 
+        // Track this repo for future orphan cleanup
+        trackRepo(repoRoot)
+
         // If the original path was a subpath within the repo, resolve it within the worktree
         var effectivePath = worktreeDir
         if let sub = subpath {
@@ -120,11 +238,10 @@ class GitWorktreeManager {
     func removeWorktree(_ info: WorktreeInfo) -> WorktreeCleanupResult {
         guard !info.isOriginal else { return .kept(path: info.worktreePath) }
 
-        // Resolve the actual worktree root (may differ from effective path if subpath was used)
-        let worktreeRoot = resolveWorktreeRoot(info)
+        let root = info.worktreeRoot
 
-        if isDirty(worktreeRoot) {
-            return .kept(path: worktreeRoot)
+        if isDirty(root) {
+            return .kept(path: root)
         }
 
         return forceRemoveWorktree(info)
@@ -134,15 +251,16 @@ class GitWorktreeManager {
     func forceRemoveWorktree(_ info: WorktreeInfo) -> WorktreeCleanupResult {
         guard !info.isOriginal else { return .kept(path: info.worktreePath) }
 
-        let worktreeRoot = resolveWorktreeRoot(info)
+        let root = info.worktreeRoot
 
         let removeResult = runGit(
-            ["worktree", "remove", "--force", worktreeRoot],
+            ["worktree", "remove", "--force", root],
             cwd: info.repoRoot
         )
         if removeResult == nil {
+            NSLog("[Worktree] Failed to remove worktree at %@, attempting manual cleanup", root)
             // Fallback: try to remove directory manually
-            try? FileManager.default.removeItem(atPath: worktreeRoot)
+            try? FileManager.default.removeItem(atPath: root)
             _ = runGit(["worktree", "prune"], cwd: info.repoRoot)
         }
 
@@ -156,7 +274,10 @@ class GitWorktreeManager {
 
     func isDirty(_ path: String) -> Bool {
         let result = runGit(["status", "--porcelain"], cwd: path)
-        guard let output = result else { return false }
+        guard let output = result else {
+            NSLog("[Worktree] git status failed for %@, assuming dirty", path)
+            return true  // Fail safe: treat errors as dirty to prevent data loss
+        }
         return !output.isEmpty
     }
 
@@ -169,37 +290,78 @@ class GitWorktreeManager {
     }
 
     private func pruneOrphanedSync() {
-        // Per-repo cleanup happens via pruneOrphanedForRepo() when a repo is opened.
-        // On launch we can clean up recently used workspaces from WorkspaceStore.
+        // Collect repo roots from both recents and the persistent known-repos set
+        var repoRoots = loadKnownRepos()
         for ws in WorkspaceStore.shared.recents() {
             if let repoRoot = resolveRepoRoot(for: ws.path) {
-                pruneOrphanedForRepo(repoRoot)
+                repoRoots.insert(repoRoot)
             }
+        }
+        for repoRoot in repoRoots {
+            pruneOrphanedForRepo(repoRoot)
         }
     }
 
     /// Clean up orphaned worktrees for a specific repo root.
     func pruneOrphanedForRepo(_ repoRoot: String) {
         let awalDir = "\(repoRoot)/.git/awal-worktrees"
-        guard FileManager.default.fileExists(atPath: awalDir) else { return }
+        guard FileManager.default.fileExists(atPath: awalDir) else {
+            untrackRepoIfEmpty(repoRoot)
+            return
+        }
 
         guard let entries = try? FileManager.default.contentsOfDirectory(atPath: awalDir) else { return }
+
+        // Fetch the worktree list once, not per entry
+        let worktreeList = runGit(["worktree", "list", "--porcelain"], cwd: repoRoot)
+        var keptDirtyPaths: [String] = []
 
         for entry in entries {
             let worktreePath = "\(awalDir)/\(entry)"
             // Check if this worktree is still registered in git
-            let listResult = runGit(["worktree", "list", "--porcelain"], cwd: repoRoot)
-            if let list = listResult, list.contains(worktreePath) {
+            if let list = worktreeList, list.contains(worktreePath) {
                 // Worktree exists in git — check if it's in use by any tab
                 // If not tracked in openRepoRoots, it's orphaned
                 if !isDirty(worktreePath) {
                     _ = runGit(["worktree", "remove", "--force", worktreePath], cwd: repoRoot)
-                    // Find and delete the branch
                     if entry.hasPrefix("tab-") {
                         let uuid = String(entry.dropFirst(4))
                         let prefix = AppConfig.shared.tabsWorktreeBranchPrefix
                         _ = runGit(["branch", "-D", "\(prefix)-\(uuid)"], cwd: repoRoot)
                     }
+                } else {
+                    // Dirty worktree — check age for stale cleanup
+                    let attrs = try? FileManager.default.attributesOfItem(atPath: worktreePath)
+                    let mtime = attrs?[.modificationDate] as? Date ?? Date()
+                    let age = Date().timeIntervalSince(mtime)
+
+                    if age > dirtyOrphanMaxAge {
+                        NSLog("[Worktree] Removing stale dirty orphan (%.0f days old): %@",
+                              age / 86400, worktreePath)
+                        _ = runGit(["worktree", "remove", "--force", worktreePath], cwd: repoRoot)
+                        if entry.hasPrefix("tab-") {
+                            let uuid = String(entry.dropFirst(4))
+                            let prefix = AppConfig.shared.tabsWorktreeBranchPrefix
+                            _ = runGit(["branch", "-D", "\(prefix)-\(uuid)"], cwd: repoRoot)
+                        }
+                    } else {
+                        NSLog("[Worktree] Keeping dirty orphan (%.0f days old): %@",
+                              age / 86400, worktreePath)
+                        keptDirtyPaths.append(worktreePath)
+                    }
+                }
+            }
+        }
+
+        // Notify user about kept dirty orphans
+        if !keptDirtyPaths.isEmpty {
+            let count = keptDirtyPaths.count
+            let message = count == 1
+                ? "1 dirty worktree kept — review: \(keptDirtyPaths[0])"
+                : "\(count) dirty worktrees kept with uncommitted changes"
+            DispatchQueue.main.async {
+                if let controller = NSApp.keyWindow?.windowController as? TerminalWindowController {
+                    controller.flashStatusBar(message)
                 }
             }
         }
@@ -211,31 +373,111 @@ class GitWorktreeManager {
         if let remaining = try? FileManager.default.contentsOfDirectory(atPath: awalDir), remaining.isEmpty {
             try? FileManager.default.removeItem(atPath: awalDir)
         }
+
+        untrackRepoIfEmpty(repoRoot)
+    }
+
+    // MARK: - Worktree Enumeration
+
+    struct WorktreeDetail {
+        let info: WorktreeInfo
+        let isDirty: Bool
+        let diskSizeBytes: UInt64
+        let modificationDate: Date?
+        let isOpenInTab: Bool
+    }
+
+    func enumerateAllWorktrees(completion: @escaping ([WorktreeDetail]) -> Void) {
+        // Capture open worktree roots from tabs on main thread before dispatching
+        let openRoots: Set<String> = {
+            var roots = Set<String>()
+            for controller in TerminalWindowTracker.shared.allControllers {
+                for tab in controller.tabs {
+                    if let info = tab.worktreeInfo, !info.isOriginal {
+                        roots.insert(info.worktreeRoot)
+                    }
+                }
+            }
+            return roots
+        }()
+
+        queue.async { [self] in
+            var results: [WorktreeDetail] = []
+            let repos = loadKnownRepos()
+
+            for repoRoot in repos {
+                let awalDir = "\(repoRoot)/.git/awal-worktrees"
+                guard FileManager.default.fileExists(atPath: awalDir),
+                      let entries = try? FileManager.default.contentsOfDirectory(atPath: awalDir) else {
+                    continue
+                }
+
+                for entry in entries {
+                    let worktreePath = "\(awalDir)/\(entry)"
+                    var isDir: ObjCBool = false
+                    guard FileManager.default.fileExists(atPath: worktreePath, isDirectory: &isDir),
+                          isDir.boolValue else { continue }
+
+                    // Resolve branch name
+                    let branchName: String?
+                    if entry.hasPrefix("tab-") {
+                        let uuid = String(entry.dropFirst(4))
+                        let prefix = AppConfig.shared.tabsWorktreeBranchPrefix
+                        branchName = "\(prefix)-\(uuid)"
+                    } else {
+                        branchName = runGit(["rev-parse", "--abbrev-ref", "HEAD"], cwd: worktreePath)
+                    }
+
+                    let info = WorktreeInfo(
+                        repoRoot: repoRoot,
+                        worktreePath: worktreePath,
+                        branchName: branchName,
+                        isOriginal: false
+                    )
+
+                    let dirty = isDirty(worktreePath)
+                    let size = directorySize(atPath: worktreePath)
+
+                    let attrs = try? FileManager.default.attributesOfItem(atPath: worktreePath)
+                    let mdate = attrs?[.modificationDate] as? Date
+
+                    let isOpen = openRoots.contains(worktreePath)
+
+                    results.append(WorktreeDetail(
+                        info: info,
+                        isDirty: dirty,
+                        diskSizeBytes: size,
+                        modificationDate: mdate,
+                        isOpenInTab: isOpen
+                    ))
+                }
+            }
+
+            DispatchQueue.main.async {
+                completion(results)
+            }
+        }
+    }
+
+    private func directorySize(atPath path: String) -> UInt64 {
+        let fm = FileManager.default
+        guard let enumerator = fm.enumerator(atPath: path) else { return 0 }
+        var total: UInt64 = 0
+        while let file = enumerator.nextObject() as? String {
+            let fullPath = "\(path)/\(file)"
+            if let attrs = try? fm.attributesOfItem(atPath: fullPath),
+               let size = attrs[.size] as? UInt64 {
+                total += size
+            }
+        }
+        return total
     }
 
     // MARK: - Helpers
 
-    private func resolveWorktreeRoot(_ info: WorktreeInfo) -> String {
-        // The worktree root is always under .git/awal-worktrees/tab-<uuid>
-        // The effective worktreePath may include a subpath
-        if info.worktreePath.contains("/.git/awal-worktrees/") {
-            // Already the root
-            return info.worktreePath
-        }
-        // Try to find the worktree root from the branch name
-        if let branch = info.branchName, branch.contains("-") {
-            let uuid = String(branch.split(separator: "-").last ?? "")
-            let candidate = "\(info.repoRoot)/.git/awal-worktrees/tab-\(uuid)"
-            if FileManager.default.fileExists(atPath: candidate) {
-                return candidate
-            }
-        }
-        return info.worktreePath
-    }
-
     private func runGit(_ args: [String], cwd: String) -> String? {
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        process.executableURL = URL(fileURLWithPath: gitPath)
         process.arguments = args
         process.currentDirectoryURL = URL(fileURLWithPath: cwd)
 
@@ -245,14 +487,17 @@ class GitWorktreeManager {
 
         do {
             try process.run()
-            process.waitUntilExit()
         } catch {
+            NSLog("[Worktree] Failed to launch git %@: %@", args.joined(separator: " "), error.localizedDescription)
             return nil
         }
 
+        // Read before waiting to avoid pipe buffer deadlock
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+
         guard process.terminationStatus == 0 else { return nil }
 
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
         return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

@@ -75,8 +75,9 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
             VoiceInputController.shared.stop()
         }
 
-        // Clean up orphaned worktrees from crashed sessions
+        // Clean up orphaned worktrees from crashed sessions and start periodic cleanup
         GitWorktreeManager.shared.pruneOrphaned()
+        GitWorktreeManager.shared.startPeriodicPrune()
 
         let controller = TerminalWindowController(isInitialTab: true)
         TerminalWindowTracker.shared.register(controller)
@@ -125,6 +126,12 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
 
     @objc func toggleNotifications(_ sender: Any?) {
         NotificationManager.shared.isEnabled.toggle()
+    }
+
+    // MARK: - Worktrees
+
+    @objc func showManageWorktrees(_ sender: Any?) {
+        ManageWorktreesWindow.show()
     }
 
     // MARK: - AI Components
@@ -373,6 +380,9 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
         let closePaneItem = NSMenuItem(title: "Close Pane", action: nil, keyEquivalent: "")
         closePaneItem.isEnabled = false
         shellMenu.addItem(closePaneItem)
+
+        shellMenu.addItem(NSMenuItem.separator())
+        shellMenu.addItem(withTitle: "Manage Worktrees…", action: #selector(showManageWorktrees(_:)), keyEquivalent: "")
 
         shellMenuItem.submenu = shellMenu
         mainMenu.addItem(shellMenuItem)

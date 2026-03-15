@@ -17,4 +17,6 @@ class TerminalWindowTracker {
     }
 
     var count: Int { controllers.count }
+
+    var allControllers: [TerminalWindowController] { controllers }
 }
