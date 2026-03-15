@@ -467,6 +467,7 @@
         <li><a href="#ai-components">AI Components</a></li>
         <li><a href="#large-paste-protection">Large Paste Protection</a></li>
         <li><a href="#voice-input">Voice Input</a></li>
+        <li><a href="#automatic-updates">Automatic Updates</a></li>
         <li><a href="#configuration">Configuration</a></li>
         <li><a href="#keyboard-shortcuts">Keyboard Shortcuts</a></li>
       </ul>
@@ -830,6 +831,28 @@ truncate_length = 10000      # Characters to keep when truncating</code></pre>
             <tr><td>find [text] / search [text]</td><td>Open search</td></tr>
           </tbody>
         </table>
+      </section>
+
+      <!-- Automatic Updates -->
+      <section class="doc-section" id="automatic-updates">
+        <h2>Automatic Updates</h2>
+        <p>Awal Terminal includes a built-in update checker that keeps you informed about new releases without interrupting your workflow.</p>
+
+        <h3>How It Works</h3>
+        <p>The app checks GitHub Releases for new versions automatically on launch and every 4 hours while running. When a newer version is detected, a green badge appears in the status bar to let you know an update is available.</p>
+
+        <h3>Update Dialog</h3>
+        <p>Click the green badge or use <strong>Awal Terminal &gt; Check for Updates&hellip;</strong> from the App menu to open the update dialog. The dialog displays the release notes for the new version so you can review what has changed before updating.</p>
+
+        <h3>Installation Methods</h3>
+        <p>Awal Terminal detects how it was installed and offers the appropriate update path:</p>
+        <ul>
+          <li><strong>Homebrew installations</strong> &mdash; The dialog shows an <strong>Update via Homebrew</strong> button that runs the cask upgrade for you.</li>
+          <li><strong>Manual installations</strong> &mdash; The dialog shows a <strong>Download Update</strong> button that takes you to the latest release download.</li>
+        </ul>
+
+        <h3>Manual Check</h3>
+        <p>You can check for updates at any time via the <strong>Awal Terminal &gt; Check for Updates&hellip;</strong> menu item, regardless of the automatic check schedule.</p>
       </section>
 
       <!-- 8. Configuration -->

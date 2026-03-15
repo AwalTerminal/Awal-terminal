@@ -79,6 +79,9 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
         GitWorktreeManager.shared.pruneOrphaned()
         GitWorktreeManager.shared.startPeriodicPrune()
 
+        // Start automatic update checker
+        UpdateChecker.shared.start()
+
         let controller = TerminalWindowController(isInitialTab: true)
         TerminalWindowTracker.shared.register(controller)
         controller.showWindow(nil)
@@ -118,6 +121,21 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
 
     @objc func showPreferences(_ sender: Any?) {
         PreferencesWindow.show()
+    }
+
+    @objc func checkForUpdates(_ sender: Any?) {
+        UpdateChecker.shared.checkNow { hasUpdate, error in
+            if let error {
+                let alert = NSAlert.branded()
+                alert.messageText = "Update Check Failed"
+                alert.informativeText = error.localizedDescription
+                alert.alertStyle = .warning
+                alert.addButton(withTitle: "OK")
+                alert.runModal()
+                return
+            }
+            UpdateChecker.shared.showUpdateAlert()
+        }
     }
 
     @objc func toggleQuickTerminal(_ sender: Any?) {
@@ -347,6 +365,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
         appMenu.addItem(NSMenuItem.separator())
         appMenu.addItem(withTitle: "Preferences…", action: #selector(showPreferences(_:)), keyEquivalent: ",")
         appMenu.addItem(withTitle: "Model Settings…", action: #selector(TerminalWindowController.openSettings(_:)), keyEquivalent: "")
+        appMenu.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdates(_:)), keyEquivalent: "")
         appMenu.addItem(NSMenuItem.separator())
         appMenu.addItem(withTitle: "Quit Awal Terminal", action: #selector(confirmQuit(_:)), keyEquivalent: "q")
         appMenuItem.submenu = appMenu

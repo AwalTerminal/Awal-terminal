@@ -44,6 +44,7 @@ A native macOS terminal built from scratch with Swift and Rust, designed specifi
 | Git Integration | Live branch, status, and changed files displayed in the status bar and side panel. Click any changed file to view its diff inline |
 | Large Paste Protection | Confirmation dialog for large pastes with options to save to file, truncate, or paste all. Configurable threshold |
 | Danger Mode | Skip all AI tool confirmation prompts for unrestricted sessions. Toggle from the View menu; always resets on app launch |
+| Automatic Updates | Checks GitHub Releases for new versions and shows an indicator in the status bar. Supports Homebrew and direct download updates |
 | Fully Configurable | Theme colors, fonts, keybindings, and voice settings in a single config file |
 
 ## Getting Started

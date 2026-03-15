@@ -58,6 +58,18 @@ class StatusBarView: NSView, NSMenuDelegate {
         label.toolTip = "Click to view context details"
         return label
     }()
+    private let updateBadge: NSButton = {
+        let btn = NSButton(title: "", target: nil, action: nil)
+        btn.isBordered = false
+        btn.setButtonType(.momentaryChange)
+        btn.image = NSImage(systemSymbolName: "arrow.down.circle.fill", accessibilityDescription: "Update Available")
+        btn.imagePosition = .imageLeading
+        btn.contentTintColor = NSColor(red: 80.0/255.0, green: 200.0/255.0, blue: 120.0/255.0, alpha: 1.0)
+        btn.font = NSFont.monospacedSystemFont(ofSize: 11.0, weight: .medium)
+        btn.isHidden = true
+        btn.toolTip = "Update available — click to update"
+        return btn
+    }()
     private let timeLabel = NSTextField(labelWithString: "")
 
     private(set) var currentPath: String?
@@ -233,6 +245,19 @@ class StatusBarView: NSView, NSMenuDelegate {
         }
         addSubview(aiComponentLabel)
 
+        // Update badge (right side, before time)
+        updateBadge.translatesAutoresizingMaskIntoConstraints = false
+        updateBadge.target = self
+        updateBadge.action = #selector(updateBadgeClicked(_:))
+        addSubview(updateBadge)
+
+        // Listen for update availability
+        NotificationCenter.default.addObserver(
+            forName: UpdateChecker.updateAvailable, object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.refreshUpdateBadge()
+        }
+
         // Separators: thin dots between sections
         self.sep1 = makeSeparator()
         self.sep2 = makeSeparator()
@@ -303,8 +328,12 @@ class StatusBarView: NSView, NSMenuDelegate {
             timeLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
             timeLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
 
-            // Sep 3 (before time)
-            sep3.trailingAnchor.constraint(equalTo: timeLabel.leadingAnchor, constant: -10),
+            // Update badge (before time)
+            updateBadge.trailingAnchor.constraint(equalTo: timeLabel.leadingAnchor, constant: -8),
+            updateBadge.centerYAnchor.constraint(equalTo: centerYAnchor),
+
+            // Sep 3 (before update badge)
+            sep3.trailingAnchor.constraint(equalTo: updateBadge.leadingAnchor, constant: -10),
             sep3.centerYAnchor.constraint(equalTo: centerYAnchor),
 
             // Tokens (before sep3)
@@ -839,6 +868,21 @@ class StatusBarView: NSView, NSMenuDelegate {
             generatingWidthConstraint.constant = 0
             generatingLabel.stringValue = ""
         }
+    }
+    // MARK: - Update Badge
+
+    private func refreshUpdateBadge() {
+        let checker = UpdateChecker.shared
+        if checker.isUpdateAvailable, let release = checker.latestRelease {
+            updateBadge.title = "v\(release.version)"
+            updateBadge.isHidden = false
+        } else {
+            updateBadge.isHidden = true
+        }
+    }
+
+    @objc private func updateBadgeClicked(_ sender: NSButton) {
+        UpdateChecker.shared.showUpdateAlert()
     }
 }
 
