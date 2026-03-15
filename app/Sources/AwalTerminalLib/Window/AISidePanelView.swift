@@ -273,6 +273,8 @@ class AISidePanelView: NSView {
         // NSOutlineView in scroll view
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("GitFile"))
         column.isEditable = false
+        column.minWidth = 50
+        column.resizingMask = []
         gitOutlineView.addTableColumn(column)
         gitOutlineView.outlineTableColumn = column
         gitOutlineView.headerView = nil
@@ -280,6 +282,7 @@ class AISidePanelView: NSView {
         gitOutlineView.backgroundColor = .clear
         gitOutlineView.focusRingType = .none
         gitOutlineView.selectionHighlightStyle = .none
+        gitOutlineView.columnAutoresizingStyle = .noColumnAutoresizing
         gitOutlineView.intercellSpacing = NSSize(width: 0, height: 0)
         gitOutlineView.indentationPerLevel = 14
         gitOutlineView.dataSource = self
@@ -290,7 +293,7 @@ class AISidePanelView: NSView {
 
         gitScrollView.documentView = gitOutlineView
         gitScrollView.hasVerticalScroller = true
-        gitScrollView.hasHorizontalScroller = false
+        gitScrollView.hasHorizontalScroller = true
         gitScrollView.autohidesScrollers = true
         gitScrollView.drawsBackground = false
         gitScrollView.borderType = .noBorder
@@ -703,12 +706,16 @@ class AISidePanelView: NSView {
 
         gitOutlineView.reloadData()
 
-        // Restore expanded state
+        // Restore expanded state + auto-expand single-child directory chains
         for node in allNodes(gitTreeNodes) where node.isDirectory {
             if gitExpandedPaths.contains(node.fullPath) {
                 gitOutlineView.expandItem(node)
+            } else if node.children.count == 1 && node.children[0].isDirectory {
+                gitOutlineView.expandItem(node)
             }
         }
+
+        resizeGitColumnToFit()
     }
 
     private func makeBadge(count: Int, status: GitFileChange.Status) -> NSView {
@@ -808,6 +815,36 @@ class AISidePanelView: NSView {
             diffPopover = nil
             diffPopoverFilePath = nil
         }
+    }
+
+    private func resizeGitColumnToFit() {
+        guard let column = gitOutlineView.tableColumns.first else { return }
+        let font = NSFont.monospacedSystemFont(ofSize: 11.0, weight: .regular)
+        let attrs: [NSAttributedString.Key: Any] = [.font: font]
+        let indentPerLevel = gitOutlineView.indentationPerLevel
+        // disclosure triangle (~16) + icon (14) + icon-text gap (4) + trailing padding (8)
+        let fixedPadding: CGFloat = 42
+        var maxWidth: CGFloat = gitScrollView.contentSize.width
+
+        for row in 0..<gitOutlineView.numberOfRows {
+            guard let node = gitOutlineView.item(atRow: row) as? GitTreeNode else { continue }
+            let level = CGFloat(gitOutlineView.level(forRow: row))
+            let indent = indentPerLevel * level
+
+            let label: String
+            if node.isDirectory {
+                label = "\(node.name)/"
+            } else if let status = node.fileChange?.status {
+                label = "\(status.label) \(node.name)"
+            } else {
+                label = node.name
+            }
+
+            let textWidth = (label as NSString).size(withAttributes: attrs).width
+            maxWidth = max(maxWidth, textWidth + indent + fixedPadding)
+        }
+
+        column.width = maxWidth
     }
 
     private func allNodes(_ nodes: [GitTreeNode]) -> [GitTreeNode] {
@@ -987,7 +1024,7 @@ extension AISidePanelView: NSOutlineViewDataSource, NSOutlineViewDelegate {
             tf.isEditable = false
             tf.isBordered = false
             tf.drawsBackground = false
-            tf.lineBreakMode = .byTruncatingTail
+            tf.lineBreakMode = .byClipping
             tf.translatesAutoresizingMaskIntoConstraints = false
             cellView.addSubview(tf)
             cellView.textField = tf
@@ -998,7 +1035,6 @@ extension AISidePanelView: NSOutlineViewDataSource, NSOutlineViewDelegate {
                 iv.widthAnchor.constraint(equalToConstant: 14),
                 iv.heightAnchor.constraint(equalToConstant: 14),
                 tf.leadingAnchor.constraint(equalTo: iv.trailingAnchor, constant: 4),
-                tf.trailingAnchor.constraint(equalTo: cellView.trailingAnchor),
                 tf.centerYAnchor.constraint(equalTo: cellView.centerYAnchor),
             ])
         }

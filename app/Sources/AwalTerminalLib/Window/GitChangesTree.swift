@@ -72,9 +72,6 @@ class GitTreeNode {
             }
         }
 
-        // Compact single-child directory chains
-        compactTree(root)
-
         // Sort: directories first, then files, alphabetical
         sortTree(root)
 
