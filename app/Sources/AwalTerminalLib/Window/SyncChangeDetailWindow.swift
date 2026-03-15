@@ -11,12 +11,14 @@ class SyncChangeDetailWindow: NSWindowController {
             existing.summary = summary
             existing.rebuildContent()
             existing.window?.makeKeyAndOrderFront(nil)
+            NSApp.runModal(for: existing.window!)
             return
         }
         let controller = SyncChangeDetailWindow(summary: summary)
         shared = controller
         controller.showWindow(nil)
         controller.window?.makeKeyAndOrderFront(nil)
+        NSApp.runModal(for: controller.window!)
     }
 
     convenience init(summary: SyncChangeSummary) {
@@ -243,6 +245,7 @@ class SyncChangeDetailWindow: NSWindowController {
 
 extension SyncChangeDetailWindow: NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
+        NSApp.stopModal()
         SyncChangeDetailWindow.shared = nil
     }
 }

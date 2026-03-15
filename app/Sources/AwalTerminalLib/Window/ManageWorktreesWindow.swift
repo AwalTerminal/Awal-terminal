@@ -8,11 +8,14 @@ class ManageWorktreesWindow: NSWindowController, NSWindowDelegate, NSTableViewDa
         if let existing = shared {
             existing.window?.makeKeyAndOrderFront(nil)
             existing.refreshAll()
+            NSApp.runModal(for: existing.window!)
             return
         }
         let controller = ManageWorktreesWindow()
         shared = controller
         controller.showWindow(nil)
+        controller.window?.makeKeyAndOrderFront(nil)
+        NSApp.runModal(for: controller.window!)
     }
 
     private let tableView = NSTableView()
@@ -300,6 +303,7 @@ class ManageWorktreesWindow: NSWindowController, NSWindowDelegate, NSTableViewDa
     // MARK: - NSWindowDelegate
 
     func windowWillClose(_ notification: Notification) {
+        NSApp.stopModal()
         ManageWorktreesWindow.shared = nil
     }
 }

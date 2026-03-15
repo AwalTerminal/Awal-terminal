@@ -8,11 +8,14 @@ class PreferencesWindow: NSWindowController, NSWindowDelegate {
     static func show() {
         if let existing = shared {
             existing.window?.makeKeyAndOrderFront(nil)
+            NSApp.runModal(for: existing.window!)
             return
         }
         let controller = PreferencesWindow()
         shared = controller
         controller.showWindow(nil)
+        controller.window?.makeKeyAndOrderFront(nil)
+        NSApp.runModal(for: controller.window!)
     }
 
     private let tabView = NSTabView()
@@ -38,6 +41,7 @@ class PreferencesWindow: NSWindowController, NSWindowDelegate {
     required init?(coder: NSCoder) { fatalError() }
 
     func windowWillClose(_ notification: Notification) {
+        NSApp.stopModal()
         Self.shared = nil
     }
 

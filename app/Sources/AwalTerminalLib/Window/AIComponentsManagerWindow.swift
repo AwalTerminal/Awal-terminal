@@ -9,11 +9,14 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
         if let existing = shared {
             existing.window?.makeKeyAndOrderFront(nil)
             existing.refreshAll()
+            NSApp.runModal(for: existing.window!)
             return
         }
         let controller = AIComponentsManagerWindow()
         shared = controller
         controller.showWindow(nil)
+        controller.window?.makeKeyAndOrderFront(nil)
+        NSApp.runModal(for: controller.window!)
     }
 
     private let registryTableView = NSTableView()
@@ -80,6 +83,7 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
+        NSApp.stopModal()
         Self.shared = nil
     }
 

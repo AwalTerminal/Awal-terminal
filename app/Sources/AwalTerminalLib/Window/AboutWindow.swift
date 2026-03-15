@@ -7,12 +7,14 @@ class AboutWindow: NSWindowController {
     static func show() {
         if let existing = shared {
             existing.window?.makeKeyAndOrderFront(nil)
+            NSApp.runModal(for: existing.window!)
             return
         }
         let controller = AboutWindow()
         shared = controller
         controller.showWindow(nil)
         controller.window?.makeKeyAndOrderFront(nil)
+        NSApp.runModal(for: controller.window!)
     }
 
     convenience init() {
@@ -335,6 +337,7 @@ class AboutWindow: NSWindowController {
 
 extension AboutWindow: NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
+        NSApp.stopModal()
         AboutWindow.shared = nil
     }
 }

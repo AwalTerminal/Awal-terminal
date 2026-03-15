@@ -8,11 +8,14 @@ class ImportExportWindow: NSWindowController, NSWindowDelegate {
     static func show() {
         if let existing = shared {
             existing.window?.makeKeyAndOrderFront(nil)
+            NSApp.runModal(for: existing.window!)
             return
         }
         let controller = ImportExportWindow()
         shared = controller
         controller.showWindow(nil)
+        controller.window?.makeKeyAndOrderFront(nil)
+        NSApp.runModal(for: controller.window!)
     }
 
     // MARK: - Shared state
@@ -74,6 +77,7 @@ class ImportExportWindow: NSWindowController, NSWindowDelegate {
     required init?(coder: NSCoder) { fatalError() }
 
     func windowWillClose(_ notification: Notification) {
+        NSApp.stopModal()
         Self.shared = nil
     }
 

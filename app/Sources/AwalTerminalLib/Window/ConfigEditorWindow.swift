@@ -89,6 +89,7 @@ class ConfigEditorWindow: NSWindowController, NSWindowDelegate {
         if let existing = shared {
             existing.switchToModel(model)
             existing.window?.makeKeyAndOrderFront(nil)
+            NSApp.runModal(for: existing.window!)
             return
         }
 
@@ -96,6 +97,7 @@ class ConfigEditorWindow: NSWindowController, NSWindowDelegate {
         shared = controller
         controller.showWindow(nil)
         controller.window?.makeKeyAndOrderFront(nil)
+        NSApp.runModal(for: controller.window!)
     }
 
     // MARK: - Init
@@ -607,6 +609,7 @@ class ConfigEditorWindow: NSWindowController, NSWindowDelegate {
     // MARK: - NSWindowDelegate
 
     func windowWillClose(_ notification: Notification) {
+        NSApp.stopModal()
         ConfigEditorWindow.shared = nil
     }
 
