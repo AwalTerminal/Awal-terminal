@@ -5,10 +5,10 @@ import AppKit
 enum Theme {
     static let windowBg = NSColor(red: 22.0/255.0, green: 22.0/255.0, blue: 22.0/255.0, alpha: 1)
     static let editorBg = NSColor(red: 30.0/255.0, green: 30.0/255.0, blue: 30.0/255.0, alpha: 1)
-    static let accent = NSColor(red: 79.0/255.0, green: 70.0/255.0, blue: 229.0/255.0, alpha: 1)
-    static let accentSelection = NSColor(red: 79.0/255.0, green: 70.0/255.0, blue: 229.0/255.0, alpha: 0.15)
+    static let accent = NSColor(red: 45.0/255.0, green: 127.0/255.0, blue: 212.0/255.0, alpha: 1)
+    static let accentSelection = NSColor(red: 45.0/255.0, green: 127.0/255.0, blue: 212.0/255.0, alpha: 0.15)
     static let barBorder = NSColor(white: 1, alpha: 0.06)
-    static let textSelection = NSColor(red: 79.0/255.0, green: 70.0/255.0, blue: 229.0/255.0, alpha: 0.4)
+    static let textSelection = NSColor(red: 45.0/255.0, green: 127.0/255.0, blue: 212.0/255.0, alpha: 0.4)
 
     static let stringColor = NSColor(red: 143.0/255.0, green: 217.0/255.0, blue: 143.0/255.0, alpha: 1)
     static let numberColor = NSColor(red: 217.0/255.0, green: 166.0/255.0, blue: 89.0/255.0, alpha: 1)

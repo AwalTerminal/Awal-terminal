@@ -143,7 +143,7 @@ class StatusBarView: NSView, NSMenuDelegate {
         let dimColor = NSColor(white: 0.45, alpha: 1.0)
         let accentColor = AppConfig.shared.themeAccent
         let pathColor = NSColor(white: 0.55, alpha: 1.0)
-        let branchColor = NSColor(red: 180.0/255.0, green: 142.0/255.0, blue: 255.0/255.0, alpha: 1.0)
+        let branchColor = NSColor(red: 45.0/255.0, green: 127.0/255.0, blue: 212.0/255.0, alpha: 1.0)
 
         let labels: [NSTextField] = [gitLabel, cpuLabel, dimsLabel, timeLabel]
         for label in labels {

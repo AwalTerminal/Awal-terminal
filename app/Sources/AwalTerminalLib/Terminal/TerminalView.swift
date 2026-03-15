@@ -374,7 +374,7 @@ class TerminalView: NSView {
         guard let layer = layer else { return }
         if focused {
             layer.borderWidth = 1.0
-            layer.borderColor = NSColor(red: 79.0/255.0, green: 70.0/255.0, blue: 229.0/255.0, alpha: 1.0).cgColor
+            layer.borderColor = NSColor(red: 45.0/255.0, green: 127.0/255.0, blue: 212.0/255.0, alpha: 1.0).cgColor
         } else {
             layer.borderWidth = 0.0
             layer.borderColor = nil
