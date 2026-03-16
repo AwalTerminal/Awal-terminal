@@ -840,6 +840,26 @@ pub extern "C" fn at_surface_get_file_ref(surface: *const ATSurface, index: u32)
     }
 }
 
+/// Get the detected plan title, if any. Returns a C string that must be freed with `at_free_string`, or null.
+#[no_mangle]
+pub extern "C" fn at_surface_get_plan_title(surface: *const ATSurface) -> *mut c_char {
+    let surface = ref_or!(surface, std::ptr::null_mut());
+    match surface.analyzer.detected_plan_title() {
+        Some(title) => match CString::new(title) {
+            Ok(cs) => cs.into_raw(),
+            Err(_) => std::ptr::null_mut(),
+        },
+        None => std::ptr::null_mut(),
+    }
+}
+
+/// Clear the detected plan title (marks it dismissed so it won't re-trigger).
+#[no_mangle]
+pub extern "C" fn at_surface_clear_plan_title(surface: *mut ATSurface) {
+    let surface = mut_ref_or!(surface);
+    surface.analyzer.clear_plan_title();
+}
+
 /// Manually trigger AI analysis (e.g. after scrollback changes without PTY activity).
 #[no_mangle]
 pub extern "C" fn at_surface_analyze(surface: *mut ATSurface) {

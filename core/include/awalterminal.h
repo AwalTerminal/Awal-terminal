@@ -358,6 +358,16 @@ char *at_surface_get_file_ref(const struct ATSurface *surface,
                               uint32_t index);
 
 /**
+ * Get the detected plan title, if any. Returns a C string that must be freed with `at_free_string`, or null.
+ */
+char *at_surface_get_plan_title(const struct ATSurface *surface);
+
+/**
+ * Clear the detected plan title (marks it dismissed so it won't re-trigger).
+ */
+void at_surface_clear_plan_title(struct ATSurface *surface);
+
+/**
  * Manually trigger AI analysis (e.g. after scrollback changes without PTY activity).
  */
 void at_surface_analyze(struct ATSurface *surface);

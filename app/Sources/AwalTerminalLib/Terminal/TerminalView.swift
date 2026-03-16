@@ -77,6 +77,7 @@ class TerminalView: NSView {
     /// and must call the completion with the resolved directory to use.
     var onProcessExited: (() -> Void)?
     var onWorkspacePicked: ((_ dir: String, _ completion: @escaping (String) -> Void) -> Void)?
+    var onPlanTitleDetected: ((_ title: String) -> Void)?
 
     // Deferred launch for new panes (set before adding to window)
     var pendingLaunchModel: MenuItem?
@@ -1356,6 +1357,14 @@ class TerminalView: NSView {
         if totalRead > 0 {
             // Run AI analyzer once per batch (not per iteration)
             at_surface_analyze(s)
+
+            // Check for detected plan title
+            if let titlePtr = at_surface_get_plan_title(s) {
+                let title = String(cString: titlePtr)
+                at_free_string(titlePtr)
+                at_surface_clear_plan_title(s)
+                onPlanTitleDetected?(title)
+            }
 
             let isSynchronized = at_surface_is_synchronized(s)
 

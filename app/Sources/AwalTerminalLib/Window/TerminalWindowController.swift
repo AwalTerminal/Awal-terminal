@@ -594,6 +594,11 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
                 output: TokenTracker.shared.totalOutput
             )
         }
+        terminal.onPlanTitleDetected = { [weak self, weak tab] title in
+            guard let self, let tab else { return }
+            if tab.customTitle == title { return }
+            self.showPlanRenameBanner(title: title, tab: tab)
+        }
         terminal.onGeneratingChanged = { [weak terminal, weak tab] isGenerating in
             guard let terminal, let tab else { return }
             if isGenerating {
@@ -939,6 +944,7 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
     private var componentObserver: Any?
     private var manualSyncPending = false
     private var syncBannerView: SyncChangeBannerView?
+    private var planRenameBannerView: PlanRenameBannerView?
 
     func wireVoiceCallbacks() {
         voiceController.onStateChanged = { [weak self] state in
@@ -1065,6 +1071,40 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         ])
 
         syncBannerView = banner
+        banner.showAnimated()
+    }
+
+    private func showPlanRenameBanner(title: String, tab: TabState) {
+        planRenameBannerView?.dismiss()
+        planRenameBannerView = nil
+
+        guard let container = window?.contentView else { return }
+
+        let banner = PlanRenameBannerView()
+        banner.translatesAutoresizingMaskIntoConstraints = false
+        banner.configure(title: title)
+        banner.onRename = { [weak self, weak tab, weak banner] in
+            guard let self, let tab else { return }
+            tab.customTitle = title
+            self.reloadTabBar()
+            self.updateWindowTitle()
+            banner?.dismiss()
+            self.planRenameBannerView = nil
+        }
+
+        container.addSubview(banner)
+
+        // Offset upward if sync banner is visible
+        let extraOffset: CGFloat = syncBannerView != nil ? 44 : 0
+        NSLayoutConstraint.activate([
+            banner.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
+            banner.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16),
+            banner.bottomAnchor.constraint(equalTo: container.bottomAnchor,
+                                           constant: -(StatusBarView.barHeight + 8 + extraOffset)),
+            banner.heightAnchor.constraint(equalToConstant: 36),
+        ])
+
+        planRenameBannerView = banner
         banner.showAnimated()
     }
 
