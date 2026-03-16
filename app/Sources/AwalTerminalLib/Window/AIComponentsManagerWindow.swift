@@ -311,6 +311,29 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
         viewFindingsButton.isHidden = true
         contentView.addSubview(viewFindingsButton)
 
+        // -- Status legend --
+        let legendLabel = NSTextField(labelWithString: "")
+        legendLabel.translatesAutoresizingMaskIntoConstraints = false
+        legendLabel.isEditable = false
+        legendLabel.isBordered = false
+        legendLabel.drawsBackground = false
+        let legend = NSMutableAttributedString()
+        let legendItems: [(String, NSColor, String)] = [
+            ("\u{25CF}", NSColor(red: 0.3, green: 0.8, blue: 0.4, alpha: 1), " Synced  "),
+            ("\u{25CF}", NSColor(red: 0.4, green: 0.7, blue: 1, alpha: 1), " Mapped  "),
+            ("\u{25CF}", NSColor(red: 1, green: 0.7, blue: 0.2, alpha: 1), " Needs Mapping  "),
+            ("\u{25CF}", NSColor(red: 1, green: 0.3, blue: 0.3, alpha: 1), " Error  "),
+            ("\u{25CB}", NSColor(white: 0.5, alpha: 1), " Not Cloned"),
+        ]
+        let legendFont = NSFont.systemFont(ofSize: 10)
+        let labelColor = NSColor.secondaryLabelColor
+        for (dot, color, text) in legendItems {
+            legend.append(NSAttributedString(string: dot, attributes: [.foregroundColor: color, .font: legendFont]))
+            legend.append(NSAttributedString(string: text, attributes: [.foregroundColor: labelColor, .font: legendFont]))
+        }
+        legendLabel.attributedStringValue = legend
+        contentView.addSubview(legendLabel)
+
         // -- Divider --
         let divider = NSBox()
         divider.boxType = .separator
@@ -412,10 +435,14 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
             viewFindingsButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
             viewFindingsButton.centerYAnchor.constraint(equalTo: errorLabel.centerYAnchor),
 
+            // Status legend
+            legendLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+            legendLabel.topAnchor.constraint(equalTo: errorLabel.bottomAnchor, constant: 4),
+
             // Divider
             divider.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
             divider.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
-            divider.topAnchor.constraint(equalTo: errorLabel.bottomAnchor, constant: 8),
+            divider.topAnchor.constraint(equalTo: legendLabel.bottomAnchor, constant: 6),
 
             // Segmented control
             segmentedControl.topAnchor.constraint(equalTo: divider.bottomAnchor, constant: 8),
@@ -1041,31 +1068,44 @@ extension AIComponentsManagerWindow: NSTableViewDataSource, NSTableViewDelegate 
                 if mappingMode == .unmapped {
                     // Non-standard, no mapping configured — orange
                     label.textColor = NSColor(red: 1, green: 0.7, blue: 0.2, alpha: 1)
+                    label.toolTip = "Synced — non-standard structure, needs mapping"
                 } else if mappingMode != nil && mappingMode != .standard {
                     // Mapped registry — blue
                     label.textColor = NSColor(red: 0.4, green: 0.7, blue: 1, alpha: 1)
+                    label.toolTip = "Synced — custom mapping configured"
                 } else {
                     let warnings = RegistryManager.shared.validateStructure(name: reg.name)
-                    label.textColor = warnings.isEmpty
-                        ? NSColor(red: 0.3, green: 0.8, blue: 0.4, alpha: 1)
-                        : NSColor(red: 1, green: 0.3, blue: 0.3, alpha: 1)
+                    if warnings.isEmpty {
+                        label.textColor = NSColor(red: 0.3, green: 0.8, blue: 0.4, alpha: 1)
+                        label.toolTip = "Synced — standard structure, no warnings"
+                    } else {
+                        label.textColor = NSColor(red: 1, green: 0.3, blue: 0.3, alpha: 1)
+                        label.toolTip = "Error — structure warnings"
+                    }
                 }
             case .syncing:
                 label.stringValue = "\u{25CF}"
                 label.textColor = NSColor(red: 0.4, green: 0.6, blue: 1, alpha: 1)
+                label.toolTip = "Syncing\u{2026}"
             case .error:
                 label.stringValue = "\u{25CF}"
                 label.textColor = NSColor(red: 1, green: 0.3, blue: 0.3, alpha: 1)
+                label.toolTip = "Error — sync failed"
             case .notCloned, .none:
                 if RegistryManager.shared.isCloned(name: reg.name) {
                     let warnings = RegistryManager.shared.validateStructure(name: reg.name)
                     label.stringValue = "\u{25CF}"
-                    label.textColor = warnings.isEmpty
-                        ? NSColor(red: 0.3, green: 0.8, blue: 0.4, alpha: 1)
-                        : NSColor(red: 1, green: 0.3, blue: 0.3, alpha: 1)
+                    if warnings.isEmpty {
+                        label.textColor = NSColor(red: 0.3, green: 0.8, blue: 0.4, alpha: 1)
+                        label.toolTip = "Synced — standard structure, no warnings"
+                    } else {
+                        label.textColor = NSColor(red: 1, green: 0.3, blue: 0.3, alpha: 1)
+                        label.toolTip = "Error — structure warnings"
+                    }
                 } else {
                     label.stringValue = "\u{25CB}"
                     label.textColor = NSColor(white: 0.5, alpha: 1)
+                    label.toolTip = "Not cloned"
                 }
             }
             return label
