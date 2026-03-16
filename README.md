@@ -32,6 +32,7 @@ A native macOS terminal built from scratch with Swift and Rust, designed specifi
 | LLM Profiles | Switch between Claude, Gemini, Codex, or plain shell in one click. Save per-model configurations |
 | AI Side Panel | Track token usage, costs, context window, file references, and git changes in real time |
 | Smart Output Folding | AI tool calls, code blocks, and diffs auto-collapse into foldable regions. Click to expand |
+| Screenshot to Session | Press `Cmd+Shift+S` or click the camera icon to capture a screen region and paste its file path into the terminal. Perfect for sharing screenshots with AI agents |
 | Voice Input | Push-to-talk voice input powered by on-device speech recognition. Continuous and wake word modes coming soon |
 | AI Components | Auto-detect your project stack and inject skills, rules, prompts, agents, MCP servers, and hooks into AI sessions from shared registries. Supports git, [localskills](https://localskills.dev), and local directory sources. Visual mapping editor for non-standard registry structures. Per-component enable/disable, security scanning, hook approval gate, and import/export |
 | Sub-Stack Detection | Automatically detects frameworks like Next.js, Django, Flask, Vapor, NestJS, and more on top of base stack detection for more targeted component injection |

@@ -467,6 +467,7 @@
         <li><a href="#ai-components">AI Components</a></li>
         <li><a href="#large-paste-protection">Large Paste Protection</a></li>
         <li><a href="#voice-input">Voice Input</a></li>
+        <li><a href="#screenshot-to-session">Screenshot to Session</a></li>
         <li><a href="#automatic-updates">Automatic Updates</a></li>
         <li><a href="#configuration">Configuration</a></li>
         <li><a href="#keyboard-shortcuts">Keyboard Shortcuts</a></li>
@@ -877,6 +878,28 @@ truncate_length = 10000      # Characters to keep when truncating</code></pre>
             <tr><td>find [text] / search [text]</td><td>Open search</td></tr>
           </tbody>
         </table>
+      </section>
+
+      <!-- Screenshot to Session -->
+      <section class="doc-section" id="screenshot-to-session">
+        <h2>Screenshot to Session</h2>
+        <p>Quickly capture a screen region and paste its file path into the active terminal session. This is especially useful when working with AI agents that accept image paths as input.</p>
+
+        <h3>How to Use</h3>
+        <ul>
+          <li>Press <code>Cmd+Shift+S</code> or click the <strong>camera icon</strong> in the status bar.</li>
+          <li>The macOS screenshot selection UI appears &mdash; drag to select a region.</li>
+          <li>The captured image&rsquo;s file path is pasted into the terminal. Press Enter to confirm.</li>
+          <li>Press Escape during selection to cancel &mdash; nothing is pasted.</li>
+        </ul>
+
+        <h3>Details</h3>
+        <ul>
+          <li>Screenshots are saved as temporary PNG files and cleaned up when the app quits.</li>
+          <li>The file path is shell-escaped, so paths with spaces or special characters work correctly.</li>
+          <li>No trailing newline is added &mdash; you can review or edit the path before pressing Enter, matching drag-and-drop behavior.</li>
+          <li>The camera icon appears in the status bar alongside voice controls when an AI session is active.</li>
+        </ul>
       </section>
 
       <!-- Automatic Updates -->
