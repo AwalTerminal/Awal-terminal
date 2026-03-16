@@ -19,9 +19,137 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
         NSApp.runModal(for: controller.window!)
     }
 
+    /// Show security findings in a standalone window (callable from the menu bar).
+    static func showSecurityFindings(_ findings: [SecurityFinding]) {
+        guard !findings.isEmpty else { return }
+
+        let panel = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 560, height: 380),
+            styleMask: [.titled, .closable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        panel.title = "Security Findings — \(findings.count) finding\(findings.count == 1 ? "" : "s")"
+        panel.minSize = NSSize(width: 400, height: 250)
+        panel.center()
+
+        let contentView = NSView(frame: panel.contentView!.bounds)
+        contentView.autoresizingMask = [.width, .height]
+        panel.contentView = contentView
+
+        // Header
+        let header = NSTextField(labelWithString: "All Registries — \(findings.count) finding\(findings.count == 1 ? "" : "s")")
+        header.font = .boldSystemFont(ofSize: 13)
+        header.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(header)
+
+        // Scroll view with findings list
+        let scrollView = NSScrollView()
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.hasVerticalScroller = true
+        scrollView.borderType = .bezelBorder
+
+        let stackView = NSStackView()
+        stackView.orientation = .vertical
+        stackView.alignment = .leading
+        stackView.spacing = 6
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        stackView.edgeInsets = NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
+
+        for finding in findings {
+            let row = NSStackView()
+            row.orientation = .horizontal
+            row.spacing = 8
+            row.alignment = .top
+
+            let badge = NSTextField(labelWithString: finding.severity == .critical ? "CRITICAL" : "WARNING")
+            badge.font = .boldSystemFont(ofSize: 10)
+            badge.textColor = .white
+            badge.wantsLayer = true
+            badge.layer?.cornerRadius = 3
+            badge.layer?.backgroundColor = finding.severity == .critical
+                ? NSColor(red: 0.85, green: 0.2, blue: 0.2, alpha: 1).cgColor
+                : NSColor(red: 0.8, green: 0.65, blue: 0.2, alpha: 1).cgColor
+            badge.alignment = .center
+            badge.setContentHuggingPriority(.required, for: .horizontal)
+            badge.setContentCompressionResistancePriority(.required, for: .horizontal)
+
+            let detail = NSStackView()
+            detail.orientation = .vertical
+            detail.alignment = .leading
+            detail.spacing = 2
+
+            let componentLabel = NSTextField(labelWithString: finding.componentKey)
+            componentLabel.font = .boldSystemFont(ofSize: 11)
+            componentLabel.textColor = .secondaryLabelColor
+
+            let desc = NSTextField(labelWithString: finding.pattern)
+            desc.font = .systemFont(ofSize: 12)
+            desc.lineBreakMode = .byWordWrapping
+            desc.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+            let line = NSTextField(labelWithString: finding.line)
+            line.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+            line.textColor = .tertiaryLabelColor
+            line.lineBreakMode = .byTruncatingTail
+            line.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+            detail.addArrangedSubview(componentLabel)
+            detail.addArrangedSubview(desc)
+            detail.addArrangedSubview(line)
+
+            row.addArrangedSubview(badge)
+            row.addArrangedSubview(detail)
+            stackView.addArrangedSubview(row)
+        }
+
+        let clipView = NSClipView()
+        clipView.documentView = stackView
+        scrollView.contentView = clipView
+        contentView.addSubview(scrollView)
+
+        // Dismiss button
+        let dismissBtn = NSButton(title: "Done", target: nil, action: nil)
+        dismissBtn.translatesAutoresizingMaskIntoConstraints = false
+        dismissBtn.bezelStyle = .rounded
+        dismissBtn.keyEquivalent = "\u{1b}"
+        contentView.addSubview(dismissBtn)
+
+        class PanelDismisser: NSObject {
+            weak var panel: NSPanel?
+            @objc func dismiss(_ sender: Any) {
+                panel?.close()
+            }
+        }
+        let dismisser = PanelDismisser()
+        dismisser.panel = panel
+        dismissBtn.target = dismisser
+        dismissBtn.action = #selector(PanelDismisser.dismiss(_:))
+        objc_setAssociatedObject(panel, "dismisser", dismisser, .OBJC_ASSOCIATION_RETAIN)
+
+        NSLayoutConstraint.activate([
+            header.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+            header.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 16),
+            header.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+
+            scrollView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+            scrollView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            scrollView.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 10),
+            scrollView.bottomAnchor.constraint(equalTo: dismissBtn.topAnchor, constant: -10),
+
+            stackView.widthAnchor.constraint(equalTo: clipView.widthAnchor),
+
+            dismissBtn.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            dismissBtn.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -12),
+        ])
+
+        panel.makeKeyAndOrderFront(nil)
+    }
+
     private let registryTableView = NSTableView()
     private let componentTableView = NSTableView()
     private let errorLabel = NSTextField(labelWithString: "")
+    private let viewFindingsButton = NSButton(title: "View Findings", target: nil, action: nil)
     private let syncAllButton: NSButton
     private let autoSyncCheck: NSButton
     private let intervalField: NSTextField
@@ -64,6 +192,9 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
         autoSyncCheck.action = #selector(autoSyncChanged(_:))
         intervalField.target = self
         intervalField.action = #selector(intervalChanged(_:))
+
+        viewFindingsButton.target = self
+        viewFindingsButton.action = #selector(viewFindingsClicked(_:))
 
         setupUI()
         refreshAll()
@@ -174,6 +305,12 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
         errorLabel.lineBreakMode = .byTruncatingTail
         contentView.addSubview(errorLabel)
 
+        viewFindingsButton.translatesAutoresizingMaskIntoConstraints = false
+        viewFindingsButton.bezelStyle = .rounded
+        viewFindingsButton.font = .systemFont(ofSize: 11)
+        viewFindingsButton.isHidden = true
+        contentView.addSubview(viewFindingsButton)
+
         // -- Divider --
         let divider = NSBox()
         divider.boxType = .separator
@@ -218,6 +355,8 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
         componentTableView.usesAlternatingRowBackgroundColors = true
         componentTableView.delegate = self
         componentTableView.dataSource = self
+        componentTableView.doubleAction = #selector(componentDoubleClicked(_:))
+        componentTableView.target = self
 
         compScroll.documentView = componentTableView
         contentView.addSubview(compScroll)
@@ -266,10 +405,12 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
             configureMappingBtn.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
             configureMappingBtn.centerYAnchor.constraint(equalTo: addBtn.centerYAnchor),
 
-            // Error label
+            // Error label + view findings button
             errorLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            errorLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            errorLabel.trailingAnchor.constraint(equalTo: viewFindingsButton.leadingAnchor, constant: -6),
             errorLabel.topAnchor.constraint(equalTo: addBtn.bottomAnchor, constant: 4),
+            viewFindingsButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            viewFindingsButton.centerYAnchor.constraint(equalTo: errorLabel.centerYAnchor),
 
             // Divider
             divider.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
@@ -445,11 +586,13 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
                 errorLabel.textColor = criticalCount > 0
                     ? NSColor(red: 1, green: 0.4, blue: 0.4, alpha: 1)
                     : NSColor(red: 1, green: 0.8, blue: 0.3, alpha: 1)
+                viewFindingsButton.isHidden = false
                 return
             }
         }
 
         errorLabel.stringValue = ""
+        viewFindingsButton.isHidden = true
     }
 
     // MARK: - Actions
@@ -854,6 +997,23 @@ extension AIComponentsManagerWindow: NSTableViewDataSource, NSTableViewDelegate 
         22
     }
 
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
+        guard tableView === componentTableView, row < currentTabItems.count else { return nil }
+        let item = currentTabItems[row]
+
+        let allFindings = RegistryManager.shared.scanResults.values.flatMap { $0 }
+        let componentFindings = allFindings.filter { $0.componentKey == item.key }
+        guard !componentFindings.isEmpty else { return nil }
+
+        let rowView = NSTableRowView()
+        rowView.wantsLayer = true
+        let hasCritical = componentFindings.contains { $0.severity == .critical }
+        rowView.layer?.backgroundColor = hasCritical
+            ? NSColor(red: 1, green: 0.2, blue: 0.2, alpha: 0.1).cgColor
+            : NSColor(red: 1, green: 0.85, blue: 0.2, alpha: 0.1).cgColor
+        return rowView
+    }
+
     func tableViewSelectionDidChange(_ notification: Notification) {
         if (notification.object as? NSTableView) === registryTableView {
             updateErrorLabel()
@@ -1015,8 +1175,19 @@ extension AIComponentsManagerWindow: NSTableViewDataSource, NSTableViewDelegate 
                 let hasCritical = RegistryManager.shared.scanResults.values
                     .flatMap { $0 }
                     .contains { $0.componentKey == item.key && $0.severity == .critical }
-                let dot = hasCritical ? "\u{1F534} " : "\u{1F7E1} "
-                cell.stringValue = dot + item.name
+                if let shieldImage = NSImage(systemSymbolName: "shield.trianglebadge.exclamationmark", accessibilityDescription: "Security finding") {
+                    let attachment = NSTextAttachment()
+                    attachment.image = shieldImage
+                    let attrStr = NSMutableAttributedString(attachment: attachment)
+                    attrStr.append(NSAttributedString(string: " " + item.name))
+                    cell.attributedStringValue = attrStr
+                    cell.textColor = hasCritical
+                        ? NSColor(red: 1, green: 0.4, blue: 0.4, alpha: 1)
+                        : NSColor(red: 1, green: 0.8, blue: 0.3, alpha: 1)
+                } else {
+                    let dot = hasCritical ? "\u{1F534} " : "\u{1F7E1} "
+                    cell.stringValue = dot + item.name
+                }
             } else {
                 cell.stringValue = item.name
             }
@@ -1090,6 +1261,152 @@ extension AIComponentsManagerWindow: NSTableViewDataSource, NSTableViewDelegate 
         let value = disabled.sorted().joined(separator: ",")
         ConfigWriter.updateValue(key: "ai_components.disabled", value: "\"\(value)\"")
         AppConfig.reload()
+    }
+
+    @objc private func componentDoubleClicked(_ sender: Any) {
+        let row = componentTableView.clickedRow
+        guard row >= 0 && row < currentTabItems.count else { return }
+        let item = currentTabItems[row]
+
+        let findings = RegistryManager.shared.scanResults.values
+            .flatMap { $0 }
+            .filter { $0.componentKey == item.key }
+        guard !findings.isEmpty else { return }
+        showSecurityDetailSheet(findings: findings, title: item.key)
+    }
+
+    @objc private func viewFindingsClicked(_ sender: NSButton) {
+        let selected = registryTableView.selectedRow
+        let registries = AppConfig.shared.aiComponentRegistries
+        guard selected >= 0 && selected < registries.count else { return }
+        let name = registries[selected].name
+        guard let findings = RegistryManager.shared.scanResults[name], !findings.isEmpty else { return }
+        showSecurityDetailSheet(findings: findings, title: name)
+    }
+
+    private func showSecurityDetailSheet(findings: [SecurityFinding], title: String) {
+        guard let parentWindow = window else { return }
+
+        let panel = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 560, height: 380),
+            styleMask: [.titled, .closable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        panel.title = "Security Findings"
+        panel.minSize = NSSize(width: 400, height: 250)
+
+        let contentView = NSView(frame: panel.contentView!.bounds)
+        contentView.autoresizingMask = [.width, .height]
+        panel.contentView = contentView
+
+        // Header
+        let header = NSTextField(labelWithString: "\(title) \u{2014} \(findings.count) finding\(findings.count == 1 ? "" : "s")")
+        header.font = .boldSystemFont(ofSize: 13)
+        header.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(header)
+
+        // Scroll view with findings list
+        let scrollView = NSScrollView()
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.hasVerticalScroller = true
+        scrollView.borderType = .bezelBorder
+
+        let stackView = NSStackView()
+        stackView.orientation = .vertical
+        stackView.alignment = .leading
+        stackView.spacing = 6
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        stackView.edgeInsets = NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
+
+        for finding in findings {
+            let row = NSStackView()
+            row.orientation = .horizontal
+            row.spacing = 8
+            row.alignment = .top
+
+            // Severity badge
+            let badge = NSTextField(labelWithString: finding.severity == .critical ? "CRITICAL" : "WARNING")
+            badge.font = .boldSystemFont(ofSize: 10)
+            badge.textColor = .white
+            badge.wantsLayer = true
+            badge.layer?.cornerRadius = 3
+            badge.layer?.backgroundColor = finding.severity == .critical
+                ? NSColor(red: 0.85, green: 0.2, blue: 0.2, alpha: 1).cgColor
+                : NSColor(red: 0.8, green: 0.65, blue: 0.2, alpha: 1).cgColor
+            badge.alignment = .center
+            badge.setContentHuggingPriority(.required, for: .horizontal)
+            badge.setContentCompressionResistancePriority(.required, for: .horizontal)
+
+            // Description + matched line
+            let detail = NSStackView()
+            detail.orientation = .vertical
+            detail.alignment = .leading
+            detail.spacing = 2
+
+            let desc = NSTextField(labelWithString: finding.pattern)
+            desc.font = .systemFont(ofSize: 12)
+            desc.lineBreakMode = .byWordWrapping
+            desc.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+            let line = NSTextField(labelWithString: finding.line)
+            line.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+            line.textColor = .secondaryLabelColor
+            line.lineBreakMode = .byTruncatingTail
+            line.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+            detail.addArrangedSubview(desc)
+            detail.addArrangedSubview(line)
+
+            row.addArrangedSubview(badge)
+            row.addArrangedSubview(detail)
+            stackView.addArrangedSubview(row)
+        }
+
+        let clipView = NSClipView()
+        clipView.documentView = stackView
+        scrollView.contentView = clipView
+        contentView.addSubview(scrollView)
+
+        // Dismiss button
+        let dismissBtn = NSButton(title: "Done", target: nil, action: nil)
+        dismissBtn.translatesAutoresizingMaskIntoConstraints = false
+        dismissBtn.bezelStyle = .rounded
+        dismissBtn.keyEquivalent = "\u{1b}"
+        contentView.addSubview(dismissBtn)
+
+        class SheetDismisser: NSObject {
+            weak var parentWindow: NSWindow?
+            weak var panel: NSPanel?
+            @objc func dismiss(_ sender: Any) {
+                guard let parent = parentWindow, let sheet = panel else { return }
+                parent.endSheet(sheet)
+            }
+        }
+        let dismisser = SheetDismisser()
+        dismisser.parentWindow = parentWindow
+        dismisser.panel = panel
+        dismissBtn.target = dismisser
+        dismissBtn.action = #selector(SheetDismisser.dismiss(_:))
+        objc_setAssociatedObject(panel, "dismisser", dismisser, .OBJC_ASSOCIATION_RETAIN)
+
+        NSLayoutConstraint.activate([
+            header.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+            header.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 16),
+            header.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+
+            scrollView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+            scrollView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            scrollView.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 10),
+            scrollView.bottomAnchor.constraint(equalTo: dismissBtn.topAnchor, constant: -10),
+
+            stackView.widthAnchor.constraint(equalTo: clipView.widthAnchor),
+
+            dismissBtn.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            dismissBtn.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -12),
+        ])
+
+        parentWindow.beginSheet(panel)
     }
 
     /// Resolve a hook component key to its file URL on disk.

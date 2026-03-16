@@ -51,6 +51,12 @@ enum ComponentSecurityScanner {
 
     private static let warningMcpCommandPatterns = ["curl", "wget", "nc"]
 
+    // MARK: - Custom Rules
+
+    private static func customRules(for target: String) -> [CustomSecurityRule] {
+        AppConfig.shared.aiComponentsCustomSecurityRules.filter { $0.target == "all" || $0.target == target }
+    }
+
     // MARK: - Public API
 
     /// Scan mapped (non-standard) components for security issues.
@@ -104,6 +110,11 @@ enum ComponentSecurityScanner {
                                 findings.append(SecurityFinding(componentKey: key, pattern: pattern, severity: .warning, line: trimmed))
                             }
                         }
+                        for rule in customRules(for: "hook") {
+                            if rule.regex.firstMatch(in: trimmed, range: range) != nil {
+                                findings.append(SecurityFinding(componentKey: key, pattern: rule.description, severity: rule.severity, line: trimmed))
+                            }
+                        }
                     }
                 }
             case .mcpServer:
@@ -121,6 +132,24 @@ enum ComponentSecurityScanner {
                             if (envValue.hasPrefix("http://") || envValue.hasPrefix("https://"))
                                 && !envValue.contains("localhost") && !envValue.contains("127.0.0.1") {
                                 findings.append(SecurityFinding(componentKey: key, pattern: "MCP env var with external URL", severity: .warning, line: "\(envKey)=\(envValue)"))
+                            }
+                        }
+                    }
+                    // Custom MCP rules
+                    let mcpRules = customRules(for: "mcp")
+                    if !mcpRules.isEmpty {
+                        var mcpLines: [String] = []
+                        if let command = json["command"] as? String { mcpLines.append(command) }
+                        if let args = json["args"] as? [String] { mcpLines.append(contentsOf: args) }
+                        if let env = json["env"] as? [String: String] {
+                            for (k, v) in env { mcpLines.append("\(k)=\(v)") }
+                        }
+                        for line in mcpLines {
+                            let range = NSRange(line.startIndex..., in: line)
+                            for rule in mcpRules {
+                                if rule.regex.firstMatch(in: line, range: range) != nil {
+                                    findings.append(SecurityFinding(componentKey: key, pattern: rule.description, severity: rule.severity, line: line))
+                                }
                             }
                         }
                     }
@@ -239,6 +268,16 @@ enum ComponentSecurityScanner {
                             ))
                         }
                     }
+
+                    // Check custom hook rules
+                    for rule in customRules(for: "hook") {
+                        if rule.regex.firstMatch(in: trimmed, range: range) != nil {
+                            findings.append(SecurityFinding(
+                                componentKey: key, pattern: rule.description,
+                                severity: rule.severity, line: trimmed
+                            ))
+                        }
+                    }
                 }
             }
         }
@@ -301,6 +340,16 @@ enum ComponentSecurityScanner {
                     ))
                 }
             }
+
+            // Check custom markdown rules
+            for rule in customRules(for: "markdown") {
+                if rule.regex.firstMatch(in: trimmed, range: range) != nil {
+                    findings.append(SecurityFinding(
+                        componentKey: key, pattern: rule.description,
+                        severity: rule.severity, line: trimmed
+                    ))
+                }
+            }
         }
     }
 
@@ -345,6 +394,28 @@ enum ComponentSecurityScanner {
                             severity: .warning,
                             line: "\(envKey)=\(envValue)"
                         ))
+                    }
+                }
+            }
+
+            // Check custom MCP rules against command + args + env values
+            let mcpRules = customRules(for: "mcp")
+            if !mcpRules.isEmpty {
+                var mcpLines: [String] = []
+                if let command = json["command"] as? String { mcpLines.append(command) }
+                if let args = json["args"] as? [String] { mcpLines.append(contentsOf: args) }
+                if let env = json["env"] as? [String: String] {
+                    for (k, v) in env { mcpLines.append("\(k)=\(v)") }
+                }
+                for line in mcpLines {
+                    let range = NSRange(line.startIndex..., in: line)
+                    for rule in mcpRules {
+                        if rule.regex.firstMatch(in: line, range: range) != nil {
+                            findings.append(SecurityFinding(
+                                componentKey: key, pattern: rule.description,
+                                severity: rule.severity, line: line
+                            ))
+                        }
                     }
                 }
             }

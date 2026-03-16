@@ -19,6 +19,15 @@ struct RegistryConfig {
     var mapping: String = "auto"  // "auto" | "standard" | "custom"
 }
 
+/// A user-defined security scanning rule from config.toml.
+struct CustomSecurityRule {
+    let name: String
+    let regex: NSRegularExpression
+    let severity: SecuritySeverity
+    let target: String  // "hook", "markdown", "mcp", "all"
+    let description: String
+}
+
 /// Application configuration loaded from ~/.config/awal/config.toml
 struct AppConfig {
 
@@ -78,6 +87,7 @@ struct AppConfig {
     var aiComponentsSecurityScan: Bool = true
     var aiComponentsBlockCritical: Bool = true
     var aiComponentsRequireHookApproval: Bool = true
+    var aiComponentsCustomSecurityRules: [CustomSecurityRule] = []
 
     // Danger Mode (skip AI tool confirmation prompts)
     var dangerModeEnabled: Bool = false
@@ -256,6 +266,27 @@ struct AppConfig {
                     config.aiComponentRegistries.append(regConfig)
                 }
             }
+        }
+
+        // Parse custom security rules: ai_components.security_rules.<name>.regex / .severity / .target / .description
+        var ruleNames = Set<String>()
+        for key in parsed.keys where key.hasPrefix("ai_components.security_rules.") {
+            let rest = key.dropFirst("ai_components.security_rules.".count)
+            if let dotIdx = rest.firstIndex(of: ".") {
+                ruleNames.insert(String(rest[rest.startIndex..<dotIdx]))
+            }
+        }
+        for name in ruleNames.sorted() {
+            let prefix = "ai_components.security_rules.\(name)"
+            guard let pattern = parsed["\(prefix).regex"],
+                  let regex = try? NSRegularExpression(pattern: pattern, options: []) else { continue }
+            let severityStr = parsed["\(prefix).severity"] ?? "warning"
+            let severity: SecuritySeverity = severityStr == "critical" ? .critical : .warning
+            let target = parsed["\(prefix).target"] ?? "all"
+            let description = parsed["\(prefix).description"] ?? name
+            config.aiComponentsCustomSecurityRules.append(
+                CustomSecurityRule(name: name, regex: regex, severity: severity, target: target, description: description)
+            )
         }
 
         // Parse AI component overrides: ai_components.overrides."<path>".stacks = "go,flutter"
