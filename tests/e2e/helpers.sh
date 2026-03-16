@@ -11,10 +11,10 @@ assert_true() {
     local condition="$2"
     if eval "$condition"; then
         echo "  PASS: $desc"
-        ((PASS_COUNT++))
+        ((PASS_COUNT++)) || true
     else
         echo "  FAIL: $desc"
-        ((FAIL_COUNT++))
+        ((FAIL_COUNT++)) || true
     fi
 }
 
@@ -24,7 +24,7 @@ launch_app() {
 }
 
 quit_app() {
-    osascript -e "tell application \"$APP_NAME\" to quit" 2>/dev/null
+    osascript -e "tell application \"$APP_NAME\" to quit" 2>/dev/null || true
     sleep 1
 }
 
