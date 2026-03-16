@@ -208,13 +208,6 @@ pub extern "C" fn at_surface_process_pty(surface: *mut ATSurface) -> i32 {
                     let _ = pty.write(&response);
                 }
             }
-            // Run AI analyzer on updated screen content
-            if surface.analyzer.is_enabled() {
-                let grid = surface.screen.active_grid();
-                surface
-                    .analyzer
-                    .analyze(&surface.screen.scrollback, &grid.cells, grid.rows);
-            }
             n as i32
         }
         Ok(_) => 0,

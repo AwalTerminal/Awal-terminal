@@ -1354,6 +1354,9 @@ class TerminalView: NSView {
         }
 
         if totalRead > 0 {
+            // Run AI analyzer once per batch (not per iteration)
+            at_surface_analyze(s)
+
             let isSynchronized = at_surface_is_synchronized(s)
 
             // Auto-snap to bottom even during sync mode — data is already processed
@@ -1374,6 +1377,9 @@ class TerminalView: NSView {
                 // Safety timeout: force render if sync mode is held for >2 seconds
                 syncOutputTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
                     self?.syncOutputTimer = nil
+                    if let s = self?.surface {
+                        at_surface_analyze(s)
+                    }
                     self?.updateCellBuffer()
                     self?.needsRender = true
                 }
