@@ -16,6 +16,7 @@ struct RegistryConfig {
     var type: RegistryType = .git
     var slugs: [String] = []
     var path: String? = nil
+    var mapping: String = "auto"  // "auto" | "standard" | "custom"
 }
 
 /// Application configuration loaded from ~/.config/awal/config.toml
@@ -237,6 +238,7 @@ struct AppConfig {
             let slugsStr = parsed["ai_components.registry.\(name).slugs"] ?? ""
             let slugs = slugsStr.isEmpty ? [] : slugsStr.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
             let path = parsed["ai_components.registry.\(name).path"]
+            let mapping = parsed["ai_components.registry.\(name).mapping"] ?? "auto"
 
             let isValid: Bool
             switch regType {
@@ -246,7 +248,7 @@ struct AppConfig {
             }
 
             if isValid {
-                let regConfig = RegistryConfig(name: name, url: url, branch: branch, tag: tag, type: regType, slugs: slugs, path: path)
+                let regConfig = RegistryConfig(name: name, url: url, branch: branch, tag: tag, type: regType, slugs: slugs, path: path, mapping: mapping)
                 // Update existing default or append new
                 if let idx = config.aiComponentRegistries.firstIndex(where: { $0.name == name }) {
                     config.aiComponentRegistries[idx] = regConfig
