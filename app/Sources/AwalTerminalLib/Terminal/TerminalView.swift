@@ -1804,6 +1804,14 @@ class TerminalView: NSView {
                 // Schedule next loading frame after interval instead of continuous rendering
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.033) { [weak self] in
                     guard let self, self.isWaitingForOutput || self.isGenerating || self.isLoadingResumeSessions else { return }
+                    // Don't render stale cell buffer during synchronized output
+                    if let s = self.surface, at_surface_is_synchronized(s) {
+                        // Re-schedule without rendering — sync will end soon
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.033) { [weak self] in
+                            self?.needsRender = true
+                        }
+                        return
+                    }
                     self.needsRender = true
                 }
             }
