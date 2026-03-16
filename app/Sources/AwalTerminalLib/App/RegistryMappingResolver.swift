@@ -65,7 +65,9 @@ enum RegistryMappingResolver {
     // MARK: - Resolution Order
 
     /// Determine which mapping mode applies for a registry.
-    /// Resolution order: standard → claude-plugin → in-repo .awal-mapping.json → local mapping → unmapped.
+    /// Resolution order: standard → claude-plugin → in-repo .awal-mapping.json → local mapping (standalone) → unmapped.
+    /// Local mapping is used as an overlay on top of the base mode (see `applyLocalOverrides`),
+    /// and only becomes a standalone mode when no base mode applies.
     /// If `configMapping` is "standard", force standard mode. If "custom", require local mapping.
     static func resolveMode(registryName: String, repoPath: URL, configMapping: String = "auto") -> RegistryMappingMode {
         if configMapping == "standard" {
@@ -76,21 +78,142 @@ enum RegistryMappingResolver {
             return localMappingExists(registryName: registryName) ? .localMapping : .unmapped
         }
 
-        // Auto mode: try each in order
+        // Auto mode: try each base mode in order
         if hasStandardStructure(repoPath: repoPath) {
             return .standard
         }
         if hasClaudePluginManifest(repoPath: repoPath) {
             return .claudePlugin
         }
-        // Local mapping takes precedence over in-repo mapping
-        if localMappingExists(registryName: registryName) {
-            return .localMapping
-        }
         if inRepoMappingExists(repoPath: repoPath) {
             return .inRepoMapping
         }
+
+        // Local mapping is standalone only when no base mode applies
+        if localMappingExists(registryName: registryName) {
+            return .localMapping
+        }
         return .unmapped
+    }
+
+    // MARK: - Local Mapping Overlay
+
+    /// Apply local mapping overrides on top of base-resolved components.
+    /// Each local mapping entry's glob is matched against base component paths.
+    /// Matching base components get their type/stack overridden (preserving group).
+    /// Local mapping entries that don't match any base component are resolved
+    /// normally and appended as new components.
+    /// Returns base unchanged if no local mapping exists.
+    static func applyLocalOverrides(
+        base: [ResolvedComponent],
+        registryName: String,
+        repoPath: URL
+    ) -> [ResolvedComponent] {
+        guard localMappingExists(registryName: registryName),
+              let mapping = loadMappingFile(at: localMappingPath(registryName: registryName)) else {
+            return base
+        }
+        guard !mapping.mappings.isEmpty else { return base }
+
+        let rootPath: URL
+        if let root = mapping.root, !root.isEmpty, root != "." {
+            rootPath = repoPath.appendingPathComponent(root)
+        } else {
+            rootPath = repoPath
+        }
+
+        var merged = base
+        var matchedBaseIndices = Set<Int>()
+
+        for entry in mapping.mappings {
+            guard let compType = ComponentType(rawValue: entry.type) else { continue }
+            let stack = entry.stack ?? "common"
+
+            // Try to match this entry's glob against existing base components
+            var entryMatchedBase = false
+            for (i, comp) in merged.enumerated() {
+                let relPath = comp.fileURL.path.replacingOccurrences(of: rootPath.path + "/", with: "")
+                if globMatches(pattern: entry.path, path: relPath) {
+                    // Override this base component's type/stack, preserve group
+                    merged[i] = ResolvedComponent(
+                        name: entry.name ?? comp.name,
+                        type: compType,
+                        stack: stack,
+                        fileURL: comp.fileURL,
+                        group: comp.group,
+                        hookPhase: entry.hookPhase ?? comp.hookPhase
+                    )
+                    matchedBaseIndices.insert(i)
+                    entryMatchedBase = true
+                }
+            }
+
+            // If no base component matched, resolve the glob and add as new components
+            if !entryMatchedBase {
+                let matchedURLs = expandGlob(pattern: entry.path, in: rootPath)
+                for url in matchedURLs {
+                    let name = entry.name ?? deriveComponentName(url: url, type: compType, entry: entry)
+                    merged.append(ResolvedComponent(
+                        name: name,
+                        type: compType,
+                        stack: stack,
+                        fileURL: url,
+                        group: nil,
+                        hookPhase: entry.hookPhase
+                    ))
+                }
+            }
+        }
+
+        return merged
+    }
+
+    /// Check if a glob pattern matches a given relative path.
+    /// The glob matches if the path itself matches, or if the path is a prefix of
+    /// the glob (e.g., path "skills/foo" matches glob "skills/foo/**").
+    private static func globMatches(pattern: String, path: String) -> Bool {
+        let patternParts = pattern.components(separatedBy: "/")
+        let pathParts = path.components(separatedBy: "/")
+
+        // Check if the path is a prefix up to the first ** or wildcard
+        // e.g., pattern "skills/foo/**" should match path "skills/foo"
+        var concretePrefix: [String] = []
+        for part in patternParts {
+            if part == "**" || part.contains("*") { break }
+            concretePrefix.append(part)
+        }
+
+        // Exact prefix match: path matches the concrete part of the glob
+        if pathParts == concretePrefix {
+            return true
+        }
+
+        // Also check if the full path matches the full pattern (for non-** globs)
+        if patternParts.count == pathParts.count {
+            for (pp, pathP) in zip(patternParts, pathParts) {
+                if pp == "**" { return true }
+                if pp == pathP { continue }
+                if matchWildcard(pattern: pp, against: pathP) { continue }
+                return false
+            }
+            return true
+        }
+
+        // Check ** patterns: path components match up to ** then anything after
+        if let starIdx = patternParts.firstIndex(of: "**") {
+            // Parts before ** must match exactly
+            let prefixParts = Array(patternParts[..<starIdx])
+            guard pathParts.count >= prefixParts.count else { return false }
+            for (pp, pathP) in zip(prefixParts, pathParts) {
+                if !matchWildcard(pattern: pp, against: pathP) && pp != pathP { return false }
+            }
+            // If ** is the last part, any path with the prefix matches
+            if starIdx == patternParts.count - 1 {
+                return true
+            }
+        }
+
+        return false
     }
 
     // MARK: - Structure Detection
@@ -113,6 +236,12 @@ enum RegistryMappingResolver {
     }
 
     // MARK: - Mapping Loading
+
+    /// Load only the in-repo `.awal-mapping.json` (ignoring any local mapping).
+    static func loadInRepoMapping(repoPath: URL) -> RegistryMapping? {
+        let inRepoPath = repoPath.appendingPathComponent(".awal-mapping.json")
+        return loadMappingFile(at: inRepoPath)
+    }
 
     /// Load the effective mapping for a registry.
     /// Local mapping takes precedence over in-repo mapping when both exist.
@@ -184,6 +313,8 @@ enum RegistryMappingResolver {
     // MARK: - Mapping Resolution (Glob Expansion)
 
     /// Resolve a mapping against the repo filesystem, returning discovered components.
+    /// Later mappings override earlier ones for the same path (last-match-wins),
+    /// so specific child patterns placed after broad parent patterns take priority.
     static func resolveMapping(_ mapping: RegistryMapping, repoPath: URL) -> [ResolvedComponent] {
         let rootPath: URL
         if let root = mapping.root, !root.isEmpty, root != "." {
@@ -192,8 +323,9 @@ enum RegistryMappingResolver {
             rootPath = repoPath
         }
 
-        var components: [ResolvedComponent] = []
-        var matched = Set<String>()  // Track matched paths for first-match-wins
+        // Last-match-wins: later mappings override earlier ones for the same path
+        var componentByPath: [String: ResolvedComponent] = [:]
+        var insertionOrder: [String] = []
 
         for entry in mapping.mappings {
             guard let compType = ComponentType(rawValue: entry.type) else { continue }
@@ -202,22 +334,23 @@ enum RegistryMappingResolver {
             let matchedURLs = expandGlob(pattern: entry.path, in: rootPath)
             for url in matchedURLs {
                 let relPath = url.path.replacingOccurrences(of: rootPath.path + "/", with: "")
-                guard !matched.contains(relPath) else { continue }
-                matched.insert(relPath)
+                if componentByPath[relPath] == nil {
+                    insertionOrder.append(relPath)
+                }
 
                 let name = entry.name ?? deriveComponentName(url: url, type: compType, entry: entry)
-                components.append(ResolvedComponent(
+                componentByPath[relPath] = ResolvedComponent(
                     name: name,
                     type: compType,
                     stack: stack,
                     fileURL: url,
                     group: nil,
                     hookPhase: entry.hookPhase
-                ))
+                )
             }
         }
 
-        // Process file_transforms for any unmatched files
+        // Process file_transforms for paths not already matched by explicit mappings
         if let transforms = mapping.fileTransforms {
             for (ext, typeStr) in transforms {
                 guard let compType = ComponentType(rawValue: typeStr) else { continue }
@@ -225,27 +358,28 @@ enum RegistryMappingResolver {
                 let matchedURLs = expandGlob(pattern: pattern, in: rootPath)
                 for url in matchedURLs {
                     let relPath = url.path.replacingOccurrences(of: rootPath.path + "/", with: "")
-                    guard !matched.contains(relPath) else { continue }
-                    matched.insert(relPath)
+                    guard componentByPath[relPath] == nil else { continue }
+                    insertionOrder.append(relPath)
 
                     let name = url.deletingPathExtension().lastPathComponent
-                    components.append(ResolvedComponent(
+                    componentByPath[relPath] = ResolvedComponent(
                         name: name,
                         type: compType,
                         stack: "common",
                         fileURL: url,
                         group: nil,
                         hookPhase: nil
-                    ))
+                    )
                 }
             }
         }
 
-        return components
+        return insertionOrder.compactMap { componentByPath[$0] }
     }
 
     /// Resolve a mapping with per-entry source tracking for highlighting.
     /// Returns tuples of (mappingIndex, component) so the UI can associate each result with its source mapping row.
+    /// Later mappings override earlier ones for the same path (last-match-wins).
     static func resolveMappingDetailed(_ mapping: RegistryMapping, repoPath: URL) -> [(mappingIndex: Int, component: ResolvedComponent)] {
         let rootPath: URL
         if let root = mapping.root, !root.isEmpty, root != "." {
@@ -254,8 +388,8 @@ enum RegistryMappingResolver {
             rootPath = repoPath
         }
 
-        var results: [(mappingIndex: Int, component: ResolvedComponent)] = []
-        var matched = Set<String>()
+        var resultByPath: [String: (mappingIndex: Int, component: ResolvedComponent)] = [:]
+        var insertionOrder: [String] = []
 
         for (idx, entry) in mapping.mappings.enumerated() {
             guard let compType = ComponentType(rawValue: entry.type) else { continue }
@@ -264,8 +398,9 @@ enum RegistryMappingResolver {
             let matchedURLs = expandGlob(pattern: entry.path, in: rootPath)
             for url in matchedURLs {
                 let relPath = url.path.replacingOccurrences(of: rootPath.path + "/", with: "")
-                guard !matched.contains(relPath) else { continue }
-                matched.insert(relPath)
+                if resultByPath[relPath] == nil {
+                    insertionOrder.append(relPath)
+                }
 
                 let name = entry.name ?? deriveComponentName(url: url, type: compType, entry: entry)
                 let comp = ResolvedComponent(
@@ -276,11 +411,11 @@ enum RegistryMappingResolver {
                     group: nil,
                     hookPhase: entry.hookPhase
                 )
-                results.append((mappingIndex: idx, component: comp))
+                resultByPath[relPath] = (mappingIndex: idx, component: comp)
             }
         }
 
-        return results
+        return insertionOrder.compactMap { resultByPath[$0] }
     }
 
     /// Get a tree of repo files up to a given depth, for the mapping editor.

@@ -89,8 +89,18 @@ class RegistryManager {
 
             switch mode {
             case .claudePlugin:
-                mappedComponents[reg.name] = RegistryMappingResolver.parseClaudePluginManifest(repoPath: repoPath)
-            case .inRepoMapping, .localMapping:
+                let base = RegistryMappingResolver.parseClaudePluginManifest(repoPath: repoPath)
+                mappedComponents[reg.name] = RegistryMappingResolver.applyLocalOverrides(
+                    base: base, registryName: reg.name, repoPath: repoPath
+                )
+            case .inRepoMapping:
+                if let mapping = RegistryMappingResolver.loadInRepoMapping(repoPath: repoPath) {
+                    let base = RegistryMappingResolver.resolveMapping(mapping, repoPath: repoPath)
+                    mappedComponents[reg.name] = RegistryMappingResolver.applyLocalOverrides(
+                        base: base, registryName: reg.name, repoPath: repoPath
+                    )
+                }
+            case .localMapping:
                 if let mapping = RegistryMappingResolver.loadMapping(registryName: reg.name, repoPath: repoPath) {
                     mappedComponents[reg.name] = RegistryMappingResolver.resolveMapping(mapping, repoPath: repoPath)
                 }
@@ -383,11 +393,24 @@ class RegistryManager {
             // Resolve mapped components for non-standard registries
             switch mode {
             case .claudePlugin:
-                let resolved = RegistryMappingResolver.parseClaudePluginManifest(repoPath: repoDir)
+                let base = RegistryMappingResolver.parseClaudePluginManifest(repoPath: repoDir)
+                let resolved = RegistryMappingResolver.applyLocalOverrides(
+                    base: base, registryName: name, repoPath: repoDir
+                )
                 DispatchQueue.main.async { [weak self] in
                     self?.mappedComponents[name] = resolved
                 }
-            case .inRepoMapping, .localMapping:
+            case .inRepoMapping:
+                if let mapping = RegistryMappingResolver.loadInRepoMapping(repoPath: repoDir) {
+                    let base = RegistryMappingResolver.resolveMapping(mapping, repoPath: repoDir)
+                    let resolved = RegistryMappingResolver.applyLocalOverrides(
+                        base: base, registryName: name, repoPath: repoDir
+                    )
+                    DispatchQueue.main.async { [weak self] in
+                        self?.mappedComponents[name] = resolved
+                    }
+                }
+            case .localMapping:
                 if let mapping = RegistryMappingResolver.loadMapping(registryName: name, repoPath: repoDir) {
                     let resolved = RegistryMappingResolver.resolveMapping(mapping, repoPath: repoDir)
                     DispatchQueue.main.async { [weak self] in

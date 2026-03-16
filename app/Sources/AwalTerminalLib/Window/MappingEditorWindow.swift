@@ -112,6 +112,7 @@ class MappingEditorWindow: NSWindowController, NSWindowDelegate {
     private var fileTreeNodes: [FileTreeNode] = []
     private var resolvedDetailed: [(mappingIndex: Int, component: ResolvedComponent)] = []
     private var selectedMappingIndex: Int? // For per-row highlighting
+    private var availableStacks: [String] = ["common"]
 
     private struct MappingRow {
         var path: String
@@ -169,11 +170,54 @@ class MappingEditorWindow: NSWindowController, NSWindowDelegate {
     // MARK: - Setup
 
     private func loadExistingMapping() {
+        discoverStacks()
         if let mapping = RegistryMappingResolver.loadMapping(registryName: registryName, repoPath: repoPath) {
             mappingRows = mapping.mappings.map { entry in
                 MappingRow(path: entry.path, type: entry.type, stack: entry.stack ?? "common")
             }
         }
+    }
+
+    private func discoverStacks() {
+        var stacks = Set<String>(["common"])
+
+        // Built-in detection stacks
+        for stack in ProjectDetector.builtInRules.keys {
+            stacks.insert(stack)
+        }
+
+        // Stacks from all registries (including this one)
+        let fm = FileManager.default
+        let registries = AppConfig.shared.aiComponentRegistries
+        for reg in registries {
+            // From registry.toml detection rules
+            for stack in RegistryManager.shared.parseRegistryToml(name: reg.name).keys {
+                stacks.insert(stack)
+            }
+            // From stacks/ subdirectories
+            let regStacksDir = RegistryManager.shared.registryPath(name: reg.name).appendingPathComponent("stacks")
+            if let entries = try? fm.contentsOfDirectory(
+                at: regStacksDir, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]
+            ) {
+                for entry in entries {
+                    let isDir = (try? entry.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
+                    if isDir { stacks.insert(entry.lastPathComponent) }
+                }
+            }
+        }
+
+        // Also check the repo being mapped (may not be a configured registry)
+        let repoStacksDir = repoPath.appendingPathComponent("stacks")
+        if let entries = try? fm.contentsOfDirectory(
+            at: repoStacksDir, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]
+        ) {
+            for entry in entries {
+                let isDir = (try? entry.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
+                if isDir { stacks.insert(entry.lastPathComponent) }
+            }
+        }
+
+        availableStacks = stacks.sorted()
     }
 
     private func setupUI() {
@@ -415,10 +459,35 @@ class MappingEditorWindow: NSWindowController, NSWindowDelegate {
         let mapping = RegistryMapping(version: 1, root: nil, mappings: pathMappings, fileTransforms: nil)
         RegistryMappingResolver.saveMapping(mapping, registryName: registryName)
 
-        // Re-resolve components after save
-        let resolved = RegistryMappingResolver.resolveMapping(mapping, repoPath: repoPath)
+        // Determine the base mode (ignoring local mapping) to merge on top of
+        let baseMode = RegistryMappingResolver.resolveMode(
+            registryName: registryName, repoPath: repoPath
+        )
+
+        let resolved: [ResolvedComponent]
+        switch baseMode {
+        case .claudePlugin:
+            // Base from manifest, overlay local mapping
+            let base = RegistryMappingResolver.parseClaudePluginManifest(repoPath: repoPath)
+            resolved = RegistryMappingResolver.applyLocalOverrides(
+                base: base, registryName: registryName, repoPath: repoPath
+            )
+        case .inRepoMapping:
+            // Base from in-repo mapping, overlay local mapping
+            if let inRepoMapping = RegistryMappingResolver.loadInRepoMapping(repoPath: repoPath) {
+                let base = RegistryMappingResolver.resolveMapping(inRepoMapping, repoPath: repoPath)
+                resolved = RegistryMappingResolver.applyLocalOverrides(
+                    base: base, registryName: registryName, repoPath: repoPath
+                )
+            } else {
+                resolved = RegistryMappingResolver.resolveMapping(mapping, repoPath: repoPath)
+            }
+        default:
+            // Standalone local mapping
+            resolved = RegistryMappingResolver.resolveMapping(mapping, repoPath: repoPath)
+        }
+
         RegistryManager.shared.mappedComponents[registryName] = resolved
-        RegistryManager.shared.mappingModes[registryName] = .localMapping
 
         // Notify that components changed
         NotificationCenter.default.post(name: RegistryManager.componentsDidChange, object: nil)
@@ -779,14 +848,14 @@ extension MappingEditorWindow: NSTableViewDataSource, NSTableViewDelegate {
             return popup
 
         case "map_stack":
-            let field = NSTextField()
-            field.stringValue = entry.stack
-            field.font = .systemFont(ofSize: 11)
-            field.isBordered = true
-            field.isEditable = true
-            field.delegate = self
-            field.tag = row * 10 + 2
-            return field
+            let popup = NSPopUpButton()
+            popup.addItems(withTitles: availableStacks)
+            popup.selectItem(withTitle: entry.stack)
+            popup.font = .systemFont(ofSize: 11)
+            popup.tag = row * 10 + 2
+            popup.target = self
+            popup.action = #selector(stackPopupChanged(_:))
+            return popup
 
         default:
             return nil
@@ -838,6 +907,13 @@ extension MappingEditorWindow: NSTableViewDataSource, NSTableViewDelegate {
         mappingRows[row].type = title
         updateMatchHighlights()
     }
+
+    @objc private func stackPopupChanged(_ sender: NSPopUpButton) {
+        let row = sender.tag / 10
+        guard row < mappingRows.count, let title = sender.selectedItem?.title else { return }
+        mappingRows[row].stack = title
+        updateMatchHighlights()
+    }
 }
 
 // MARK: - NSTextFieldDelegate for editable cells
@@ -851,7 +927,6 @@ extension MappingEditorWindow: NSTextFieldDelegate {
 
         switch col {
         case 0: mappingRows[row].path = field.stringValue
-        case 2: mappingRows[row].stack = field.stringValue
         default: break
         }
         updateMatchHighlights()
