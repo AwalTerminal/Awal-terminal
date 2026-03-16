@@ -139,6 +139,7 @@ class TerminalView: NSView {
     private var autoScrollDelta: Int = 0  // -1 = scroll up, +1 = scroll down
     /// Safety timer that force-renders if synchronized output mode (2026) is held too long.
     private var syncOutputTimer: Timer?
+    private var scrollToBottomButton: ScrollToBottomButton?
 
     // MARK: - Search State
 
@@ -2399,7 +2400,14 @@ class TerminalView: NSView {
         if lines != 0 {
             at_surface_scroll_viewport(s, Int32(lines))
             let offset = at_surface_get_viewport_offset(s)
-            userScrolledUp = offset > 0
+            // Scrolling down near the bottom during active output? Snap to live view.
+            if lines < 0 && offset > 0 && offset <= Int32(termRows) {
+                at_surface_scroll_viewport(s, -offset)
+                userScrolledUp = false
+            } else {
+                userScrolledUp = offset > 0
+            }
+            showOrHideScrollToBottom()
             updateCellBuffer()
             needsRender = true
         }
@@ -2460,6 +2468,14 @@ class TerminalView: NSView {
         guard appState == .terminal, let s = surface else {
             super.mouseDown(with: event)
             return
+        }
+
+        // Skip selection if click is on the scroll-to-bottom button
+        if let btn = scrollToBottomButton {
+            let loc = convert(event.locationInWindow, from: nil)
+            if btn.frame.contains(loc) {
+                return
+            }
         }
 
         let (col, row) = gridPosition(for: event)
@@ -2539,6 +2555,49 @@ class TerminalView: NSView {
         autoScrollTimer?.invalidate()
         autoScrollTimer = nil
         autoScrollDelta = 0
+    }
+
+    private func showOrHideScrollToBottom() {
+        if userScrolledUp {
+            if scrollToBottomButton == nil {
+                let button = ScrollToBottomButton()
+                button.onScrollToBottom = { [weak self] in
+                    self?.scrollToBottom()
+                }
+                addSubview(button)
+                button.translatesAutoresizingMaskIntoConstraints = false
+                NSLayoutConstraint.activate([
+                    button.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+                    button.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -40),
+                ])
+                button.alphaValue = 0
+                NSAnimationContext.runAnimationGroup { ctx in
+                    ctx.duration = 0.15
+                    button.animator().alphaValue = 1
+                }
+                scrollToBottomButton = button
+            }
+        } else {
+            if let button = scrollToBottomButton {
+                scrollToBottomButton = nil
+                NSAnimationContext.runAnimationGroup({ ctx in
+                    ctx.duration = 0.15
+                    button.animator().alphaValue = 0
+                }, completionHandler: {
+                    button.removeFromSuperview()
+                })
+            }
+        }
+    }
+
+    private func scrollToBottom() {
+        guard let s = surface else { return }
+        let offset = at_surface_get_viewport_offset(s)
+        if offset > 0 { at_surface_scroll_viewport(s, -offset) }
+        userScrolledUp = false
+        showOrHideScrollToBottom()
+        updateCellBuffer()
+        needsRender = true
     }
 
     private func autoScrollTick() {
@@ -2701,6 +2760,18 @@ class TerminalView: NSView {
             pasteFromClipboard()
             return true
         default:
+            // Cmd+End: jump to bottom
+            if event.keyCode == 119 {
+                if let s = surface {
+                    let offset = at_surface_get_viewport_offset(s)
+                    if offset > 0 { at_surface_scroll_viewport(s, -offset) }
+                    userScrolledUp = false
+                    showOrHideScrollToBottom()
+                    updateCellBuffer()
+                    needsRender = true
+                }
+                return true
+            }
             return super.performKeyEquivalent(with: event)
         }
     }
