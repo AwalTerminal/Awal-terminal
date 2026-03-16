@@ -160,6 +160,11 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
         syncSelectedBtn.bezelStyle = .rounded
         contentView.addSubview(syncSelectedBtn)
 
+        let configureMappingBtn = NSButton(title: "Mapping...", target: self, action: #selector(configureMappingClicked(_:)))
+        configureMappingBtn.translatesAutoresizingMaskIntoConstraints = false
+        configureMappingBtn.bezelStyle = .rounded
+        contentView.addSubview(configureMappingBtn)
+
         errorLabel.font = .systemFont(ofSize: 11)
         errorLabel.textColor = NSColor(red: 1, green: 0.4, blue: 0.4, alpha: 1)
         errorLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -258,6 +263,8 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
             removeBtn.centerYAnchor.constraint(equalTo: addBtn.centerYAnchor),
             syncSelectedBtn.leadingAnchor.constraint(equalTo: removeBtn.trailingAnchor, constant: 6),
             syncSelectedBtn.centerYAnchor.constraint(equalTo: addBtn.centerYAnchor),
+            configureMappingBtn.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            configureMappingBtn.centerYAnchor.constraint(equalTo: addBtn.centerYAnchor),
 
             // Error label
             errorLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
@@ -314,6 +321,8 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
     // MARK: - Data Refresh
 
     private func refreshAll() {
+        // Resolve mapping modes for any registries that haven't been resolved yet
+        RegistryManager.shared.resolveMappingsIfNeeded(registries: AppConfig.shared.aiComponentRegistries)
         registryTableView.reloadData()
         refreshComponents()
         updateErrorLabel()
@@ -396,7 +405,28 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
                     break
                 }
             }
-            // Show structure warnings
+            // Show mapping mode info for non-standard registries
+            let mode = RegistryManager.shared.mappingModes[name]
+            if mode == .unmapped {
+                errorLabel.stringValue = "\(name): Non-standard structure. Click 'Configure Mapping' to load components."
+                errorLabel.textColor = NSColor(red: 1, green: 0.8, blue: 0.3, alpha: 1)
+                return
+            }
+            if mode == .claudePlugin {
+                let count = RegistryManager.shared.mappedComponents[name]?.count ?? 0
+                errorLabel.stringValue = "\(name): Auto-detected \(count) skill(s) from .claude-plugin manifest"
+                errorLabel.textColor = NSColor(red: 0.5, green: 0.8, blue: 1, alpha: 1)
+                return
+            }
+            if mode == .inRepoMapping || mode == .localMapping {
+                let count = RegistryManager.shared.mappedComponents[name]?.count ?? 0
+                let label = mode == .localMapping ? "local mapping" : "in-repo .awal-mapping.json"
+                errorLabel.stringValue = "\(name): Loaded \(count) component(s) via \(label)"
+                errorLabel.textColor = NSColor(red: 0.5, green: 0.8, blue: 1, alpha: 1)
+                return
+            }
+
+            // Show structure warnings (standard registries only)
             let warnings = RegistryManager.shared.validateStructure(name: name)
             if let first = warnings.first {
                 errorLabel.stringValue = "\(name): \(first)"
@@ -719,6 +749,21 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
         }
     }
 
+    @objc private func configureMappingClicked(_ sender: NSButton) {
+        let idx = registryTableView.selectedRow
+        let registries = AppConfig.shared.aiComponentRegistries
+        guard idx >= 0 && idx < registries.count else {
+            let alert = NSAlert.branded()
+            alert.messageText = "No Registry Selected"
+            alert.informativeText = "Select a registry first, then click Configure Mapping."
+            alert.alertStyle = .informational
+            if let w = window { alert.beginSheetModal(for: w) }
+            return
+        }
+        let reg = registries[idx]
+        MappingEditorWindow.show(registryName: reg.name)
+    }
+
     @objc private func removeRegistryClicked(_ sender: NSButton) {
         let idx = registryTableView.selectedRow
         let registries = AppConfig.shared.aiComponentRegistries
@@ -726,7 +771,7 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
 
         let reg = registries[idx]
         // Remove all possible config keys for any registry type
-        for key in ["url", "branch", "tag", "type", "slugs", "path"] {
+        for key in ["url", "branch", "tag", "type", "slugs", "path", "mapping"] {
             ConfigWriter.removeValue(key: "ai_components.registry.\(reg.name).\(key)")
         }
         AppConfig.reload()
@@ -829,13 +874,22 @@ extension AIComponentsManagerWindow: NSTableViewDataSource, NSTableViewDelegate 
             label.alignment = .center
 
             let status = RegistryManager.shared.registryStatuses[reg.name]
+            let mappingMode = RegistryManager.shared.mappingModes[reg.name]
             switch status {
             case .synced:
-                let warnings = RegistryManager.shared.validateStructure(name: reg.name)
                 label.stringValue = "\u{25CF}"
-                label.textColor = warnings.isEmpty
-                    ? NSColor(red: 0.3, green: 0.8, blue: 0.4, alpha: 1)
-                    : NSColor(red: 1, green: 0.3, blue: 0.3, alpha: 1)
+                if mappingMode == .unmapped {
+                    // Non-standard, no mapping configured — orange
+                    label.textColor = NSColor(red: 1, green: 0.7, blue: 0.2, alpha: 1)
+                } else if mappingMode != nil && mappingMode != .standard {
+                    // Mapped registry — blue
+                    label.textColor = NSColor(red: 0.4, green: 0.7, blue: 1, alpha: 1)
+                } else {
+                    let warnings = RegistryManager.shared.validateStructure(name: reg.name)
+                    label.textColor = warnings.isEmpty
+                        ? NSColor(red: 0.3, green: 0.8, blue: 0.4, alpha: 1)
+                        : NSColor(red: 1, green: 0.3, blue: 0.3, alpha: 1)
+                }
             case .syncing:
                 label.stringValue = "\u{25CF}"
                 label.textColor = NSColor(red: 0.4, green: 0.6, blue: 1, alpha: 1)
@@ -1047,6 +1101,17 @@ extension AIComponentsManagerWindow: NSTableViewDataSource, NSTableViewDelegate 
         let stack = String(parts[1])
         // parts[2] == "hook"
         let hookPath = String(parts[3]) // e.g. "pre-session/myscript"
+
+        // For mapped registries, look up the URL from resolved components
+        let mode = RegistryManager.shared.mappingModes[registryName]
+        if mode != nil && mode != .standard {
+            if let resolved = RegistryManager.shared.mappedComponents[registryName] {
+                for comp in resolved where comp.type == .hook {
+                    let compKey = "\(registryName)/\(comp.stack)/hook/\(comp.name)"
+                    if compKey == key { return comp.fileURL }
+                }
+            }
+        }
 
         let regPath = RegistryManager.shared.registryPath(name: registryName)
         let stackPrefix = stack == "common" ? "common" : "stacks/\(stack)"
