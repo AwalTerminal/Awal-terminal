@@ -151,6 +151,9 @@ class TerminalView: NSView {
 
     private var selectionStartAbsRow: Int32 = 0
     private var selectionEndAbsRow: Int32 = 0
+    private var pendingSelectionCol: UInt32 = 0
+    private var pendingSelectionRow: Int32 = 0
+    private var selectionStartedByDrag = false
 
     // MARK: - AI Fold State
 
@@ -2512,7 +2515,12 @@ class TerminalView: NSView {
             at_surface_start_selection(s, UInt32(0), absRow)
             at_surface_update_selection(s, UInt32(termCols - 1), absRow)
         } else {
-            at_surface_start_selection(s, UInt32(col), absRow)
+            // Don't start selection on single click — defer to mouseDragged
+            pendingSelectionCol = UInt32(col)
+            pendingSelectionRow = absRow
+            selectionStartedByDrag = false
+            // Clear any existing selection so the old highlight disappears
+            at_surface_clear_selection(s)
         }
         updateCellBuffer()
         needsRender = true
@@ -2562,6 +2570,15 @@ class TerminalView: NSView {
         }
 
         if mouseMode == 0 {
+            let absRow = absoluteRow(gridRow: row)
+            // Only start selection once the mouse moves to a different cell
+            if !selectionStartedByDrag {
+                if UInt32(col) == pendingSelectionCol && absRow == pendingSelectionRow {
+                    return
+                }
+                at_surface_start_selection(s, pendingSelectionCol, pendingSelectionRow)
+                selectionStartedByDrag = true
+            }
             let location = convert(event.locationInWindow, from: nil)
             if location.y < 0 {
                 // Mouse below view — scroll down
@@ -2572,7 +2589,6 @@ class TerminalView: NSView {
             } else {
                 stopAutoScroll()
             }
-            let absRow = absoluteRow(gridRow: row)
             selectionEndAbsRow = absRow
             at_surface_update_selection(s, UInt32(col), absRow)
             updateCellBuffer()
@@ -2590,6 +2606,16 @@ class TerminalView: NSView {
         if mouseMode > 0 {
             sendMouseEvent(button: 0, col: col, row: row, release: true)
             return
+        }
+
+        // Clear selection if no drag, or if drag ended on the same cell (micro-movement)
+        let absRow = absoluteRow(gridRow: row)
+        if !selectionStartedByDrag
+            || (UInt32(col) == pendingSelectionCol && absRow == pendingSelectionRow)
+        {
+            at_surface_clear_selection(s)
+            updateCellBuffer()
+            needsRender = true
         }
     }
 
