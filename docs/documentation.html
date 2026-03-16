@@ -581,6 +581,9 @@ worktree_branch_prefix = "awal/tab"  # default prefix for worktree branches</cod
         <p>When creating a new tab with worktree isolation enabled, a prompt dialog lets you select the base branch for the worktree. Manage all worktrees from <strong>Shell &gt; Manage Worktrees</strong>, which provides a status overview, cleanup actions, and orphan worktree pruning.</p>
         <p>Tabs automatically close when their LLM session process exits.</p>
 
+        <h3>Plan-Aware Tab Naming</h3>
+        <p>When an AI agent outputs a plan header (e.g. "Here is Claude's plan:"), Awal detects the plan title from the following line and shows a banner at the bottom of the terminal offering to rename the tab. Click <strong>Rename</strong> to apply the plan title as the tab name, or dismiss the banner to keep the current title. Previously dismissed titles won't re-trigger.</p>
+
         <h3>Split Panes <span style="color: var(--text-muted); font-size: 0.85em;">(coming soon)</span></h3>
         <p style="color: var(--text-muted); margin-bottom: 0.75rem;">Split panes are temporarily disabled while a rendering bug is being resolved. The shortcuts below will be available once re-enabled.</p>
         <table class="doc-table">
@@ -759,6 +762,7 @@ path = "/path/to/local/registry"</code></pre>
 
         <h3>Security Scanning</h3>
         <p>Awal scans registry contents for potentially dangerous patterns like shell commands, environment variable access, and network requests. Critical findings are blocked by default. Configure with <code>security_scan = true</code> and <code>block_critical = true</code> in your config.</p>
+        <p>Open the <strong>Security Rules Editor</strong> from the AI Components Manager to view all built-in detection rules, their severity levels, and pattern descriptions. This helps you understand exactly what Awal flags and why.</p>
 
         <h3>Per-Component Toggles</h3>
         <p>Disable individual components without removing their registry. Use the checkboxes in the AI Components Manager, or add component keys to the <code>disabled</code> list in your config:</p>
@@ -785,6 +789,14 @@ target = "clipboard"     # Export target: "clipboard" or "file"</code></pre>
         <h3>AI Components Manager</h3>
         <p>Open the dedicated manager window from <strong>AI Components &gt; Manage Components</strong> in the menu bar. The manager lets you browse all loaded components across registries, view component details, and manage sync settings. You can also trigger a manual sync with <code>Cmd+Y</code>.</p>
         <p>After a sync, a notification banner shows what changed &mdash; added, removed, and updated components &mdash; so you can review exactly what was modified.</p>
+        <p>Each registry has a colored status dot indicating its state. Hover over a dot to see its meaning, or refer to the legend row below the registry table:</p>
+        <ul>
+          <li><strong style="color:#4dcc66;">&#x25CF;</strong> <strong>Synced</strong> &mdash; standard structure, no warnings</li>
+          <li><strong style="color:#66b3ff;">&#x25CF;</strong> <strong>Mapped</strong> &mdash; custom mapping configured</li>
+          <li><strong style="color:#ffb333;">&#x25CF;</strong> <strong>Needs Mapping</strong> &mdash; non-standard structure, needs mapping</li>
+          <li><strong style="color:#ff4d4d;">&#x25CF;</strong> <strong>Error</strong> &mdash; sync failed or structure warnings</li>
+          <li><strong style="color:#808080;">&#x25CB;</strong> <strong>Not Cloned</strong> &mdash; registry has not been cloned yet</li>
+        </ul>
 
         <h3>Stack Overrides</h3>
         <p>Force specific stacks for a project path instead of auto-detection:</p>

@@ -37,6 +37,7 @@ A native macOS terminal built from scratch with Swift and Rust, designed specifi
 | AI Components | Auto-detect your project stack and inject skills, rules, prompts, agents, MCP servers, and hooks into AI sessions from shared registries. Supports git, [localskills](https://localskills.dev), and local directory sources. Visual mapping editor for non-standard registry structures. Per-component enable/disable, security scanning, hook approval gate, and import/export |
 | Sub-Stack Detection | Automatically detects frameworks like Next.js, Django, Flask, Vapor, NestJS, and more on top of base stack detection for more targeted component injection |
 | Resume Sessions | Browse and resume past AI sessions from the startup menu. Claude sessions show turn count and time ago; Codex and Gemini launch their built-in session pickers |
+| Plan-Aware Tab Naming | Automatically detects AI plan headers and offers to rename the tab to match the plan title |
 | Smart Notifications | Desktop alerts when long-running AI tasks complete |
 | Tabs & Splits | Native tabs with drag-to-reorder, custom tab colors, and per-tab titles. Split panes (vertical and horizontal) are temporarily disabled while a rendering bug is being resolved |
 | Quick Terminal | Quake-style dropdown terminal with a global hotkey (`Ctrl+``) |
