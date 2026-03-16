@@ -74,6 +74,34 @@ class AIComponentRegistry {
                 continue
             }
 
+            let mode = RegistryManager.shared.mappingModes[reg.name] ?? .standard
+
+            // For mapped registries, assemble from resolved components
+            if mode != .standard, let resolved = RegistryManager.shared.mappedComponents[reg.name], !resolved.isEmpty {
+                let pluginDir = pluginsDir.appendingPathComponent("\(reg.name)--mapped")
+                let counts = assembleMappedPlugin(
+                    at: pluginDir,
+                    registryName: reg.name,
+                    components: resolved,
+                    skip: skip
+                )
+                if counts.total > 0 {
+                    allDirs.append(pluginDir)
+                    totalSkills += counts.skills
+                    totalRules += counts.rules
+                    totalPrompts += counts.prompts
+                    totalAgents += counts.agents
+                }
+                totalMcpServers += resolved.filter { $0.type == .mcpServer }.count
+                totalHooks += resolved.filter { $0.type == .hook }.count
+
+                if mode == .unmapped {
+                    warnings.append("\(reg.name): Non-standard structure. Configure mapping to load components.")
+                }
+                continue
+            }
+
+            // Standard structure: existing logic
             // Count MCP servers and hooks at registry level (not per-stack)
             totalMcpServers += countItems(in: regPath.appendingPathComponent("common/mcp-servers"), ext: "json")
             totalHooks += countHooks(in: regPath.appendingPathComponent("common/hooks"))
@@ -101,8 +129,10 @@ class AIComponentRegistry {
             }
         }
 
-        // Add structure warnings from RegistryManager
+        // Add structure warnings from RegistryManager (only for standard registries)
         for reg in registries {
+            let mode = RegistryManager.shared.mappingModes[reg.name] ?? .standard
+            guard mode == .standard else { continue }
             let structWarnings = RegistryManager.shared.validateStructure(name: reg.name)
             for w in structWarnings {
                 warnings.append("\(reg.name): \(w)")
@@ -141,6 +171,36 @@ class AIComponentRegistry {
             let regPath = RegistryManager.shared.registryPath(name: reg.name)
             guard fm.fileExists(atPath: regPath.path) else { continue }
 
+            let mode = RegistryManager.shared.mappingModes[reg.name] ?? .standard
+
+            // For mapped registries, collect markdown from resolved components
+            if mode != .standard, let resolved = RegistryManager.shared.mappedComponents[reg.name] {
+                for comp in resolved {
+                    switch comp.type {
+                    case .rule:
+                        if let content = try? String(contentsOf: comp.fileURL, encoding: .utf8) { ruleSections.append(content) }
+                    case .skill:
+                        let skillMd = comp.fileURL.appendingPathComponent("SKILL.md")
+                        if let content = try? String(contentsOf: skillMd, encoding: .utf8) { skillSections.append(content) }
+                    case .prompt:
+                        if let content = try? String(contentsOf: comp.fileURL, encoding: .utf8) { promptSections.append(content) }
+                    case .agent:
+                        var isDir: ObjCBool = false
+                        if fm.fileExists(atPath: comp.fileURL.path, isDirectory: &isDir), isDir.boolValue {
+                            let agentJson = comp.fileURL.appendingPathComponent("agent.json")
+                            if let data = try? Data(contentsOf: agentJson),
+                               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                                agentSections.append(renderAgentAsMarkdown(name: comp.name, json: json))
+                            }
+                        }
+                    default:
+                        break
+                    }
+                }
+                continue
+            }
+
+            // Standard structure
             // Common
             ruleSections.append(contentsOf: collectMarkdown(from: regPath.appendingPathComponent("common/rules")))
             skillSections.append(contentsOf: collectMarkdown(from: regPath.appendingPathComponent("common/skills")))
@@ -208,6 +268,17 @@ class AIComponentRegistry {
             guard fm.fileExists(atPath: regPath.path) else { continue }
 
             let source = reg.type == .localskills ? "localskills" : reg.name
+            let mode = RegistryManager.shared.mappingModes[reg.name] ?? .standard
+
+            // For mapped registries, list from resolved components
+            if mode != .standard, let resolved = RegistryManager.shared.mappedComponents[reg.name] {
+                for comp in resolved {
+                    let key = "\(reg.name)/\(comp.stack)/\(comp.type.rawValue)/\(comp.name)"
+                    let displayName = comp.group != nil ? "\(comp.name) [\(comp.group!)]" : comp.name
+                    components.append((name: displayName, source: source, stack: comp.stack, type: comp.type, key: key))
+                }
+                continue
+            }
 
             func addComponents(names: [String], stack: String, type: ComponentType) {
                 for name in names {
@@ -262,6 +333,21 @@ class AIComponentRegistry {
             let regPath = RegistryManager.shared.registryPath(name: reg.name)
             guard fm.fileExists(atPath: regPath.path) else { continue }
 
+            let mode = RegistryManager.shared.mappingModes[reg.name] ?? .standard
+
+            // For mapped registries, collect MCP configs from resolved components
+            if mode != .standard, let resolved = RegistryManager.shared.mappedComponents[reg.name] {
+                for comp in resolved where comp.type == .mcpServer {
+                    let key = "\(reg.name)/\(comp.stack)/mcp-server/\(comp.name)"
+                    guard !skip.contains(key) else { continue }
+                    guard let data = try? Data(contentsOf: comp.fileURL),
+                          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
+                    let serverName = "awal-\(reg.name)-\(comp.name)"
+                    configs[serverName] = json
+                }
+                continue
+            }
+
             let stackList: [(dir: URL, stack: String)] = [
                 (regPath.appendingPathComponent("common/mcp-servers"), "common")
             ] + stacks.map { (regPath.appendingPathComponent("stacks/\($0)/mcp-servers"), $0) }
@@ -298,6 +384,39 @@ class AIComponentRegistry {
         for reg in registries {
             let regPath = RegistryManager.shared.registryPath(name: reg.name)
             guard fm.fileExists(atPath: regPath.path) else { continue }
+
+            let mode = RegistryManager.shared.mappingModes[reg.name] ?? .standard
+
+            // For mapped registries, collect hooks from resolved components
+            if mode != .standard, let resolved = RegistryManager.shared.mappedComponents[reg.name] {
+                for comp in resolved where comp.type == .hook {
+                    let key = "\(reg.name)/\(comp.stack)/hook/\(comp.name)"
+                    guard !skip.contains(key) else { continue }
+                    // Use hook_phase from mapping, fallback to path/name heuristic
+                    let hookPhase: String
+                    if let phase = comp.hookPhase {
+                        hookPhase = phase
+                    } else {
+                        let pathStr = comp.fileURL.path
+                        if pathStr.contains("pre-session") || comp.name.contains("pre-session") {
+                            hookPhase = "pre-session"
+                        } else if pathStr.contains("post-session") || comp.name.contains("post-session") {
+                            hookPhase = "post-session"
+                        } else if pathStr.contains("before-commit") || comp.name.contains("before-commit") {
+                            hookPhase = "before-commit"
+                        } else {
+                            hookPhase = "pre-session"
+                        }
+                    }
+                    switch hookPhase {
+                    case "pre-session": pre.append((key: key, url: comp.fileURL))
+                    case "post-session": post.append((key: key, url: comp.fileURL))
+                    case "before-commit": commit.append((key: key, url: comp.fileURL))
+                    default: break
+                    }
+                }
+                continue
+            }
 
             let hookDirs: [(dir: URL, stack: String)] = [
                 (regPath.appendingPathComponent("common/hooks"), "common")
@@ -338,6 +457,91 @@ class AIComponentRegistry {
         var prompts = 0
         var agents = 0
         var total: Int { skills + rules + prompts + agents }
+    }
+
+    /// Assemble a plugin directory from mapped (non-standard) components.
+    private func assembleMappedPlugin(
+        at pluginDir: URL,
+        registryName: String,
+        components: [ResolvedComponent],
+        skip: Set<String> = []
+    ) -> PluginCounts {
+        // Clean and recreate
+        try? fm.removeItem(at: pluginDir)
+        try? fm.createDirectory(at: pluginDir, withIntermediateDirectories: true)
+
+        let skillsDir = pluginDir.appendingPathComponent("skills")
+        let commandsDir = pluginDir.appendingPathComponent("commands")
+        let rulesDir = pluginDir.appendingPathComponent("rules")
+        let agentsDir = pluginDir.appendingPathComponent("agents")
+        try? fm.createDirectory(at: skillsDir, withIntermediateDirectories: true)
+        try? fm.createDirectory(at: commandsDir, withIntermediateDirectories: true)
+        try? fm.createDirectory(at: rulesDir, withIntermediateDirectories: true)
+        try? fm.createDirectory(at: agentsDir, withIntermediateDirectories: true)
+
+        var counts = PluginCounts()
+
+        // Create .claude-plugin/plugin.json
+        let claudePluginDir = pluginDir.appendingPathComponent(".claude-plugin")
+        try? fm.createDirectory(at: claudePluginDir, withIntermediateDirectories: true)
+        let pluginJson: [String: Any] = [
+            "name": "\(registryName)-mapped-skills",
+            "description": "Components from \(registryName) (mapped)",
+            "version": "1.0.0",
+        ]
+        if let data = try? JSONSerialization.data(withJSONObject: pluginJson, options: .prettyPrinted) {
+            try? data.write(to: claudePluginDir.appendingPathComponent("plugin.json"))
+        }
+
+        for comp in components {
+            let key = "\(registryName)/\(comp.stack)/\(comp.type.rawValue)/\(comp.name)"
+            guard !skip.contains(key) else { continue }
+
+            switch comp.type {
+            case .skill:
+                // Symlink skill directory
+                let dest = skillsDir.appendingPathComponent(comp.name)
+                if !fm.fileExists(atPath: dest.path) {
+                    try? fm.createSymbolicLink(at: dest, withDestinationURL: comp.fileURL)
+                }
+                // Expose SKILL.md as command
+                let skillMd = comp.fileURL.appendingPathComponent("SKILL.md")
+                if fm.fileExists(atPath: skillMd.path) {
+                    let cmdDest = commandsDir.appendingPathComponent("\(comp.name).md")
+                    if !fm.fileExists(atPath: cmdDest.path) {
+                        try? fm.createSymbolicLink(at: cmdDest, withDestinationURL: skillMd)
+                    }
+                }
+                counts.skills += 1
+
+            case .rule:
+                let dest = rulesDir.appendingPathComponent(comp.fileURL.lastPathComponent)
+                if !fm.fileExists(atPath: dest.path) {
+                    try? fm.createSymbolicLink(at: dest, withDestinationURL: comp.fileURL)
+                }
+                counts.rules += 1
+
+            case .prompt:
+                let dest = commandsDir.appendingPathComponent(comp.fileURL.lastPathComponent)
+                if !fm.fileExists(atPath: dest.path) {
+                    try? fm.createSymbolicLink(at: dest, withDestinationURL: comp.fileURL)
+                }
+                counts.prompts += 1
+
+            case .agent:
+                let dest = agentsDir.appendingPathComponent(comp.name)
+                if !fm.fileExists(atPath: dest.path) {
+                    try? fm.createSymbolicLink(at: dest, withDestinationURL: comp.fileURL)
+                }
+                counts.agents += 1
+
+            case .mcpServer, .hook:
+                // MCP servers and hooks are handled separately in collectMcpConfigs/collectHooks
+                break
+            }
+        }
+
+        return counts
     }
 
     private func assemblePlugin(

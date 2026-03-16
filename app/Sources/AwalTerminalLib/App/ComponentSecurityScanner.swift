@@ -53,6 +53,95 @@ enum ComponentSecurityScanner {
 
     // MARK: - Public API
 
+    /// Scan mapped (non-standard) components for security issues.
+    static func scanMappedComponents(
+        registryName: String,
+        repoPath: URL,
+        mode: RegistryMappingMode
+    ) -> [SecurityFinding] {
+        var findings: [SecurityFinding] = []
+        var components: [ResolvedComponent] = []
+
+        switch mode {
+        case .claudePlugin:
+            components = RegistryMappingResolver.parseClaudePluginManifest(repoPath: repoPath)
+        case .inRepoMapping, .localMapping:
+            if let mapping = RegistryMappingResolver.loadMapping(registryName: registryName, repoPath: repoPath) {
+                components = RegistryMappingResolver.resolveMapping(mapping, repoPath: repoPath)
+            }
+        default:
+            return []
+        }
+
+        let fm = FileManager.default
+        for comp in components {
+            let key = "\(registryName)/\(comp.stack)/\(comp.type.rawValue)/\(comp.name)"
+
+            switch comp.type {
+            case .skill:
+                // Scan SKILL.md or skill file in the directory
+                let skillMd = comp.fileURL.appendingPathComponent("SKILL.md")
+                if let content = try? String(contentsOf: skillMd, encoding: .utf8) {
+                    scanMarkdownContent(content, key: key, findings: &findings)
+                }
+            case .rule, .prompt:
+                if let content = try? String(contentsOf: comp.fileURL, encoding: .utf8) {
+                    scanMarkdownContent(content, key: key, findings: &findings)
+                }
+            case .hook:
+                if let content = try? String(contentsOf: comp.fileURL, encoding: .utf8) {
+                    for line in content.components(separatedBy: .newlines) {
+                        let trimmed = line.trimmingCharacters(in: .whitespaces)
+                        if trimmed.isEmpty || trimmed.hasPrefix("#") { continue }
+                        let range = NSRange(trimmed.startIndex..., in: trimmed)
+                        for (pattern, regex) in criticalHookPatterns {
+                            if let regex, regex.firstMatch(in: trimmed, range: range) != nil {
+                                findings.append(SecurityFinding(componentKey: key, pattern: pattern, severity: .critical, line: trimmed))
+                            }
+                        }
+                        for (pattern, regex) in warningHookPatterns {
+                            if let regex, regex.firstMatch(in: trimmed, range: range) != nil {
+                                findings.append(SecurityFinding(componentKey: key, pattern: pattern, severity: .warning, line: trimmed))
+                            }
+                        }
+                    }
+                }
+            case .mcpServer:
+                if let data = try? Data(contentsOf: comp.fileURL),
+                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    if let command = json["command"] as? String {
+                        for pattern in warningMcpCommandPatterns {
+                            if command.contains(pattern) {
+                                findings.append(SecurityFinding(componentKey: key, pattern: "MCP command contains \(pattern)", severity: .warning, line: "command: \(command)"))
+                            }
+                        }
+                    }
+                    if let env = json["env"] as? [String: String] {
+                        for (envKey, envValue) in env {
+                            if (envValue.hasPrefix("http://") || envValue.hasPrefix("https://"))
+                                && !envValue.contains("localhost") && !envValue.contains("127.0.0.1") {
+                                findings.append(SecurityFinding(componentKey: key, pattern: "MCP env var with external URL", severity: .warning, line: "\(envKey)=\(envValue)"))
+                            }
+                        }
+                    }
+                }
+            case .agent:
+                // Scan agent definition files for markdown content
+                var isDir: ObjCBool = false
+                if fm.fileExists(atPath: comp.fileURL.path, isDirectory: &isDir), isDir.boolValue {
+                    let agentJson = comp.fileURL.appendingPathComponent("agent.json")
+                    if let data = try? Data(contentsOf: agentJson),
+                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                       let instructions = json["instructions"] as? String {
+                        scanMarkdownContent(instructions, key: key, findings: &findings)
+                    }
+                }
+            }
+        }
+
+        return findings
+    }
+
     /// Scan a registry directory for security issues across all detected stacks.
     static func scan(registryPath: URL, stacks: Set<String>) -> [SecurityFinding] {
         let fm = FileManager.default

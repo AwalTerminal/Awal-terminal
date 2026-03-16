@@ -60,8 +60,62 @@ class RegistryManager {
     /// Security scan results per registry.
     private(set) var scanResults: [String: [SecurityFinding]] = [:]
 
+    /// Resolved mapping mode per registry.
+    var mappingModes: [String: RegistryMappingMode] = [:]
+
+    /// Resolved components from mapped/claude-plugin registries.
+    var mappedComponents: [String: [ResolvedComponent]] = [:]
+
     /// Path for the local registry (used by imports).
     var localRegistryPath: URL { registriesDir.appendingPathComponent("local") }
+
+    // MARK: - Mapping Resolution
+
+    /// Resolve mapping modes and components for all already-cloned registries.
+    /// Called at startup or when the manager window opens to catch registries
+    /// that were synced before the mapping feature was added.
+    func resolveMappingsIfNeeded(registries: [RegistryConfig]) {
+        for reg in registries {
+            // Skip if already resolved
+            if mappingModes[reg.name] != nil { continue }
+
+            let repoPath = registryPath(name: reg.name)
+            guard fm.fileExists(atPath: repoPath.path) else { continue }
+
+            let mode = RegistryMappingResolver.resolveMode(
+                registryName: reg.name, repoPath: repoPath, configMapping: reg.mapping
+            )
+            mappingModes[reg.name] = mode
+
+            switch mode {
+            case .claudePlugin:
+                mappedComponents[reg.name] = RegistryMappingResolver.parseClaudePluginManifest(repoPath: repoPath)
+            case .inRepoMapping, .localMapping:
+                if let mapping = RegistryMappingResolver.loadMapping(registryName: reg.name, repoPath: repoPath) {
+                    mappedComponents[reg.name] = RegistryMappingResolver.resolveMapping(mapping, repoPath: repoPath)
+                }
+            default:
+                break
+            }
+
+            // If the registry has a valid mapping mode, ensure its status reflects synced
+            // (it may have been set to .error by old structure validation)
+            if mode != .standard && mode != .unmapped {
+                let needsStatusFix: Bool
+                switch registryStatuses[reg.name] {
+                case .error: needsStatusFix = true
+                case .none: needsStatusFix = true  // Not initialized yet
+                case .notCloned: needsStatusFix = true
+                default: needsStatusFix = false
+                }
+                if needsStatusFix {
+                    let ts = lastSyncTime(name: reg.name) ?? Date()
+                    let hash = loadMeta()[reg.name]?["commitHash"] as? String ?? ""
+                    registryStatuses[reg.name] = .synced(lastSync: ts, commitHash: hash)
+                }
+            }
+        }
+    }
 
     // MARK: - Public API
 
@@ -316,19 +370,61 @@ class RegistryManager {
             let commitHash = currentCommit(at: repoDir)
             updateMeta(name: name, commitHash: commitHash, tag: tag)
 
+            // Resolve mapping mode for this registry
+            let configMapping = AppConfig.shared.aiComponentRegistries
+                .first(where: { $0.name == name })?.mapping ?? "auto"
+            let mode = RegistryMappingResolver.resolveMode(
+                registryName: name, repoPath: repoDir, configMapping: configMapping
+            )
+            DispatchQueue.main.async { [weak self] in
+                self?.mappingModes[name] = mode
+            }
+
+            // Resolve mapped components for non-standard registries
+            switch mode {
+            case .claudePlugin:
+                let resolved = RegistryMappingResolver.parseClaudePluginManifest(repoPath: repoDir)
+                DispatchQueue.main.async { [weak self] in
+                    self?.mappedComponents[name] = resolved
+                }
+            case .inRepoMapping, .localMapping:
+                if let mapping = RegistryMappingResolver.loadMapping(registryName: name, repoPath: repoDir) {
+                    let resolved = RegistryMappingResolver.resolveMapping(mapping, repoPath: repoDir)
+                    DispatchQueue.main.async { [weak self] in
+                        self?.mappedComponents[name] = resolved
+                    }
+                }
+            default:
+                DispatchQueue.main.async { [weak self] in
+                    self?.mappedComponents.removeValue(forKey: name)
+                }
+            }
+
             // Run security scan if enabled
             if AppConfig.shared.aiComponentsSecurityScan {
                 let allStacks = Set(ProjectDetector.builtInRules.keys)
-                let findings = ComponentSecurityScanner.scan(registryPath: repoDir, stacks: allStacks)
+                var findings = ComponentSecurityScanner.scan(registryPath: repoDir, stacks: allStacks)
+                // Also scan mapped components
+                if mode != .standard {
+                    let mappedFindings = ComponentSecurityScanner.scanMappedComponents(
+                        registryName: name, repoPath: repoDir, mode: mode
+                    )
+                    findings.append(contentsOf: mappedFindings)
+                }
                 DispatchQueue.main.async { [weak self] in
                     self?.scanResults[name] = findings
                 }
             }
 
             // Validate and set status with warnings
-            let warnings = validateStructure(name: name)
-            if !warnings.isEmpty {
-                setStatus(name, .error(warnings.first ?? "Invalid structure"))
+            // Skip structure validation for mapped registries — they use a different layout
+            if mode == .standard {
+                let warnings = validateStructure(name: name)
+                if !warnings.isEmpty {
+                    setStatus(name, .error(warnings.first ?? "Invalid structure"))
+                } else {
+                    setStatus(name, .synced(lastSync: Date(), commitHash: commitHash))
+                }
             } else {
                 setStatus(name, .synced(lastSync: Date(), commitHash: commitHash))
             }
