@@ -124,7 +124,19 @@ class StatusBarView: NSView, NSMenuDelegate {
     }()
     private let voiceWaveform = WaveformView(frame: .zero)
 
+    private let screenshotButton: StatusBarButton = {
+        let btn = StatusBarButton()
+        btn.isBordered = false
+        btn.setButtonType(.momentaryChange)
+        btn.image = NSImage(systemSymbolName: "camera", accessibilityDescription: "Screenshot to Session")
+        btn.imagePosition = .imageOnly
+        btn.contentTintColor = NSColor(white: 0.55, alpha: 1.0)
+        btn.toolTip = "Screenshot to Session (⇧⌘S)"
+        return btn
+    }()
+
     var onVoiceToggle: (() -> Void)?
+    var onScreenshotToSession: (() -> Void)?
 
     private var sep1: NSTextField!
     private var sep2: NSTextField!
@@ -213,6 +225,12 @@ class StatusBarView: NSView, NSMenuDelegate {
 
         voiceWaveform.translatesAutoresizingMaskIntoConstraints = false
         addSubview(voiceWaveform)
+
+        // Screenshot button (after voice controls, before sep1)
+        screenshotButton.translatesAutoresizingMaskIntoConstraints = false
+        screenshotButton.target = self
+        screenshotButton.action = #selector(screenshotButtonClicked(_:))
+        addSubview(screenshotButton)
 
         // Path button styled like a label
         pathButton.font = monoFont
@@ -303,8 +321,14 @@ class StatusBarView: NSView, NSMenuDelegate {
             voiceWaveform.heightAnchor.constraint(equalToConstant: 14),
             voiceWaveform.widthAnchor.constraint(equalToConstant: 30),
 
-            // Sep 1 chains off voice waveform
-            sep1.leadingAnchor.constraint(equalTo: voiceWaveform.trailingAnchor, constant: 8),
+            // Screenshot button (after voice waveform)
+            screenshotButton.leadingAnchor.constraint(equalTo: voiceWaveform.trailingAnchor, constant: 6),
+            screenshotButton.centerYAnchor.constraint(equalTo: centerYAnchor),
+            screenshotButton.widthAnchor.constraint(equalToConstant: 20),
+            screenshotButton.heightAnchor.constraint(equalToConstant: 20),
+
+            // Sep 1 chains off screenshot button
+            sep1.leadingAnchor.constraint(equalTo: screenshotButton.trailingAnchor, constant: 8),
             sep1.centerYAnchor.constraint(equalTo: centerYAnchor),
 
             // Path (clickable button)
@@ -362,10 +386,11 @@ class StatusBarView: NSView, NSMenuDelegate {
         generatingLeadingToBadge.isActive = false
         generatingLeadingToModel.isActive = true
 
-        // Voice controls start hidden until a session is opened
+        // Voice and screenshot controls start hidden until a session is opened
         voiceButton.isHidden = true
         pulsingDot.isHidden = true
         voiceWaveform.isHidden = true
+        screenshotButton.isHidden = true
 
         updateSeparators()
 
@@ -392,7 +417,7 @@ class StatusBarView: NSView, NSMenuDelegate {
     }
 
     private func updateSeparators() {
-        sep1.isHidden = voiceButton.isHidden
+        sep1.isHidden = voiceButton.isHidden && screenshotButton.isHidden
         sep2.isHidden = tokensLabel.stringValue.isEmpty
     }
 
@@ -709,6 +734,7 @@ class StatusBarView: NSView, NSMenuDelegate {
 
     func setVoiceVisible(_ visible: Bool) {
         voiceButton.isHidden = !visible
+        screenshotButton.isHidden = !visible
         if !visible {
             pulsingDot.isHidden = true
             voiceWaveform.isHidden = true
@@ -722,6 +748,10 @@ class StatusBarView: NSView, NSMenuDelegate {
 
     @objc private func voiceButtonClicked(_ sender: NSButton) {
         onVoiceToggle?()
+    }
+
+    @objc private func screenshotButtonClicked(_ sender: NSButton) {
+        onScreenshotToSession?()
     }
 
     private func startPulsingDot() {

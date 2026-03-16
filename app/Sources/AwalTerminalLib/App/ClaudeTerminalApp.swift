@@ -92,6 +92,14 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
         QuickTerminalController.shared.unregisterHotKey()
         unregisterVoiceHotKey()
         VoiceInputController.shared.stop()
+
+        // Clean up screenshot temp files
+        let tmpDir = NSTemporaryDirectory()
+        if let files = try? FileManager.default.contentsOfDirectory(atPath: tmpDir) {
+            for file in files where file.hasPrefix("awal-screenshot-") && file.hasSuffix(".png") {
+                try? FileManager.default.removeItem(atPath: tmpDir + file)
+            }
+        }
     }
 
     public func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -418,6 +426,11 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
 
         let findItem = NSMenuItem(title: "Find…", action: #selector(TerminalWindowController.findInTerminal(_:)), keyEquivalent: "f")
         editMenu.addItem(findItem)
+
+        editMenu.addItem(NSMenuItem.separator())
+        let screenshotItem = NSMenuItem(title: "Screenshot to Session", action: #selector(TerminalWindowController.screenshotToSession(_:)), keyEquivalent: "s")
+        screenshotItem.keyEquivalentModifierMask = [.command, .shift]
+        editMenu.addItem(screenshotItem)
 
         editMenuItem.submenu = editMenu
         mainMenu.addItem(editMenuItem)

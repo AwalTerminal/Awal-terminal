@@ -168,6 +168,7 @@ docs/       Promotional website (GitHub Pages)
 | AI side panel | `Cmd+Shift+I` |
 | Quick terminal | `` Ctrl+` `` |
 | Sync AI components | `Cmd+Shift+Y` |
+| Screenshot to session | `Cmd+Shift+S` |
 | Voice input (PTT) | `Ctrl+Shift+Space` |
 | Preferences | `Cmd+,` |
 | Manage AI Components | `Cmd+Shift+M` |

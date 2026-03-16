@@ -2988,6 +2988,35 @@ class TerminalView: NSView {
         return "'\(escaped)'"
     }
 
+    // MARK: - Screenshot to Session
+
+    func captureScreenshotAndPastePath() {
+        guard let _ = surface else { return }
+        let timestamp = Int(Date().timeIntervalSince1970 * 1000)
+        let path = NSTemporaryDirectory() + "awal-screenshot-\(timestamp).png"
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+            process.arguments = ["-i", path]
+            do {
+                try process.run()
+            } catch {
+                return
+            }
+            process.waitUntilExit()
+
+            // Exit code 1 means user cancelled
+            guard process.terminationStatus == 0,
+                  FileManager.default.fileExists(atPath: path) else { return }
+
+            let escaped = self?.shellEscape(path) ?? path
+            DispatchQueue.main.async {
+                self?.queuePtyWrite(Array(escaped.utf8))
+            }
+        }
+    }
+
     // MARK: - Search
 
     func toggleSearch() {

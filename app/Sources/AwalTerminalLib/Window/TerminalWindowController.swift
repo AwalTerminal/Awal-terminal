@@ -658,6 +658,9 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         statusBar.onVoiceToggle = {
             VoiceInputController.shared.toggle()
         }
+        statusBar.onScreenshotToSession = { [weak self] in
+            self?.screenshotToSession(nil)
+        }
     }
 
     private func handleFocusChanged(_ terminal: TerminalView, tab: TabState) {
@@ -966,6 +969,10 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
             guard let self, let window = self.window else { return }
             self.transcriptionOverlay.showTranscription(text, isCommand: false, in: window)
         }
+    }
+
+    @objc func screenshotToSession(_ sender: Any?) {
+        activeTab.splitContainer.focusedTerminal.captureScreenshotAndPastePath()
     }
 
     /// Inject text into the focused terminal (used by voice dictation).
