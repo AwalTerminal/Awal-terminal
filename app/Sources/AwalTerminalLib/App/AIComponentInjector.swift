@@ -48,7 +48,10 @@ enum AIComponentInjector {
             registryRules: registryRules,
             overrideStacks: overrides
         )
-        guard !stacks.isEmpty else { return nil }
+        guard !stacks.isEmpty else {
+            cleanup(modelName: modelName)
+            return nil
+        }
 
         // Auto-sync registries if enabled
         if config.aiComponentsAutoSync {
