@@ -149,37 +149,18 @@ final class UpdateChecker {
 
     // MARK: - Update Actions
 
-    /// Shows the update alert. Call from the main thread.
+    /// Shows the update window. Call from the main thread.
     func showUpdateAlert() {
         guard let release = latestRelease, isUpdateAvailable else {
             showUpToDateAlert()
             return
         }
 
-        let alert = NSAlert.branded()
-        alert.messageText = "Update Available: v\(release.version)"
-
-        // Truncate long release notes
-        let notes = release.body.isEmpty ? "A new version is available." : release.body
-        let truncated = notes.count > 500 ? String(notes.prefix(500)) + "…" : notes
-        alert.informativeText = "Current version: v\(currentAppVersion())\n\n\(truncated)"
-        alert.alertStyle = .informational
-
-        if isHomebrewInstall {
-            alert.addButton(withTitle: "Update via Homebrew")
-        } else {
-            alert.addButton(withTitle: "Download Update")
-        }
-        alert.addButton(withTitle: "Later")
-
-        let response = alert.runModal()
-        if response == .alertFirstButtonReturn {
-            if isHomebrewInstall {
-                updateViaHomebrew()
-            } else {
-                openReleasePage()
-            }
-        }
+        UpdateWindow.show(
+            release: release,
+            currentVersion: currentAppVersion(),
+            isHomebrew: isHomebrewInstall
+        )
     }
 
     func showUpToDateAlert() {
@@ -191,7 +172,7 @@ final class UpdateChecker {
         alert.runModal()
     }
 
-    private func updateViaHomebrew() {
+    func updateViaHomebrew() {
         // Open macOS Terminal.app and run the upgrade command
         let script = "tell application \"Terminal\"\nactivate\ndo script \"brew upgrade awal-terminal && echo 'Update complete! Restart Awal Terminal.'\"\nend tell"
         if let appleScript = NSAppleScript(source: script) {
@@ -200,7 +181,7 @@ final class UpdateChecker {
         }
     }
 
-    private func openReleasePage() {
+    func openReleasePage() {
         guard let release = latestRelease,
               let url = URL(string: release.htmlURL) else { return }
         NSWorkspace.shared.open(url)
