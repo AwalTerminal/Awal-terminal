@@ -789,6 +789,31 @@ target = "clipboard"     # Export target: "clipboard" or "file"</code></pre>
         <p>Force specific stacks for a project path instead of auto-detection:</p>
         <pre><code>[ai_components.overrides."/Users/me/my-project"]
 stacks = "go,flutter"</code></pre>
+
+        <h3>Registry Mapping</h3>
+        <p>Not all registries follow the standard directory structure that Awal expects. The <strong>Registry Mapping</strong> feature resolves non-standard repo layouts by letting you define rules that map repository paths to Awal component types (skills, rules, prompts, agents, MCP servers, hooks).</p>
+
+        <h4>Opening the Mapping Editor</h4>
+        <p>Go to <strong>AI Components &gt; Manage Components</strong>, select a registry, then click the <strong>"Mapping&hellip;"</strong> button in the toolbar.</p>
+
+        <h4>Editor Layout</h4>
+        <ul>
+          <li><strong>File tree (left)</strong> &mdash; Browse the registry's directory structure and select paths to map.</li>
+          <li><strong>Mapping rules table (right)</strong> &mdash; View, add, edit, and delete mapping rules. Each rule maps a glob pattern to a component type.</li>
+          <li><strong>Preview (bottom)</strong> &mdash; Shows which components would be resolved from the current mapping rules.</li>
+        </ul>
+
+        <h4>Auto-Detection</h4>
+        <p>Before you need to create manual mappings, Awal tries to detect the structure automatically:</p>
+        <ul>
+          <li>Standard directory layout (e.g. <code>skills/</code>, <code>rules/</code>, <code>prompts/</code>)</li>
+          <li><code>claude-plugin</code> manifests in the repository</li>
+          <li>In-repo <code>.awal-mapping.json</code> files provided by registry authors</li>
+        </ul>
+        <p>Manual mappings are only needed when none of these methods apply.</p>
+
+        <h4>Mapping Storage</h4>
+        <p>Mappings are stored per-registry at <code>~/.config/awal/mappings/{registryName}.mapping.json</code>.</p>
       </section>
 
       <!-- Large Paste Protection -->
