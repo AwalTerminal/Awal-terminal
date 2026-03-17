@@ -53,6 +53,7 @@ pub enum Color {
 }
 
 /// C-compatible cell for FFI transfer.
+#[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct CCell {
     pub codepoint: u32,

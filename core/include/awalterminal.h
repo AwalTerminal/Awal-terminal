@@ -16,6 +16,11 @@
 typedef struct ATSurface ATSurface;
 
 /**
+ * A complete recording that can be saved/loaded.
+ */
+typedef struct Recording Recording;
+
+/**
  * C-compatible cell for FFI transfer.
  */
 typedef struct CCell {
@@ -61,6 +66,27 @@ typedef struct CRegionSummary {
     uint32_t diff_count;
     uint32_t file_ref_count;
 } CRegionSummary;
+
+/**
+ * C-compatible region for FFI.
+ */
+typedef struct CRecordedRegion {
+    int32_t start_row;
+    int32_t end_row;
+    uint8_t region_type;
+    char *label;
+} CRecordedRegion;
+
+/**
+ * C-compatible frame snapshot for FFI reads.
+ */
+typedef struct CFrameSnapshot {
+    uint64_t timestamp_ms;
+    uint32_t cursor_row;
+    uint32_t cursor_col;
+    bool cursor_visible;
+    uint32_t region_count;
+} CFrameSnapshot;
 
 /**
  * Create a new terminal surface with the given dimensions.
@@ -371,5 +397,65 @@ void at_surface_clear_plan_title(struct ATSurface *surface);
  * Manually trigger AI analysis (e.g. after scrollback changes without PTY activity).
  */
 void at_surface_analyze(struct ATSurface *surface);
+
+/**
+ * Create a new recording.
+ */
+struct Recording *at_recording_new(uint32_t cols,
+                                   uint32_t rows,
+                                   const char *model,
+                                   const char *path);
+
+/**
+ * Add a frame to the recording.
+ */
+void at_recording_add_frame(struct Recording *recording,
+                            const struct CCell *cells,
+                            uint32_t count,
+                            uint32_t cursor_row,
+                            uint32_t cursor_col,
+                            bool cursor_visible,
+                            const struct CRecordedRegion *regions,
+                            uint32_t region_count,
+                            uint64_t timestamp_ms);
+
+/**
+ * Get the number of frames in the recording.
+ */
+uint32_t at_recording_frame_count(const struct Recording *recording);
+
+/**
+ * Get a frame's cells and metadata.
+ * Writes cells into `out_cells` (must have space for cols*rows cells)
+ * and metadata into `out_snapshot`.
+ * Returns true on success.
+ */
+bool at_recording_get_frame(const struct Recording *recording,
+                            uint32_t index,
+                            struct CCell *out_cells,
+                            struct CFrameSnapshot *out_snapshot);
+
+/**
+ * Save the recording to a file. Returns 0 on success, -1 on failure.
+ */
+int32_t at_recording_save(const struct Recording *recording,
+                          const char *path);
+
+/**
+ * Load a recording from a file. Returns null on failure.
+ */
+struct Recording *at_recording_load(const char *path);
+
+/**
+ * Destroy a recording.
+ */
+void at_recording_destroy(struct Recording *recording);
+
+/**
+ * Get the grid dimensions of a recording.
+ */
+void at_recording_get_size(const struct Recording *recording,
+                           uint32_t *cols,
+                           uint32_t *rows);
 
 #endif  /* AWALTERMINAL_H */
