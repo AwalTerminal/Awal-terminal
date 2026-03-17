@@ -25,7 +25,9 @@ class TokenTracker {
 
     /// Find the Claude projects directory for a given working path.
     static func claudeProjectDir(for projectPath: String) -> URL? {
-        let dirName = projectPath.replacingOccurrences(of: "/", with: "-")
+        let dirName = projectPath
+            .replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: ".", with: "-")
         let claudeDir = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".claude/projects/\(dirName)")
         return FileManager.default.fileExists(atPath: claudeDir.path) ? claudeDir : nil
