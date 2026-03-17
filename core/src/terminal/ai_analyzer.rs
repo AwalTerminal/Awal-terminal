@@ -477,7 +477,7 @@ impl AiAnalyzer {
         }
         // All dashes, all box-drawing horizontal, or all equals
         text.chars()
-            .all(|c| c == '─' || c == '━' || c == '═' || c == '-' || c == '=')
+            .all(|c| c == '─' || c == '━' || c == '═' || c == '-' || c == '=' || c == '—')
     }
 
     /// Extract text content from a row of cells.
@@ -559,4 +559,30 @@ pub struct RegionSummary {
     pub thinking_count: usize,
     pub diff_count: usize,
     pub file_refs: Vec<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_separator_line() {
+        let analyzer = AiAnalyzer::new();
+
+        // Should be separators
+        assert!(analyzer.is_separator_line("───────────────"));
+        assert!(analyzer.is_separator_line("━━━━━━━━━━━━━━━"));
+        assert!(analyzer.is_separator_line("═══════════════"));
+        assert!(analyzer.is_separator_line("---------------"));
+        assert!(analyzer.is_separator_line("==============="));
+        assert!(analyzer.is_separator_line("———————————————")); // em-dashes
+
+        // Too short
+        assert!(!analyzer.is_separator_line("--"));
+        assert!(analyzer.is_separator_line("——")); // two em-dashes
+
+        // Mixed or non-separator content
+        assert!(!analyzer.is_separator_line("--- title ---"));
+        assert!(!analyzer.is_separator_line("hello world"));
+    }
 }
