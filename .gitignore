@@ -28,6 +28,7 @@ build/
 
 # Claude local settings
 app/.claude/
+.claude/settings.local.json
 
 # Local docs
 docs/plan.md
