@@ -655,15 +655,59 @@ class RegistryManager {
             return .failure(.invalidStructure(name: name, details: "No path configured"))
         }
 
-        if fm.fileExists(atPath: path) {
-            pathOverrides[name] = URL(fileURLWithPath: path)
-            updateMeta(name: name, commitHash: "local")
-            setStatus(name, .synced(lastSync: Date(), commitHash: "local"))
-            return .success(())
-        } else {
+        let dirURL = URL(fileURLWithPath: path)
+        guard fm.fileExists(atPath: path) else {
             setStatus(name, .error("Directory not found: \(path)"))
             return .failure(.invalidStructure(name: name, details: "Directory not found: \(path)"))
         }
+
+        pathOverrides[name] = dirURL
+        updateMeta(name: name, commitHash: "local")
+        setStatus(name, .synced(lastSync: Date(), commitHash: "local"))
+
+        // Resolve mapping mode and components (same as syncOneInternal)
+        let configMapping = AppConfig.shared.aiComponentRegistries
+            .first(where: { $0.name == name })?.mapping ?? "auto"
+        let mode = RegistryMappingResolver.resolveMode(
+            registryName: name, repoPath: dirURL, configMapping: configMapping
+        )
+        DispatchQueue.main.async { [weak self] in
+            self?.mappingModes[name] = mode
+        }
+
+        switch mode {
+        case .claudePlugin:
+            let base = RegistryMappingResolver.parseClaudePluginManifest(repoPath: dirURL)
+            let resolved = RegistryMappingResolver.applyLocalOverrides(
+                base: base, registryName: name, repoPath: dirURL
+            )
+            DispatchQueue.main.async { [weak self] in
+                self?.mappedComponents[name] = resolved
+            }
+        case .inRepoMapping:
+            if let mapping = RegistryMappingResolver.loadInRepoMapping(repoPath: dirURL) {
+                let base = RegistryMappingResolver.resolveMapping(mapping, repoPath: dirURL)
+                let resolved = RegistryMappingResolver.applyLocalOverrides(
+                    base: base, registryName: name, repoPath: dirURL
+                )
+                DispatchQueue.main.async { [weak self] in
+                    self?.mappedComponents[name] = resolved
+                }
+            }
+        case .localMapping:
+            if let mapping = RegistryMappingResolver.loadMapping(registryName: name, repoPath: dirURL) {
+                let resolved = RegistryMappingResolver.resolveMapping(mapping, repoPath: dirURL)
+                DispatchQueue.main.async { [weak self] in
+                    self?.mappedComponents[name] = resolved
+                }
+            }
+        default:
+            DispatchQueue.main.async { [weak self] in
+                self?.mappedComponents.removeValue(forKey: name)
+            }
+        }
+
+        return .success(())
     }
 
     // MARK: - Git Operations
