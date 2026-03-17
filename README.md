@@ -45,6 +45,9 @@ A native macOS terminal built from scratch with Swift and Rust, designed specifi
 | Syntax Highlighting | Language-aware coloring for code blocks and diffs inside AI output |
 | Git Integration | Live branch, status, and changed files displayed in the status bar and side panel. Click any changed file to view its diff inline. Per-tab worktree isolation for parallel workstreams |
 | Large Paste Protection | Confirmation dialog for large pastes with options to save to file, truncate, or paste all. Configurable threshold |
+| Mission Control | Dashboard window (`Cmd+Shift+D`) showing all active AI agents across tabs and windows with real-time status, total cost, tokens, elapsed time, and per-agent kill switches |
+| Session Recording | Record AI coding sessions (`Cmd+Shift+R` to start/stop) and export as GIF. Idle time compression for compact output |
+| Per-Tab Token Tracking | Each tab independently tracks its own token usage and cost, visible in the AI side panel and Mission Control |
 | Danger Mode | Skip all AI tool confirmation prompts for unrestricted sessions. Toggle from the View menu; always resets on app launch |
 | Automatic Updates | Checks GitHub Releases for new versions and shows an indicator in the status bar. Supports Homebrew and direct download updates |
 | Fully Configurable | Theme colors, fonts, keybindings, and voice settings in a single config file |
@@ -164,7 +167,7 @@ docs/       Promotional website (GitHub Pages)
 | New tab | `Cmd+T` |
 | Close tab | `Cmd+W` |
 | Split right | `Cmd+D` (coming soon) |
-| Split down | `Cmd+Shift+D` (coming soon) |
+| Mission Control | `Cmd+Shift+D` |
 | Next/prev pane | `Cmd+]` / `Cmd+[` (coming soon) |
 | Find | `Cmd+F` |
 | AI side panel | `Cmd+Shift+I` |
@@ -173,6 +176,7 @@ docs/       Promotional website (GitHub Pages)
 | Screenshot to session | `Cmd+Shift+S` |
 | Voice input (PTT) | `Ctrl+Shift+Space` |
 | Preferences | `Cmd+,` |
+| Session recording | `Cmd+Shift+R` |
 | Manage AI Components | `Cmd+Shift+M` |
 
 ## License

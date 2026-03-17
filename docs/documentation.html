@@ -468,6 +468,8 @@
         <li><a href="#large-paste-protection">Large Paste Protection</a></li>
         <li><a href="#voice-input">Voice Input</a></li>
         <li><a href="#screenshot-to-session">Screenshot to Session</a></li>
+        <li><a href="#mission-control">Mission Control</a></li>
+        <li><a href="#session-replay">Session Recording</a></li>
         <li><a href="#automatic-updates">Automatic Updates</a></li>
         <li><a href="#configuration">Configuration</a></li>
         <li><a href="#keyboard-shortcuts">Keyboard Shortcuts</a></li>
@@ -565,7 +567,6 @@
             <tr><td><code>Cmd+W</code></td><td>Close tab</td></tr>
             <tr><td><code>Cmd+Shift+]</code></td><td>Next tab</td></tr>
             <tr><td><code>Cmd+Shift+[</code></td><td>Previous tab</td></tr>
-            <tr><td><code>Cmd+Shift+R</code></td><td>Rename tab</td></tr>
             <tr><td>Drag tab</td><td>Reorder</td></tr>
           </tbody>
         </table>
@@ -590,7 +591,6 @@ worktree_branch_prefix = "awal/tab"  # default prefix for worktree branches</cod
           <thead><tr><th>Shortcut</th><th>Action</th></tr></thead>
           <tbody>
             <tr><td><code>Cmd+D</code></td><td>Split right</td></tr>
-            <tr><td><code>Cmd+Shift+D</code></td><td>Split down</td></tr>
             <tr><td><code>Cmd+Shift+W</code></td><td>Close pane</td></tr>
             <tr><td><code>Cmd+]</code></td><td>Next pane</td></tr>
             <tr><td><code>Cmd+[</code></td><td>Previous pane</td></tr>
@@ -914,6 +914,50 @@ truncate_length = 10000      # Characters to keep when truncating</code></pre>
         </ul>
       </section>
 
+      <!-- Mission Control -->
+      <section class="doc-section" id="mission-control">
+        <h2>Mission Control</h2>
+        <p>Mission Control is a dashboard window that gives you a bird's-eye view of every active AI agent running across all tabs and windows. Toggle it with <code>Cmd+Shift+D</code>.</p>
+
+        <h3>Dashboard Overview</h3>
+        <p>The Mission Control window displays a live-updating table of all active AI agents with the following columns:</p>
+        <ul>
+          <li><strong>Tab / Window</strong> &mdash; which tab and window the agent is running in</li>
+          <li><strong>Model</strong> &mdash; the LLM model in use (Claude, Gemini, Codex, etc.)</li>
+          <li><strong>Status</strong> &mdash; real-time status indicator (thinking, tool use, idle, waiting for input)</li>
+          <li><strong>Tokens</strong> &mdash; input and output token counts for the session</li>
+          <li><strong>Cost</strong> &mdash; estimated spend for the session based on model pricing</li>
+          <li><strong>Elapsed</strong> &mdash; time since the agent session started</li>
+          <li><strong>Kill Switch</strong> &mdash; a button to immediately terminate the agent process</li>
+        </ul>
+
+        <h3>Aggregate Metrics</h3>
+        <p>The top of the dashboard shows aggregate totals across all active agents: total tokens consumed, total estimated cost, and the number of active sessions. This makes it easy to monitor overall spend at a glance.</p>
+
+        <h3>Per-Tab Token Tracking</h3>
+        <p>Each tab independently tracks its own token usage and cost. These per-tab metrics feed into both the AI side panel and the Mission Control dashboard, so you always know exactly what each agent session is consuming.</p>
+      </section>
+
+      <!-- Session Recording -->
+      <section class="doc-section" id="session-replay">
+        <h2>Session Recording</h2>
+        <p>Record your AI coding sessions and export them as shareable GIFs. Perfect for demos, documentation, and team reviews.</p>
+
+        <h3>Recording</h3>
+        <ul>
+          <li>Press <code>Cmd+Shift+R</code> to start recording. A red dot indicator appears in the status bar.</li>
+          <li>Press <code>Cmd+Shift+R</code> again to stop recording.</li>
+          <li>An export dialog appears automatically &mdash; choose where to save the GIF.</li>
+          <li>Progress is shown in the status bar during export. The file is revealed in Finder on completion.</li>
+        </ul>
+
+        <h3>Export Details</h3>
+        <ul>
+          <li><strong>GIF</strong> &mdash; optimized animated GIF, ideal for embedding in pull requests, READMEs, and chat</li>
+          <li><strong>Idle compression</strong> &mdash; long idle periods are automatically compressed so you see only the action</li>
+        </ul>
+      </section>
+
       <!-- Automatic Updates -->
       <section class="doc-section" id="automatic-updates">
         <h2>Automatic Updates</h2>
@@ -1112,13 +1156,13 @@ slugs = "ZpDEwZj1Yq"</code></pre>
             <tr><td>Tabs</td><td><code>Cmd+W</code></td><td>Close tab</td></tr>
             <tr><td>Tabs</td><td><code>Cmd+Shift+]</code></td><td>Next tab</td></tr>
             <tr><td>Tabs</td><td><code>Cmd+Shift+[</code></td><td>Previous tab</td></tr>
-            <tr><td>Tabs</td><td><code>Cmd+Shift+R</code></td><td>Rename tab</td></tr>
             <tr><td>Panes <span style="font-size:0.8em;color:var(--text-muted)">(coming soon)</span></td><td><code>Cmd+D</code></td><td>Split right</td></tr>
-            <tr><td>Panes <span style="font-size:0.8em;color:var(--text-muted)">(coming soon)</span></td><td><code>Cmd+Shift+D</code></td><td>Split down</td></tr>
             <tr><td>Panes <span style="font-size:0.8em;color:var(--text-muted)">(coming soon)</span></td><td><code>Cmd+Shift+W</code></td><td>Close pane</td></tr>
             <tr><td>Panes <span style="font-size:0.8em;color:var(--text-muted)">(coming soon)</span></td><td><code>Cmd+]</code></td><td>Next pane</td></tr>
             <tr><td>Panes <span style="font-size:0.8em;color:var(--text-muted)">(coming soon)</span></td><td><code>Cmd+[</code></td><td>Previous pane</td></tr>
             <tr><td>AI</td><td><code>Cmd+Shift+I</code></td><td>Toggle AI side panel</td></tr>
+            <tr><td>AI</td><td><code>Cmd+Shift+D</code></td><td>Toggle Mission Control</td></tr>
+            <tr><td>AI</td><td><code>Cmd+Shift+R</code></td><td>Start/stop session recording</td></tr>
             <tr><td>AI</td><td><code>Cmd+Shift+Y</code></td><td>Sync AI Components</td></tr>
             <tr><td>AI</td><td><code>Cmd+Shift+M</code></td><td>Manage AI Components</td></tr>
             <tr><td>Terminal</td><td><code>Ctrl+`</code></td><td>Quick terminal</td></tr>

@@ -809,6 +809,9 @@
     .feature-icon-wrap.git { background: rgba(248, 113, 113, 0.12); color: #f87171; }
     .feature-icon-wrap.search { background: rgba(110, 231, 183, 0.12); color: #6ee7b7; }
     .feature-icon-wrap.components { background: rgba(52, 211, 153, 0.12); color: #34d399; }
+    .feature-icon-wrap.mission { background: rgba(251, 191, 36, 0.12); color: #fbbf24; }
+    .feature-icon-wrap.replay { background: rgba(244, 114, 182, 0.12); color: var(--pink); }
+    .feature-icon-wrap.tokens { background: rgba(56, 152, 244, 0.12); color: var(--accent-light); }
 
     .feature-card h3 {
       font-size: 16px;
@@ -1234,6 +1237,20 @@
           <p>Auto-detect your project stack and inject skills, rules, prompts, and hooks from git, localskills, or local registries. Visual mapping editor, security rules editor, colored status dots with legend, and import/export built in.</p>
         </div>
         <div class="feature-card fade-in">
+          <div class="feature-icon-wrap mission">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+          </div>
+          <h3>Mission Control</h3>
+          <p>Dashboard showing all active AI agents across tabs and windows. Real-time status, total spend, tokens, and per-agent kill switches.</p>
+        </div>
+        <div class="feature-card fade-in">
+          <div class="feature-icon-wrap replay">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
+          </div>
+          <h3>Session Recording</h3>
+          <p>Record AI coding sessions and export as GIF with idle compression. Stop recording and save directly from the status bar.</p>
+        </div>
+        <div class="feature-card fade-in">
           <div class="feature-icon-wrap ai">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
           </div>
@@ -1246,6 +1263,13 @@
           </div>
           <h3>LLM Profiles</h3>
           <p>Switch between Claude, Gemini, Codex, or plain Shell. Create custom profiles with per-model config.</p>
+        </div>
+        <div class="feature-card fade-in">
+          <div class="feature-icon-wrap tokens">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          </div>
+          <h3>Per-Tab Token Tracking</h3>
+          <p>Each tab independently tracks token usage and cost. Feeds into the side panel and Mission Control for full spend visibility.</p>
         </div>
         <div class="feature-card fade-in">
           <div class="feature-icon-wrap voice">
