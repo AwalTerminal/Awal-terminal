@@ -131,6 +131,118 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
         PreferencesWindow.show()
     }
 
+    @objc func showMissionControl(_ sender: Any?) {
+        MissionControlWindow.toggle()
+    }
+
+    @objc func toggleRecording(_ sender: Any?) {
+        guard let controller = NSApp.keyWindow?.windowController as? TerminalWindowController else { return }
+        let tab = controller.tabs[controller.activeTabIndex]
+        let terminal = tab.splitContainer.focusedTerminal
+
+        // Wire status bar feedback and auto-stop handler if not already done
+        if terminal.sessionRecorder == nil {
+            let recorder = SessionRecorder()
+            wireRecorder(recorder, tab: tab, terminal: terminal)
+            terminal.sessionRecorder = recorder
+        } else if terminal.sessionRecorder?.onRecordingChanged == nil {
+            wireRecorder(terminal.sessionRecorder!, tab: tab, terminal: terminal)
+        }
+
+        if let url = terminal.toggleRecording() {
+            showExportPanel(url: url, tab: tab, controller: controller)
+        } else {
+            // Recording started
+            controller.flashStatusBar("Recording started")
+        }
+    }
+
+    private func wireRecorder(_ recorder: SessionRecorder, tab: TabState, terminal: TerminalView) {
+        recorder.onRecordingChanged = { [weak tab, weak terminal] isRecording in
+            tab?.statusBar.setRecording(isRecording)
+            terminal?.setRecordingIndicatorVisible(isRecording)
+        }
+        recorder.onAutoStopped = { [weak self, weak tab] url in
+            guard let tab else { return }
+            guard let controller = tab.splitContainer.window?.windowController as? TerminalWindowController else { return }
+            self?.showExportPanel(url: url, tab: tab, controller: controller)
+        }
+    }
+
+    private func showExportPanel(url: URL, tab: TabState, controller: TerminalWindowController) {
+        let panel = NSSavePanel()
+        if #available(macOS 12.0, *) {
+            panel.allowedContentTypes = [.gif]
+        }
+        let safeName = tab.title
+            .replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: ":", with: "-")
+        panel.nameFieldStringValue = "\(safeName).gif"
+
+        guard let window = controller.window else { return }
+        panel.beginSheetModal(for: window) { [weak tab] result in
+            guard result == .OK, let outputURL = panel.url else {
+                // User cancelled — clean up temp recording
+                try? FileManager.default.removeItem(at: url)
+                return
+            }
+
+            // Create a renderer for export
+            guard let device = MTLCreateSystemDefaultDevice() else {
+                tab?.statusBar.showFlash("Export failed")
+                try? FileManager.default.removeItem(at: url)
+                return
+            }
+
+            let fontSize: CGFloat = 13.0
+            let font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
+            let boldFont = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .bold)
+            let cellWidth = font.advancement(forGlyph: font.glyph(withName: "M")).width
+            let cellHeight = ceil(font.ascender - font.descender + font.leading)
+
+            let renderer = MetalRenderer(
+                device: device,
+                font: font,
+                boldFont: boldFont,
+                cellWidth: cellWidth,
+                cellHeight: cellHeight,
+                scale: 2.0
+            )
+
+            tab?.statusBar.showFlash("Exporting…")
+
+            SessionExporter.exportGIF(
+                recordingPath: url.path,
+                outputURL: outputURL,
+                renderer: renderer,
+                progress: { pct in
+                    DispatchQueue.main.async {
+                        let percent = Int(pct * 100)
+                        if percent >= 99 {
+                            tab?.statusBar.showFlash("Finalizing GIF…")
+                        } else {
+                            tab?.statusBar.showFlash("Exporting \(percent)%…")
+                        }
+                    }
+                }
+            ) { result in
+                // Clean up temp recording
+                try? FileManager.default.removeItem(at: url)
+
+                switch result {
+                case .success(let gifURL):
+                    tab?.statusBar.showFlash("GIF exported!")
+                    NSWorkspace.shared.activateFileViewerSelecting([gifURL])
+                case .failure(let error):
+                    let alert = NSAlert.branded()
+                    alert.messageText = "Export Failed"
+                    alert.informativeText = error.localizedDescription
+                    alert.runModal()
+                }
+            }
+        }
+    }
+
     @objc func checkForUpdates(_ sender: Any?) {
         UpdateChecker.shared.checkNow { hasUpdate, error in
             if let error {
@@ -498,6 +610,12 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
         let notifItem = NSMenuItem(title: "Notifications", action: #selector(toggleNotifications(_:)), keyEquivalent: "")
         viewMenu.addItem(notifItem)
 
+        viewMenu.addItem(NSMenuItem.separator())
+
+        let recordItem = NSMenuItem(title: "Start/Stop Recording", action: #selector(toggleRecording(_:)), keyEquivalent: "r")
+        recordItem.keyEquivalentModifierMask = [.command, .option, .shift]
+        viewMenu.addItem(recordItem)
+
         viewMenuItem.submenu = viewMenu
         mainMenu.addItem(viewMenuItem)
 
@@ -592,6 +710,12 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
         // Window menu — window management and navigation
         let windowMenuItem = NSMenuItem()
         let windowMenu = NSMenu(title: "Window")
+
+        let missionControlItem = NSMenuItem(title: "Mission Control", action: #selector(showMissionControl(_:)), keyEquivalent: "d")
+        missionControlItem.keyEquivalentModifierMask = [.command, .shift]
+        windowMenu.addItem(missionControlItem)
+
+        windowMenu.addItem(NSMenuItem.separator())
         windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
         windowMenu.addItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
 
@@ -650,6 +774,8 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
         "settings": "Preferences…",
         "manage_components": "Manage Components...",
         "sync_components": "Sync Now",
+        "mission_control": "Mission Control",
+        "start_recording": "Start/Stop Recording",
     ]
 
     private func applyKeybindings(_ menu: NSMenu) {
