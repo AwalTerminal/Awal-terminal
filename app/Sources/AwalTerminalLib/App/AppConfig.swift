@@ -63,6 +63,9 @@ struct AppConfig {
     var voiceCommandPrefix: String = ""
     var voiceWakeWord: String = "hey terminal"
 
+    // Recording
+    var recordingMaxDuration: Int = 300  // seconds, 0 = no limit
+
     // Paste
     var pasteWarningThreshold: Int = 100_000
     var pasteTruncateLength: Int = 10_000
@@ -187,6 +190,9 @@ struct AppConfig {
         if let v = parsed["voice.dictation_auto_space"] { config.voiceDictationAutoSpace = v == "true" || v.isEmpty }
         if let v = parsed["voice.command_prefix"] { config.voiceCommandPrefix = v }
         if let v = parsed["voice.wake_word"] { config.voiceWakeWord = v }
+
+        // Recording
+        if let v = parsed["recording.max_duration"], let n = Int(v) { config.recordingMaxDuration = n }
 
         // Paste
         if let v = parsed["paste.warning_threshold"], let n = Int(v) { config.pasteWarningThreshold = n }
