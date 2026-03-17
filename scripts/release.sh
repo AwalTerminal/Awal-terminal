@@ -24,12 +24,12 @@ step_done() {
 # --- Validate inputs -------------------------------------------------------
 if [ -z "$VERSION" ]; then
     echo "Usage: scripts/release.sh <version>"
-    echo "Example: scripts/release.sh v0.2.0"
+    echo "Example: scripts/release.sh v0.15.0"
     exit 1
 fi
 
 # Ensure version starts with 'v'
-[[ "$VERSION" == v* ]] || die "Version must start with 'v' (e.g. v0.2.0)"
+[[ "$VERSION" == v* ]] || die "Version must start with 'v' (e.g. v0.15.0)"
 
 # Check for uncommitted changes
 if ! git -C "$ROOT" diff-index --quiet HEAD --; then

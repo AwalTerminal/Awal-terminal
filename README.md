@@ -94,7 +94,7 @@ just run
 just bundle
 
 # Create a new release
-scripts/release.sh v0.2.0
+scripts/release.sh v0.15.0
 ```
 
 ### Configuration
