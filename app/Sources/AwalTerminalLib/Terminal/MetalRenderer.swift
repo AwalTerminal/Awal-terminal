@@ -83,8 +83,8 @@ final class MetalRenderer {
     private var glyphInstances: [GlyphInstance] = []
     private var lineInstances: [LineInstance] = []
 
-    private let cellWidth: CGFloat
-    private let cellHeight: CGFloat
+    let cellWidth: CGFloat
+    let cellHeight: CGFloat
 
     // Theme colors
     let clearColor: MTLClearColor
@@ -732,5 +732,189 @@ final class MetalRenderer {
             lineBuffer = buf
             lineBufferCapacity = newCap
         }
+    }
+
+    // MARK: - Offscreen Rendering (for export)
+
+    /// Render cells to an offscreen MTLTexture (for GIF/MP4 export).
+    /// Returns the texture, or nil on failure.
+    func renderToTexture(
+        cells: UnsafePointer<CCell>,
+        cellCount: Int,
+        gridCols: Int,
+        gridRows: Int,
+        cursorRow: Int,
+        cursorCol: Int,
+        cursorVisible: Bool,
+        viewportSize: CGSize,
+        scale: CGFloat
+    ) -> MTLTexture? {
+        let w = Int(viewportSize.width)
+        let h = Int(viewportSize.height)
+        guard w > 0, h > 0 else { return nil }
+
+        let desc = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .bgra8Unorm,
+            width: w,
+            height: h,
+            mipmapped: false
+        )
+        desc.usage = [.renderTarget, .shaderRead]
+        desc.storageMode = .shared
+
+        guard let texture = device.makeTexture(descriptor: desc) else { return nil }
+
+        let scaledCellW = Float(cellWidth * scale)
+        let scaledCellH = Float(cellHeight * scale)
+
+        var uniforms = Uniforms(
+            viewportSize: SIMD2<Float>(Float(viewportSize.width), Float(viewportSize.height)),
+            cellSize: SIMD2<Float>(scaledCellW, scaledCellH),
+            gridSize: SIMD2<UInt32>(UInt32(gridCols), UInt32(gridRows))
+        )
+
+        let totalCells = gridCols * gridRows
+        guard cellCount >= totalCells else { return nil }
+
+        // Use local instance arrays to avoid contention with the live render path
+        var localBg: [BgInstance] = []
+        var localGlyph: [GlyphInstance] = []
+        var localLine: [LineInstance] = []
+
+        let clearR = UInt8(clearColor.red * 255)
+        let clearG = UInt8(clearColor.green * 255)
+        let clearB = UInt8(clearColor.blue * 255)
+
+        for row in 0..<gridRows {
+            var ligatureSkip = 0
+            for col in 0..<gridCols {
+                let idx = row * gridCols + col
+                let cell = cells[idx]
+                let isWideSpacer = (cell.attrs & 0x0200) != 0
+
+                if cell.bg_r != clearR || cell.bg_g != clearG || cell.bg_b != clearB {
+                    localBg.append(BgInstance(
+                        posX: Float(col), posY: Float(row),
+                        r: cell.bg_r, g: cell.bg_g, b: cell.bg_b, a: cell.bg_a
+                    ))
+                }
+
+                let hasUnderline = (cell.attrs & 0x08) != 0
+                if hasUnderline {
+                    let lineY = Float(row + 1) * scaledCellH - 1.0 * Float(scale)
+                    localLine.append(LineInstance(
+                        x: Float(col) * scaledCellW, y: lineY,
+                        w: scaledCellW, h: max(1.0, Float(scale)),
+                        r: cell.fg_r, g: cell.fg_g, b: cell.fg_b, a: cell.fg_a
+                    ))
+                }
+
+                if isWideSpacer { continue }
+                if ligatureSkip > 0 { ligatureSkip -= 1; continue }
+                let codepoint = cell.codepoint
+                guard codepoint > 32 else { continue }
+
+                let isBold = (cell.attrs & 0x01) != 0
+                let isItalic = (cell.attrs & 0x04) != 0
+
+                if atlas.ligaturesEnabled && col + 1 < gridCols {
+                    let remaining = min(4, gridCols - col)
+                    var cpBuf = [UInt32]()
+                    cpBuf.reserveCapacity(remaining)
+                    for k in 0..<remaining {
+                        cpBuf.append(cells[row * gridCols + col + k].codepoint)
+                    }
+                    if let lig = cpBuf.withUnsafeBufferPointer({ buf in
+                        atlas.lookupLigature(codepoints: buf, startIndex: 0,
+                                             bold: isBold, italic: isItalic, device: device)
+                    }) {
+                        let info = lig.glyphInfo
+                        localGlyph.append(GlyphInstance(
+                            posX: Float(col), posY: Float(row),
+                            uvX: info.uvRect.x, uvY: info.uvRect.y,
+                            uvW: info.uvRect.z, uvH: info.uvRect.w,
+                            sizeW: info.size.x, sizeH: info.size.y,
+                            bearX: info.bearing.x, bearY: info.bearing.y,
+                            r: cell.fg_r, g: cell.fg_g, b: cell.fg_b, a: cell.fg_a
+                        ))
+                        ligatureSkip = lig.length - 1
+                        continue
+                    }
+                }
+
+                guard let info = atlas.lookup(codepoint: codepoint, bold: isBold, italic: isItalic, device: device) else {
+                    continue
+                }
+                localGlyph.append(GlyphInstance(
+                    posX: Float(col), posY: Float(row),
+                    uvX: info.uvRect.x, uvY: info.uvRect.y,
+                    uvW: info.uvRect.z, uvH: info.uvRect.w,
+                    sizeW: info.size.x, sizeH: info.size.y,
+                    bearX: info.bearing.x, bearY: info.bearing.y,
+                    r: cell.fg_r, g: cell.fg_g, b: cell.fg_b, a: cell.fg_a
+                ))
+            }
+        }
+
+        // Cursor
+        if cursorVisible {
+            localBg.append(BgInstance(
+                posX: Float(cursorCol), posY: Float(cursorRow),
+                r: cursorColor.0, g: cursorColor.1, b: cursorColor.2, a: cursorColor.3
+            ))
+        }
+
+        // Create temporary GPU buffers from local arrays
+        guard let localUniformBuf = device.makeBuffer(bytes: &uniforms,
+                                                       length: MemoryLayout<Uniforms>.size,
+                                                       options: .storageModeShared) else { return nil }
+
+        let localBgBuf: MTLBuffer? = localBg.isEmpty ? nil : localBg.withUnsafeBytes { ptr in
+            device.makeBuffer(bytes: ptr.baseAddress!, length: ptr.count, options: .storageModeShared)
+        }
+        let localGlyphBuf: MTLBuffer? = localGlyph.isEmpty ? nil : localGlyph.withUnsafeBytes { ptr in
+            device.makeBuffer(bytes: ptr.baseAddress!, length: ptr.count, options: .storageModeShared)
+        }
+        let localLineBuf: MTLBuffer? = localLine.isEmpty ? nil : localLine.withUnsafeBytes { ptr in
+            device.makeBuffer(bytes: ptr.baseAddress!, length: ptr.count, options: .storageModeShared)
+        }
+
+        // Render pass targeting the offscreen texture
+        let passDesc = MTLRenderPassDescriptor()
+        passDesc.colorAttachments[0].texture = texture
+        passDesc.colorAttachments[0].loadAction = .clear
+        passDesc.colorAttachments[0].storeAction = .store
+        passDesc.colorAttachments[0].clearColor = clearColor
+
+        guard let commandBuffer = commandQueue.makeCommandBuffer(),
+              let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: passDesc) else {
+            return nil
+        }
+
+        if !localBg.isEmpty, let buf = localBgBuf {
+            encoder.setRenderPipelineState(bgPipeline)
+            encoder.setVertexBuffer(buf, offset: 0, index: 0)
+            encoder.setVertexBuffer(localUniformBuf, offset: 0, index: 1)
+            encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6, instanceCount: localBg.count)
+        }
+        if !localGlyph.isEmpty, let buf = localGlyphBuf {
+            encoder.setRenderPipelineState(glyphPipeline)
+            encoder.setVertexBuffer(buf, offset: 0, index: 0)
+            encoder.setVertexBuffer(localUniformBuf, offset: 0, index: 1)
+            encoder.setFragmentTexture(atlas.texture, index: 0)
+            encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6, instanceCount: localGlyph.count)
+        }
+        if !localLine.isEmpty, let buf = localLineBuf {
+            encoder.setRenderPipelineState(linePipeline)
+            encoder.setVertexBuffer(buf, offset: 0, index: 0)
+            encoder.setVertexBuffer(localUniformBuf, offset: 0, index: 1)
+            encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6, instanceCount: localLine.count)
+        }
+
+        encoder.endEncoding()
+        commandBuffer.commit()
+        commandBuffer.waitUntilCompleted()
+
+        return texture
     }
 }

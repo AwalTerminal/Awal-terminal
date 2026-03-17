@@ -51,6 +51,9 @@ class TerminalView: NSView {
     private(set) var activeProvider: String = ""
     private(set) var isGenerating: Bool = false
 
+    /// Session recorder for replay/export.
+    var sessionRecorder: SessionRecorder?
+
     /// Maps the last region type to a human-readable phase label.
     var generationPhase: String {
         guard let last = foldRegions.last else { return "Generating..." }
@@ -141,6 +144,7 @@ class TerminalView: NSView {
     /// Safety timer that force-renders if synchronized output mode (2026) is held too long.
     private var syncOutputTimer: Timer?
     private var scrollToBottomButton: ScrollToBottomButton?
+    private var recordingIndicator: RecordingIndicatorView?
 
     // MARK: - Search State
 
@@ -390,6 +394,39 @@ class TerminalView: NSView {
 
     var currentModel: LLMModel? {
         ModelCatalog.find(activeModelName)
+    }
+
+    /// Toggle session recording on/off. Returns the saved file URL when stopping, nil when starting.
+    @discardableResult
+    func toggleRecording() -> URL? {
+        guard let recorder = sessionRecorder else {
+            // No recorder set — create one and start
+            let recorder = SessionRecorder()
+            sessionRecorder = recorder
+            startRecording(recorder)
+            return nil
+        }
+
+        if recorder.isRecording {
+            return recorder.stop()
+        } else {
+            startRecording(recorder)
+            return nil
+        }
+    }
+
+    private func startRecording(_ recorder: SessionRecorder) {
+        var cols: UInt32 = 80
+        var rows: UInt32 = 24
+        if let s = surface {
+            at_surface_get_size(s, &cols, &rows)
+        }
+        recorder.start(
+            cols: Int(cols),
+            rows: Int(rows),
+            model: activeModelName,
+            projectPath: lastWorkingDir ?? ""
+        )
     }
 
     // MARK: - View Lifecycle
@@ -1861,6 +1898,18 @@ class TerminalView: NSView {
                 diffRowColors: cachedDiffRowColors,
                 loadingPhase: currentLoadingPhase
             )
+
+            // Capture frame for session recording (only when content actually changed)
+            if let recorder = sessionRecorder, recorder.isRecording {
+                recorder.captureFrame(
+                    cells: baseAddress,
+                    cellCount: cellBuffer.count,
+                    cursorRow: Int(cursorRow),
+                    cursorCol: Int(cursorCol),
+                    cursorVisible: cursorVisible,
+                    surface: surface
+                )
+            }
         }
 
     }
@@ -2608,6 +2657,35 @@ class TerminalView: NSView {
                     button.animator().alphaValue = 0
                 }, completionHandler: {
                     button.removeFromSuperview()
+                })
+            }
+        }
+    }
+
+    func setRecordingIndicatorVisible(_ visible: Bool) {
+        if visible {
+            guard recordingIndicator == nil else { return }
+            let indicator = RecordingIndicatorView()
+            addSubview(indicator)
+            indicator.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                indicator.topAnchor.constraint(equalTo: topAnchor, constant: 8),
+                indicator.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+            ])
+            indicator.alphaValue = 0
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.15
+                indicator.animator().alphaValue = 1
+            }
+            recordingIndicator = indicator
+        } else {
+            if let indicator = recordingIndicator {
+                recordingIndicator = nil
+                NSAnimationContext.runAnimationGroup({ ctx in
+                    ctx.duration = 0.15
+                    indicator.animator().alphaValue = 0
+                }, completionHandler: {
+                    indicator.removeFromSuperview()
                 })
             }
         }
