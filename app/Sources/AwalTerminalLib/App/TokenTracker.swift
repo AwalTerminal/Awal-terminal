@@ -21,7 +21,33 @@ class TokenTracker {
     private var lastFileSize: UInt64 = 0
     private var sessionStart: Date = Date()
 
-    private init() {}
+    init() {}
+
+    // MARK: - Shared Pricing
+
+    struct ModelPricing {
+        let inputPerM: Double
+        let outputPerM: Double
+        let cacheReadPerM: Double
+    }
+
+    static let pricing: [String: ModelPricing] = [
+        "Claude": ModelPricing(inputPerM: 3.0, outputPerM: 15.0, cacheReadPerM: 0.30),
+        "Gemini": ModelPricing(inputPerM: 1.25, outputPerM: 5.0, cacheReadPerM: 0.315),
+        "Codex": ModelPricing(inputPerM: 2.50, outputPerM: 10.0, cacheReadPerM: 0.0),
+    ]
+
+    static func estimateCost(model: String, inputFull: Int, cacheRead: Int, output: Int) -> Double {
+        guard let pricing = Self.pricing[model] else { return 0 }
+        let inputCost = Double(inputFull) / 1_000_000.0 * pricing.inputPerM
+        let cacheCost = Double(cacheRead) / 1_000_000.0 * pricing.cacheReadPerM
+        let outputCost = Double(output) / 1_000_000.0 * pricing.outputPerM
+        return inputCost + cacheCost + outputCost
+    }
+
+    var estimatedCost: Double {
+        Self.estimateCost(model: modelUsed, inputFull: cumulativeInputFull, cacheRead: cumulativeCacheRead, output: totalOutput)
+    }
 
     /// Find the Claude projects directory for a given working path.
     static func claudeProjectDir(for projectPath: String) -> URL? {

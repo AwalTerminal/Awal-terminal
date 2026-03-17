@@ -124,6 +124,10 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         aiSidePanel.hide() // Hidden by default
         let tab = TabState(splitContainer: splitContainer, statusBar: statusBar, aiSidePanel: aiSidePanel)
 
+        // Wire per-tab token tracker
+        statusBar.tokenTracker = tab.tokenTracker
+        aiSidePanel.tokenTracker = tab.tokenTracker
+
         if AppConfig.shared.tabsRandomColors {
             let palette = AppConfig.shared.tabsRandomColorPalette.isEmpty
                 ? Self.defaultTabColorPalette
@@ -281,10 +285,17 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
     func switchToTab(at index: Int) {
         guard index >= 0 && index < tabs.count && index != activeTabIndex else { return }
 
+        // Check if leaving a tab that's recording
+        let isRecording = activeTab.splitContainer.focusedTerminal.sessionRecorder?.isRecording == true
+
         uninstallTab(activeTab)
         activeTabIndex = index
         installTab(activeTab)
         reloadTabBar()
+
+        if isRecording {
+            activeTab.statusBar.showFlash("⏸ Recording paused on other tab")
+        }
     }
 
     @objc func selectNextTab(_ sender: Any?) {
@@ -521,7 +532,8 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
             guard let self, let terminal, let tab else { return }
             tab.hasSession = true
             tab.isDangerMode = terminal.isDangerMode
-            TokenTracker.shared.reset()
+            tab.tokenTracker.reset()
+            tab.sessionStartTime = Date()
             tab.statusBar.resetSession()
             tab.statusBar.update(model: model, provider: provider, cols: cols, rows: rows)
             tab.statusBar.setDangerMode(terminal.isDangerMode)
@@ -588,11 +600,13 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
             NotificationManager.shared.notifyIdleIfNeeded(modelName: terminal.activeModelName)
             // Update side panel with latest analyzer data
             tab?.aiSidePanel.updateFromSurface(terminal.surfacePointer)
-            // Update token display from TokenTracker
-            tab?.aiSidePanel.updateTokenDisplay(
-                input: TokenTracker.shared.currentInput,
-                output: TokenTracker.shared.totalOutput
-            )
+            // Update token display from per-tab TokenTracker
+            if let tracker = tab?.tokenTracker {
+                tab?.aiSidePanel.updateTokenDisplay(
+                    input: tracker.currentInput,
+                    output: tracker.totalOutput
+                )
+            }
         }
         terminal.onPlanTitleDetected = { [weak self, weak tab] title in
             guard let self, let tab else { return }

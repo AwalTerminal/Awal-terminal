@@ -3,20 +3,16 @@ import AppKit
 /// Popover showing detailed context/token usage when clicking the tokens label or context bar.
 class ContextPopoverController: NSViewController {
 
-    // Model pricing (per million tokens) — mirrors AISidePanelView.pricing
-    private static let pricing: [String: (inputPerM: Double, outputPerM: Double, cacheReadPerM: Double)] = [
-        "Claude": (inputPerM: 3.0, outputPerM: 15.0, cacheReadPerM: 0.30),
-        "Gemini": (inputPerM: 1.25, outputPerM: 5.0, cacheReadPerM: 0.315),
-        "Codex": (inputPerM: 2.50, outputPerM: 10.0, cacheReadPerM: 0.0),
-    ]
-
     private let projectPath: String?
     private let components: [(name: String, source: String, stack: String, type: ComponentType, key: String)]
+    private let tokenTracker: TokenTracker
 
     init(projectPath: String? = nil,
-         components: [(name: String, source: String, stack: String, type: ComponentType, key: String)] = []) {
+         components: [(name: String, source: String, stack: String, type: ComponentType, key: String)] = [],
+         tokenTracker: TokenTracker = TokenTracker.shared) {
         self.projectPath = projectPath
         self.components = components
+        self.tokenTracker = tokenTracker
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -51,7 +47,7 @@ class ContextPopoverController: NSViewController {
     }
 
     private func gatherSnapshot() -> ContextSnapshot {
-        let tracker = TokenTracker.shared
+        let tracker = self.tokenTracker
         let modelName = tracker.modelUsed.isEmpty ? "—" : tracker.modelUsed
         let contextWindow = ModelCatalog.find("Claude")?.contextWindow ?? 200_000
         let currentInput = tracker.currentInput
@@ -429,10 +425,6 @@ class ContextPopoverController: NSViewController {
     }
 
     private func estimateCost(model: String, inputFull: Int, cacheRead: Int, output: Int) -> Double {
-        guard let pricing = Self.pricing[model] else { return 0 }
-        let inputCost = Double(inputFull) / 1_000_000.0 * pricing.inputPerM
-        let cacheCost = Double(cacheRead) / 1_000_000.0 * pricing.cacheReadPerM
-        let outputCost = Double(output) / 1_000_000.0 * pricing.outputPerM
-        return inputCost + cacheCost + outputCost
+        TokenTracker.estimateCost(model: model, inputFull: inputFull, cacheRead: cacheRead, output: output)
     }
 }

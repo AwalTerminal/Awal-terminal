@@ -4,6 +4,8 @@ class TabState {
     let splitContainer: SplitContainerView
     let statusBar: StatusBarView
     let aiSidePanel: AISidePanelView
+    let tokenTracker = TokenTracker()
+    var sessionStartTime: Date?
     var customTitle: String?
     var tabColor: NSColor?
     var hasSession = false

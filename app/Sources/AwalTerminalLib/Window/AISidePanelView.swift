@@ -10,18 +10,8 @@ class AISidePanelView: NSView {
 
     private(set) var isPanelVisible: Bool = false
 
-    // Model pricing (per million tokens) — approximate
-    private struct ModelPricing {
-        let inputPerM: Double
-        let outputPerM: Double
-        let cacheReadPerM: Double
-    }
-
-    private static let pricing: [String: ModelPricing] = [
-        "Claude": ModelPricing(inputPerM: 3.0, outputPerM: 15.0, cacheReadPerM: 0.30),
-        "Gemini": ModelPricing(inputPerM: 1.25, outputPerM: 5.0, cacheReadPerM: 0.315),
-        "Codex": ModelPricing(inputPerM: 2.50, outputPerM: 10.0, cacheReadPerM: 0.0),
-    ]
+    /// Per-tab token tracker; defaults to the shared singleton for backward compatibility.
+    var tokenTracker: TokenTracker = TokenTracker.shared
 
     // UI elements
     private let headerLabel = NSTextField(labelWithString: "")
@@ -526,8 +516,8 @@ class AISidePanelView: NSView {
         totalTokensLabel.stringValue = "  Total:  \(formatTokenCount(total))"
 
         // Calculate cost using cumulative breakdown (full-rate vs cache-rate)
-        let tracker = TokenTracker.shared
-        let cost = estimateCost(
+        let tracker = self.tokenTracker
+        let cost = TokenTracker.estimateCost(
             model: currentModel,
             inputFull: tracker.cumulativeInputFull,
             cacheRead: tracker.cumulativeCacheRead,
@@ -598,7 +588,8 @@ class AISidePanelView: NSView {
 
         let controller = ContextPopoverController(
             projectPath: currentCwd,
-            components: activeAIComponentDetails
+            components: activeAIComponentDetails,
+            tokenTracker: tokenTracker
         )
         let popover = NSPopover()
         popover.contentViewController = controller
@@ -903,8 +894,8 @@ class AISidePanelView: NSView {
                     self.updateFromSurface(surface)
                 }
                 self.updateTokenDisplay(
-                    input: TokenTracker.shared.currentInput,
-                    output: TokenTracker.shared.totalOutput
+                    input: self.tokenTracker.currentInput,
+                    output: self.tokenTracker.totalOutput
                 )
             }
         } else {
@@ -949,11 +940,7 @@ class AISidePanelView: NSView {
     }
 
     private func estimateCost(model: String, inputFull: Int, cacheRead: Int, output: Int) -> Double {
-        guard let pricing = Self.pricing[model] else { return 0 }
-        let inputCost = Double(inputFull) / 1_000_000.0 * pricing.inputPerM
-        let cacheCost = Double(cacheRead) / 1_000_000.0 * pricing.cacheReadPerM
-        let outputCost = Double(output) / 1_000_000.0 * pricing.outputPerM
-        return inputCost + cacheCost + outputCost
+        TokenTracker.estimateCost(model: model, inputFull: inputFull, cacheRead: cacheRead, output: output)
     }
 
     private func formatTokenCount(_ n: Int) -> String {

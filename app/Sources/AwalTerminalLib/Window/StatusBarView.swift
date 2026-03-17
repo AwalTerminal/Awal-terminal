@@ -14,6 +14,9 @@ class StatusBarView: NSView, NSMenuDelegate {
     /// Maps the raw cwd to a display path (e.g., translating worktree paths back to repo root).
     var displayPathMapper: ((_ cwd: String) -> String)?
 
+    /// Per-tab token tracker; defaults to the shared singleton for backward compatibility.
+    var tokenTracker: TokenTracker = TokenTracker.shared
+
     private(set) var currentModelName: String = ""
 
     // Left: model | Center-left: path + git | Center-right: dimensions | Right: time
@@ -102,6 +105,7 @@ class StatusBarView: NSView, NSMenuDelegate {
     private var generatingTimer: Timer?
     private var generatingDotCount: Int = 0
     private var generatingWidthConstraint: NSLayoutConstraint!
+
 
     // Voice controls
     private let voiceButton: StatusBarButton = {
@@ -504,10 +508,11 @@ class StatusBarView: NSView, NSMenuDelegate {
             let cpuUsage = self?.getProcessTreeCPU(rootPid: pid) ?? 0.0
 
             // Update token tracking for Claude sessions
+            let tracker = self?.tokenTracker ?? TokenTracker.shared
             if isClaudeSession {
-                TokenTracker.shared.update(projectPath: cwd.isEmpty ? nil : cwd)
+                tracker.update(projectPath: cwd.isEmpty ? nil : cwd)
             }
-            let tokenDisplay = isClaudeSession ? TokenTracker.shared.displayString : ""
+            let tokenDisplay = isClaudeSession ? tracker.displayString : ""
 
             DispatchQueue.main.async {
                 let oldPath = self?.currentPath
@@ -860,7 +865,8 @@ class StatusBarView: NSView, NSMenuDelegate {
 
         let controller = ContextPopoverController(
             projectPath: currentPath,
-            components: activeAIComponentDetails
+            components: activeAIComponentDetails,
+            tokenTracker: tokenTracker
         )
         let popover = NSPopover()
         popover.contentViewController = controller
@@ -899,6 +905,9 @@ class StatusBarView: NSView, NSMenuDelegate {
             generatingLabel.stringValue = ""
         }
     }
+    /// Legacy recording hook — indicator now lives in TerminalView.
+    func setRecording(_ recording: Bool) {}
+
     // MARK: - Update Badge
 
     private func refreshUpdateBadge() {
