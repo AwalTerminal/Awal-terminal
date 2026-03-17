@@ -65,7 +65,7 @@ enum RegistryMappingResolver {
     // MARK: - Resolution Order
 
     /// Determine which mapping mode applies for a registry.
-    /// Resolution order: standard → claude-plugin → in-repo .awal-mapping.json → local mapping (standalone) → unmapped.
+    /// Resolution order: standard → in-repo .awal-mapping.json → claude-plugin → local mapping (standalone) → unmapped.
     /// Local mapping is used as an overlay on top of the base mode (see `applyLocalOverrides`),
     /// and only becomes a standalone mode when no base mode applies.
     /// If `configMapping` is "standard", force standard mode. If "custom", require local mapping.
@@ -82,11 +82,11 @@ enum RegistryMappingResolver {
         if hasStandardStructure(repoPath: repoPath) {
             return .standard
         }
-        if hasClaudePluginManifest(repoPath: repoPath) {
-            return .claudePlugin
-        }
         if inRepoMappingExists(repoPath: repoPath) {
             return .inRepoMapping
+        }
+        if hasClaudePluginManifest(repoPath: repoPath) {
+            return .claudePlugin
         }
 
         // Local mapping is standalone only when no base mode applies
