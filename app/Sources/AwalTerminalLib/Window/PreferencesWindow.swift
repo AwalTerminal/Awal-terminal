@@ -60,6 +60,7 @@ class PreferencesWindow: NSWindowController, NSWindowDelegate {
 
         tabView.addTabViewItem(createKeybindingsTab())
         tabView.addTabViewItem(createTabsTab())
+        tabView.addTabViewItem(createRecordingTab())
         tabView.addTabViewItem(createVoiceTab())
         tabView.addTabViewItem(createFontTab())
         tabView.addTabViewItem(createThemeTab())
@@ -279,6 +280,80 @@ class PreferencesWindow: NSWindowController, NSWindowDelegate {
         }
         AppConfig.reload()
         updatePaletteSwatches(config: AppConfig.shared)
+    }
+
+    // MARK: - Recording Tab
+
+    private func createRecordingTab() -> NSTabViewItem {
+        let item = NSTabViewItem(identifier: "recording")
+        item.label = "Recording"
+
+        let view = NSView()
+        let config = AppConfig.shared
+
+        let grid = NSGridView(numberOfColumns: 2, rows: 0)
+        grid.translatesAutoresizingMaskIntoConstraints = false
+        grid.columnSpacing = 12
+        grid.rowSpacing = 10
+
+        // Max duration popup
+        let durationLabel = NSTextField(labelWithString: "Max Duration")
+        durationLabel.font = .systemFont(ofSize: 13)
+
+        let durationPopup = NSPopUpButton(frame: .zero, pullsDown: false)
+        let options: [(String, Int)] = [
+            ("1 minute", 60),
+            ("2 minutes", 120),
+            ("5 minutes", 300),
+            ("10 minutes", 600),
+            ("30 minutes", 1800),
+            ("No limit", 0),
+        ]
+        for (title, _) in options {
+            durationPopup.addItem(withTitle: title)
+        }
+
+        // Select current value
+        let currentValue = config.recordingMaxDuration
+        if let idx = options.firstIndex(where: { $0.1 == currentValue }) {
+            durationPopup.selectItem(at: idx)
+        } else {
+            // Custom value not in presets — default to closest or "5 minutes"
+            durationPopup.selectItem(at: 2)
+        }
+
+        durationPopup.target = self
+        durationPopup.action = #selector(recordingMaxDurationChanged(_:))
+        grid.addRow(with: [durationLabel, durationPopup])
+
+        grid.column(at: 1).width = 200
+        view.addSubview(grid)
+
+        NSLayoutConstraint.activate([
+            grid.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            grid.topAnchor.constraint(equalTo: view.topAnchor, constant: 20),
+            grid.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -20),
+        ])
+
+        let note = NSTextField(labelWithString: "Recording will auto-stop when the max duration is reached.\nSet to \"No limit\" for unlimited recording.")
+        note.font = .systemFont(ofSize: 11)
+        note.textColor = .secondaryLabelColor
+        note.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(note)
+        NSLayoutConstraint.activate([
+            note.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            note.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -16),
+        ])
+
+        item.view = view
+        return item
+    }
+
+    @objc private func recordingMaxDurationChanged(_ sender: NSPopUpButton) {
+        let values = [60, 120, 300, 600, 1800, 0]
+        let value = values[sender.indexOfSelectedItem]
+        ConfigWriter.updateValue(key: "recording.max_duration", value: "\(value)")
+        AppConfig.reload()
     }
 
     // MARK: - Font Tab
