@@ -3079,6 +3079,24 @@ class TerminalView: NSView {
 
     func captureScreenshotAndPastePath() {
         guard let _ = surface else { return }
+
+        if !CGPreflightScreenCaptureAccess() {
+            CGRequestScreenCaptureAccess()
+            let alert = NSAlert()
+            alert.messageText = "Screen Recording Permission Required"
+            alert.informativeText = "Awal Terminal needs Screen Recording permission to capture screenshots.\n\nPlease grant access in System Settings → Privacy & Security → Screen Recording, then restart the app."
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: "Open System Settings")
+            alert.addButton(withTitle: "Cancel")
+            let response = alert.runModal()
+            if response == .alertFirstButtonReturn {
+                if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
+                    NSWorkspace.shared.open(url)
+                }
+            }
+            return
+        }
+
         let timestamp = Int(Date().timeIntervalSince1970 * 1000)
         let path = NSTemporaryDirectory() + "awal-screenshot-\(timestamp).png"
 
