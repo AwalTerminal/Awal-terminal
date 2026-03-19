@@ -39,17 +39,20 @@ A native macOS terminal built from scratch with Swift and Rust, designed specifi
 | Resume Sessions | Browse and resume past AI sessions from the startup menu. Claude sessions show turn count and time ago; Codex and Gemini launch their built-in session pickers |
 | Plan-Aware Tab Naming | Automatically detects AI plan headers and offers to rename the tab to match the plan title |
 | Smart Notifications | Desktop alerts when long-running AI tasks complete |
-| Tabs & Splits | Native tabs with drag-to-reorder, custom tab colors, and per-tab titles. Split panes (vertical and horizontal) are temporarily disabled while a rendering bug is being resolved |
+| Tabs | Native tabs with drag-to-reorder, custom tab colors, and per-tab titles |
 | Quick Terminal | Quake-style dropdown terminal with a global hotkey (`Ctrl+``) |
 | Find in Terminal | Search through scrollback with match highlighting and keyboard navigation. OSC 8 hyperlinks and drag-and-drop file pasting |
 | Syntax Highlighting | Language-aware coloring for code blocks and diffs inside AI output |
 | Git Integration | Live branch, status, and changed files displayed in the status bar and side panel. Click any changed file to view its diff inline. Per-tab worktree isolation for parallel workstreams |
 | Large Paste Protection | Confirmation dialog for large pastes with options to save to file, truncate, or paste all. Configurable threshold |
 | Mission Control | Dashboard window (`Cmd+Shift+D`) showing all active AI agents across tabs and windows with real-time status, total cost, tokens, elapsed time, and per-agent kill switches |
-| Session Recording | Record AI coding sessions (`Cmd+Shift+R` to start/stop) and export as GIF. Idle time compression for compact output |
+| Session Recording | Record AI coding sessions (`Cmd+Option+Shift+R` to start/stop) and export as GIF. Idle time compression for compact output |
 | Per-Tab Token Tracking | Each tab independently tracks its own token usage and cost, visible in the AI side panel and Mission Control |
 | Danger Mode | Skip all AI tool confirmation prompts for unrestricted sessions. Toggle from the View menu; always resets on app launch |
 | Automatic Updates | Checks GitHub Releases for new versions and shows an indicator in the status bar. Supports Homebrew and direct download updates |
+| Command Palette | Quick-access to all actions via `Cmd+Shift+P` with fuzzy search |
+| Copy as Markdown | Right-click or `Cmd+Shift+C` to copy terminal output with code fences, blockquotes, and formatting preserved |
+| Smart Autocomplete | File path and command history completions as you type |
 | Fully Configurable | Theme colors, fonts, keybindings, and voice settings in a single config file |
 
 ## Getting Started
@@ -166,9 +169,9 @@ docs/       Promotional website (GitHub Pages)
 |---|---|
 | New tab | `Cmd+T` |
 | Close tab | `Cmd+W` |
-| Split right | `Cmd+D` (coming soon) |
 | Mission Control | `Cmd+Shift+D` |
-| Next/prev pane | `Cmd+]` / `Cmd+[` (coming soon) |
+| Command Palette | `Cmd+Shift+P` |
+| Copy as Markdown | `Cmd+Shift+C` |
 | Find | `Cmd+F` |
 | AI side panel | `Cmd+Shift+I` |
 | Quick terminal | `` Ctrl+` `` |
@@ -176,7 +179,7 @@ docs/       Promotional website (GitHub Pages)
 | Screenshot to session | `Cmd+Shift+S` |
 | Voice input (PTT) | `Ctrl+Shift+Space` |
 | Preferences | `Cmd+,` |
-| Session recording | `Cmd+Shift+R` |
+| Session recording | `Cmd+Option+Shift+R` |
 | Manage AI Components | `Cmd+Shift+M` |
 
 ## License
