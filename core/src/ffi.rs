@@ -871,3 +871,16 @@ pub extern "C" fn at_surface_analyze(surface: *mut ATSurface) {
             .analyze(&surface.screen.scrollback, &grid.cells, grid.rows);
     }
 }
+
+// --- Smart Autocomplete ---
+
+/// Get the current input line (text before cursor). Returns a C string that must be freed with `at_free_string`.
+#[no_mangle]
+pub extern "C" fn at_surface_get_input_line(surface: *const ATSurface) -> *mut c_char {
+    let surface = ref_or!(surface, std::ptr::null_mut());
+    let text = surface.screen.current_input_line();
+    match CString::new(text) {
+        Ok(cs) => cs.into_raw(),
+        Err(_) => std::ptr::null_mut(),
+    }
+}

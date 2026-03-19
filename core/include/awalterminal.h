@@ -399,6 +399,11 @@ void at_surface_clear_plan_title(struct ATSurface *surface);
 void at_surface_analyze(struct ATSurface *surface);
 
 /**
+ * Get the current input line (text before cursor). Returns a C string that must be freed with `at_free_string`.
+ */
+char *at_surface_get_input_line(const struct ATSurface *surface);
+
+/**
  * Create a new recording.
  */
 struct Recording *at_recording_new(uint32_t cols,

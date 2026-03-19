@@ -1044,6 +1044,21 @@ impl Screen {
             self.scroll_bottom = bottom;
         }
     }
+
+    /// Get the current input line: text from cursor row, col 0 to cursor col.
+    pub fn current_input_line(&self) -> String {
+        let grid = self.active_grid();
+        let mut result = String::new();
+        for col in 0..self.cursor.col {
+            if col < grid.cols {
+                let cell = grid.cell(self.cursor.row, col);
+                if cell.ch != '\0' {
+                    result.push(cell.ch);
+                }
+            }
+        }
+        result
+    }
 }
 
 #[cfg(test)]

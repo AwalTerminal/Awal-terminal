@@ -100,6 +100,9 @@ class SplitContainerView: NSView, NSSplitViewDelegate {
             built.topAnchor.constraint(equalTo: topAnchor),
             built.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
+
+        // Force layout pass so TerminalView bounds are correct before rendering
+        layoutSubtreeIfNeeded()
     }
 
     private func buildView(from node: SplitNode) -> NSView {

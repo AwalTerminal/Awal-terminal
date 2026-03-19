@@ -153,6 +153,12 @@ class TerminalView: NSView {
     private var currentSearchIndex: Int = 0
     private var searchQueryLength: Int = 0
 
+    // MARK: - Autocomplete State
+
+    private var completionPopup: CompletionPopupView?
+    private var completionProviders: [CompletionProvider] = [FilePathProvider(), HistoryProvider.shared]
+    private var completionDebounceTimer: Timer?
+
     // MARK: - Selection Tracking
 
     private var selectionStartAbsRow: Int32 = 0
@@ -2223,18 +2229,38 @@ class TerminalView: NSView {
             let hasMod = modParam > 1
 
             switch event.keyCode {
-            case 36: bytes = [0x0D] // Return
+            case 36: // Return
+                hideCompletions()
+                bytes = [0x0D]
             case 48: // Tab
+                if !hasShift, let popup = completionPopup, popup.isVisible {
+                    popup.acceptSelected()
+                    return
+                }
                 bytes = hasShift ? [0x1B, 0x5B, 0x5A] : [0x09]
-            case 51: bytes = [0x7F] // Backspace
-            case 53: bytes = [0x1B] // Escape
+            case 51: // Backspace
+                bytes = [0x7F]
+            case 53: // Escape
+                if let popup = completionPopup, popup.isVisible {
+                    hideCompletions()
+                    return
+                }
+                bytes = [0x1B]
             case 123: // Left
                 bytes = hasMod ? Array("\u{1b}[1;\(modParam)D".utf8) : [0x1B, 0x5B, 0x44]
             case 124: // Right
                 bytes = hasMod ? Array("\u{1b}[1;\(modParam)C".utf8) : [0x1B, 0x5B, 0x43]
             case 125: // Down
+                if !hasMod, let popup = completionPopup, popup.isVisible {
+                    popup.selectNext()
+                    return
+                }
                 bytes = hasMod ? Array("\u{1b}[1;\(modParam)B".utf8) : [0x1B, 0x5B, 0x42]
             case 126: // Up
+                if !hasMod, let popup = completionPopup, popup.isVisible {
+                    popup.selectPrevious()
+                    return
+                }
                 bytes = hasMod ? Array("\u{1b}[1;\(modParam)A".utf8) : [0x1B, 0x5B, 0x41]
             case 115: // Home
                 bytes = hasMod ? Array("\u{1b}[1;\(modParam)H".utf8) : [0x1B, 0x5B, 0x48]
@@ -2287,6 +2313,9 @@ class TerminalView: NSView {
         bytes.withUnsafeBufferPointer { ptr in
             _ = at_surface_key_event(s, ptr.baseAddress!, UInt32(ptr.count))
         }
+
+        // Trigger autocomplete after key input
+        scheduleCompletionUpdate()
     }
 
     override func flagsChanged(with event: NSEvent) {}
@@ -2410,6 +2439,9 @@ class TerminalView: NSView {
 
     override func scrollWheel(with event: NSEvent) {
         guard let s = surface, appState == .terminal else { return }
+
+        // Dismiss autocomplete popup on scroll
+        hideCompletions()
 
         let delta = event.scrollingDeltaY
         let precise = event.hasPreciseScrollingDeltas
@@ -2536,6 +2568,9 @@ class TerminalView: NSView {
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
         onFocused?(self)
+
+        // Dismiss autocomplete popup on click
+        hideCompletions()
 
         guard appState == .terminal, let s = surface else {
             super.mouseDown(with: event)
@@ -2789,8 +2824,52 @@ class TerminalView: NSView {
             let (col, row) = gridPosition(for: event)
             sendMouseEvent(button: 2, col: col, row: row, release: false)
         } else {
-            super.rightMouseDown(with: event)
+            showContextMenu(for: event)
         }
+    }
+
+    private func showContextMenu(for event: NSEvent) {
+        let menu = NSMenu()
+
+        // Check if there's a selection
+        let hasSelection: Bool
+        if let s = surface, let cStr = at_surface_get_selected_text(s) {
+            let text = String(cString: cStr)
+            at_free_string(cStr)
+            hasSelection = !text.isEmpty
+        } else {
+            hasSelection = false
+        }
+
+        if hasSelection {
+            let copyItem = NSMenuItem(title: "Copy", action: #selector(contextCopy(_:)), keyEquivalent: "")
+            copyItem.target = self
+            menu.addItem(copyItem)
+
+            let copyMdItem = NSMenuItem(title: "Copy as Markdown", action: #selector(contextCopyAsMarkdown(_:)), keyEquivalent: "")
+            copyMdItem.target = self
+            menu.addItem(copyMdItem)
+
+            menu.addItem(NSMenuItem.separator())
+        }
+
+        let pasteItem = NSMenuItem(title: "Paste", action: #selector(contextPaste(_:)), keyEquivalent: "")
+        pasteItem.target = self
+        menu.addItem(pasteItem)
+
+        NSMenu.popUpContextMenu(menu, with: event, for: self)
+    }
+
+    @objc private func contextCopy(_ sender: Any?) {
+        _ = copySelection()
+    }
+
+    @objc func contextCopyAsMarkdown(_ sender: Any?) {
+        copySelectionAsMarkdown()
+    }
+
+    @objc private func contextPaste(_ sender: Any?) {
+        pasteFromClipboard()
     }
 
     override func rightMouseUp(with event: NSEvent) {
@@ -2812,6 +2891,7 @@ class TerminalView: NSView {
             let (col, row) = gridPosition(for: event)
             sendMouseEvent(button: 35, col: col, row: row, release: false)
         }
+
     }
 
     private func selectWord(at col: Int, row: Int32) {
@@ -2856,6 +2936,10 @@ class TerminalView: NSView {
 
         switch event.charactersIgnoringModifiers {
         case "c":
+            if event.modifierFlags.contains(.shift) {
+                copySelectionAsMarkdown()
+                return true
+            }
             return copySelection()
         case "v":
             pasteFromClipboard()
@@ -2923,6 +3007,204 @@ class TerminalView: NSView {
         }
 
         return text
+    }
+
+    private func copySelectionAsMarkdown() {
+        guard let s = surface else { return }
+        guard let cStr = at_surface_get_selected_text(s) else { return }
+        let text = String(cString: cStr)
+        at_free_string(cStr)
+        guard !text.isEmpty else { return }
+
+        let minRow = min(selectionStartAbsRow, selectionEndAbsRow)
+        let maxRow = max(selectionStartAbsRow, selectionEndAbsRow)
+
+        // Find regions overlapping with selection
+        var overlapping: [(region: FoldRegion, startInSel: Int32, endInSel: Int32)] = []
+        for region in foldRegions {
+            let rStart = max(region.startRow, minRow)
+            let rEnd = min(region.endRow, maxRow)
+            if rStart <= rEnd {
+                overlapping.append((region, rStart, rEnd))
+            }
+        }
+
+        // If no regions overlap, just copy as plain text
+        guard !overlapping.isEmpty else {
+            let pb = NSPasteboard.general
+            pb.clearContents()
+            pb.setString(text, forType: .string)
+            onCopied?()
+            return
+        }
+
+        // Build markdown by processing lines with region awareness
+        let lines = text.components(separatedBy: "\n")
+        var markdown = ""
+        var inCodeBlock = false
+        var inThinking = false
+
+        for (i, line) in lines.enumerated() {
+            let absRow = minRow + Int32(i)
+
+            // Check if we're entering/leaving a region boundary
+            for (region, rStart, _) in overlapping {
+                if absRow == rStart {
+                    // Entering a region
+                    switch region.regionType {
+                    case 3: // CodeBlock
+                        let lang = region.label.isEmpty ? "" : region.label
+                        markdown += "```\(lang)\n"
+                        inCodeBlock = true
+                        continue
+                    case 4: // Thinking
+                        inThinking = true
+                    case 1: // ToolUse
+                        let cleaned = line.trimmingCharacters(in: .whitespaces)
+                        markdown += "**\(cleaned)**\n"
+                        continue
+                    default:
+                        break
+                    }
+                }
+            }
+
+            // Check if this line is the closing fence of a code block region
+            if inCodeBlock {
+                var isRegionEnd = false
+                for (region, _, rEnd) in overlapping where region.regionType == 3 {
+                    if absRow == rEnd {
+                        isRegionEnd = true
+                        break
+                    }
+                }
+                if isRegionEnd {
+                    markdown += "```\n"
+                    inCodeBlock = false
+                    continue
+                }
+                // Strip the leading box-drawing prefix from code block content
+                let stripped = stripBoxDrawing(line)
+                markdown += stripped + "\n"
+                continue
+            }
+
+            if inThinking {
+                var isRegionEnd = false
+                for (region, _, rEnd) in overlapping where region.regionType == 4 {
+                    if absRow == rEnd {
+                        isRegionEnd = true
+                        break
+                    }
+                }
+                markdown += "> " + line + "\n"
+                if isRegionEnd {
+                    inThinking = false
+                }
+                continue
+            }
+
+            // Check for ToolOutput (type 2) — strip box-drawing chars
+            var isToolOutput = false
+            for (region, rStart, rEnd) in overlapping where region.regionType == 2 {
+                if absRow >= rStart && absRow <= rEnd {
+                    isToolOutput = true
+                    break
+                }
+            }
+
+            if isToolOutput {
+                let stripped = stripBoxDrawing(line)
+                markdown += "    " + stripped + "\n"
+            } else {
+                markdown += line + "\n"
+            }
+        }
+
+        // Trim trailing newline
+        if markdown.hasSuffix("\n") {
+            markdown = String(markdown.dropLast())
+        }
+
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(markdown, forType: .string)
+        onCopied?()
+    }
+
+    /// Strip common box-drawing characters from line prefixes.
+    private func stripBoxDrawing(_ line: String) -> String {
+        var result = line
+        let boxChars: [Character] = ["\u{2502}", "\u{251C}", "\u{2570}", "\u{2500}", "\u{256E}", "\u{256F}", "\u{2574}"] // │ ├ ╰ ─ ╮ ╯ ╴
+        // Strip leading box-drawing + space prefix
+        while let first = result.first, boxChars.contains(first) || first == " " {
+            result = String(result.dropFirst())
+            if result.isEmpty { break }
+        }
+        return result
+    }
+
+    // MARK: - Autocomplete
+
+    private func scheduleCompletionUpdate() {
+        completionDebounceTimer?.invalidate()
+        completionDebounceTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: false) { [weak self] _ in
+            self?.updateCompletions()
+        }
+    }
+
+    private func updateCompletions() {
+        guard let s = surface else { return }
+        guard let cStr = at_surface_get_input_line(s) else {
+            hideCompletions()
+            return
+        }
+        let inputLine = String(cString: cStr)
+        at_free_string(cStr)
+
+        guard !inputLine.trimmingCharacters(in: .whitespaces).isEmpty else {
+            hideCompletions()
+            return
+        }
+
+        var allCompletions: [Completion] = []
+        for provider in completionProviders {
+            allCompletions.append(contentsOf: provider.completions(for: inputLine, cursorPos: inputLine.count))
+        }
+
+        guard !allCompletions.isEmpty else {
+            hideCompletions()
+            return
+        }
+
+        if completionPopup == nil {
+            completionPopup = CompletionPopupView(frame: .zero)
+            completionPopup!.onAccept = { [weak self] completion in
+                self?.acceptCompletion(completion)
+            }
+            completionPopup!.onDismiss = { [weak self] in
+                self?.hideCompletions()
+            }
+            addSubview(completionPopup!)
+        }
+
+        // Position below cursor
+        let x = CGFloat(cursorCol) * cellWidth
+        let y = bounds.height - CGFloat(cursorRow + 1) * cellHeight
+        completionPopup?.show(completions: allCompletions, at: NSPoint(x: x, y: y))
+    }
+
+    private func hideCompletions() {
+        completionPopup?.hide()
+    }
+
+    private func acceptCompletion(_ completion: Completion) {
+        guard let s = surface else { return }
+        let bytes = Array(completion.insertText.utf8)
+        guard !bytes.isEmpty else { return }
+        bytes.withUnsafeBufferPointer { ptr in
+            _ = at_surface_key_event(s, ptr.baseAddress!, UInt32(ptr.count))
+        }
     }
 
     private func pasteFromClipboard() {

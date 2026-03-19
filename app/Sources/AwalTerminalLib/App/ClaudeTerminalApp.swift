@@ -135,6 +135,10 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
         MissionControlWindow.toggle()
     }
 
+    @objc private func showCommandPalette(_ sender: Any?) {
+        CommandPaletteWindow.toggle()
+    }
+
     @objc func toggleRecording(_ sender: Any?) {
         guard let controller = NSApp.keyWindow?.windowController as? TerminalWindowController else { return }
         let tab = controller.tabs[controller.activeTabIndex]
@@ -547,21 +551,6 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
         renameTabItem.keyEquivalentModifierMask = [.command, .shift]
         shellMenu.addItem(renameTabItem)
 
-        // Split panes disabled — black screen bug after tab switch (Auto Layout vs frame-based conflict)
-        shellMenu.addItem(NSMenuItem.separator())
-
-        let splitRightItem = NSMenuItem(title: "Split Right", action: nil, keyEquivalent: "")
-        splitRightItem.isEnabled = false
-        shellMenu.addItem(splitRightItem)
-
-        let splitDownItem = NSMenuItem(title: "Split Down", action: nil, keyEquivalent: "")
-        splitDownItem.isEnabled = false
-        shellMenu.addItem(splitDownItem)
-
-        let closePaneItem = NSMenuItem(title: "Close Pane", action: nil, keyEquivalent: "")
-        closePaneItem.isEnabled = false
-        shellMenu.addItem(closePaneItem)
-
         shellMenu.addItem(NSMenuItem.separator())
         shellMenu.addItem(withTitle: "Manage Worktrees…", action: #selector(showManageWorktrees(_:)), keyEquivalent: "")
 
@@ -574,6 +563,9 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
 
         editMenu.addItem(NSMenuItem(title: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x"))
         editMenu.addItem(NSMenuItem(title: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
+        let copyMdItem = NSMenuItem(title: "Copy as Markdown", action: #selector(TerminalView.contextCopyAsMarkdown(_:)), keyEquivalent: "c")
+        copyMdItem.keyEquivalentModifierMask = [.command, .shift]
+        editMenu.addItem(copyMdItem)
         editMenu.addItem(NSMenuItem(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
         editMenu.addItem(NSMenuItem(title: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
         editMenu.addItem(NSMenuItem.separator())
@@ -592,6 +584,11 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
         // View menu — UI panel toggles
         let viewMenuItem = NSMenuItem()
         let viewMenu = NSMenu(title: "View")
+
+        let paletteItem = NSMenuItem(title: "Command Palette", action: #selector(showCommandPalette(_:)), keyEquivalent: "p")
+        paletteItem.keyEquivalentModifierMask = [.command, .shift]
+        viewMenu.addItem(paletteItem)
+        viewMenu.addItem(NSMenuItem.separator())
 
         let sidePanelItem = NSMenuItem(title: "AI Side Panel", action: #selector(TerminalWindowController.toggleAISidePanel(_:)), keyEquivalent: "i")
         sidePanelItem.keyEquivalentModifierMask = [.command, .shift]
@@ -729,15 +726,6 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
         prevTabItem.keyEquivalentModifierMask = [.command, .shift]
         windowMenu.addItem(prevTabItem)
 
-        // Disabled — see split pane bug in Shell menu
-        let nextPaneItem = NSMenuItem(title: "Next Pane", action: nil, keyEquivalent: "")
-        nextPaneItem.isEnabled = false
-        windowMenu.addItem(nextPaneItem)
-
-        let prevPaneItem = NSMenuItem(title: "Previous Pane", action: nil, keyEquivalent: "")
-        prevPaneItem.isEnabled = false
-        windowMenu.addItem(prevPaneItem)
-
         windowMenuItem.submenu = windowMenu
         mainMenu.addItem(windowMenuItem)
 
@@ -764,11 +752,6 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
         "prev_tab": "Previous Tab",
         "rename_tab": "Rename Tab…",
         "find": "Find…",
-        "split_right": "Split Right",
-        "split_down": "Split Down",
-        "close_pane": "Close Pane",
-        "next_pane": "Next Pane",
-        "prev_pane": "Previous Pane",
         "toggle_side_panel": "AI Side Panel",
         "quick_terminal": "Quick Terminal",
         "settings": "Preferences…",
@@ -776,6 +759,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
         "sync_components": "Sync Now",
         "mission_control": "Mission Control",
         "start_recording": "Start/Stop Recording",
+        "command_palette": "Command Palette",
     ]
 
     private func applyKeybindings(_ menu: NSMenu) {
