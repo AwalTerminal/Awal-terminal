@@ -49,7 +49,12 @@ class RegistryManager {
     private var registriesDir: URL { configDir.appendingPathComponent("registries") }
     private var metaFile: URL { configDir.appendingPathComponent("ai-component-meta.json") }
 
-    private var syncInProgress = false
+    private let syncLock = NSLock()
+    private var _syncInProgress = false
+    private var syncInProgress: Bool {
+        get { syncLock.lock(); defer { syncLock.unlock() }; return _syncInProgress }
+        set { syncLock.lock(); _syncInProgress = newValue; syncLock.unlock() }
+    }
 
     /// Per-registry status tracking.
     private(set) var registryStatuses: [String: RegistryStatus] = [:]
