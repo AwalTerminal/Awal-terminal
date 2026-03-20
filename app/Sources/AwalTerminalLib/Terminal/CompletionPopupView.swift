@@ -82,8 +82,10 @@ class CompletionPopupView: NSView {
     }
 
     func acceptSelected() {
-        guard selectedIndex >= 0, selectedIndex < completions.count else { return }
-        let completion = completions[selectedIndex]
+        let snapshot = completions
+        let index = selectedIndex
+        guard index >= 0, index < snapshot.count else { return }
+        let completion = snapshot[index]
         hide()
         onAccept?(completion)
     }
