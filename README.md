@@ -114,11 +114,25 @@ size = 13.0
 bg = "#1e1e1e"
 fg = "#e5e5e5"
 accent = "#636efa"
+cursor = "#ccccccb3"
+selection = "#2d7fd44d"
+tab_bar_bg = "#161616"
+tab_active_bg = "#232323"
+status_bar_bg = "#161616"
 
 [voice]
 enabled = true
 mode = "push_to_talk"
 whisper_model = "tiny.en"
+language = "en"
+vad_threshold = 0.02
+dictation_auto_enter = false
+dictation_auto_space = true
+# command_prefix = ""
+# wake_word = "hey terminal"
+
+[recording]
+max_duration = 300
 
 [paste]
 warning_threshold = 100000
@@ -171,6 +185,9 @@ docs/       Promotional website (GitHub Pages)
 |---|---|
 | New tab | `Cmd+T` |
 | Close tab | `Cmd+W` |
+| Rename tab | `Cmd+Shift+R` |
+| Next tab | `Cmd+Shift+]` |
+| Previous tab | `Cmd+Shift+[` |
 | Mission Control | `Cmd+Shift+D` |
 | Command Palette | `Cmd+Shift+P` |
 | Copy as Markdown | `Cmd+Shift+C` |
@@ -182,7 +199,6 @@ docs/       Promotional website (GitHub Pages)
 | Voice input (PTT) | `Ctrl+Shift+Space` |
 | Preferences | `Cmd+,` |
 | Session recording | `Cmd+Option+Shift+R` |
-| Manage AI Components | `Cmd+Shift+M` |
 
 ## License
 

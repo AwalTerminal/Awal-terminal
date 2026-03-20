@@ -1040,6 +1040,10 @@ sync_interval = 3600
 security_scan = true
 block_critical = true
 require_hook_approval = true
+remote_control = false
+
+[recording]
+max_duration = 300
 
 [ai_components.registry.awal-components]
 url = "https://github.com/AwalTerminal/awal-ai-components-registry.git"
@@ -1073,7 +1077,8 @@ slugs = "ZpDEwZj1Yq"</code></pre>
           <li><code>new_tab</code>, <code>close_tab</code>, <code>next_tab</code>, <code>prev_tab</code>, <code>rename_tab</code></li>
           <li><code>find</code>, <code>copy</code>, <code>paste</code>, <code>preferences</code>, <code>quit</code></li>
           <li><code>toggle_side_panel</code>, <code>quick_terminal</code>, <code>push_to_talk</code>, <code>sync_components</code></li>
-          <li><code>settings</code>, <code>manage_components</code>, <code>command_palette</code></li>
+          <li><code>settings</code>, <code>manage_components</code>, <code>command_palette</code>, <code>screenshot</code></li>
+          <li><code>mission_control</code>, <code>start_recording</code>, <code>remote_control</code></li>
         </ul>
 
         <h3>Voice Settings</h3>
@@ -1091,6 +1096,7 @@ slugs = "ZpDEwZj1Yq"</code></pre>
             <tr><td><code>block_critical</code></td><td>Block components with critical security findings</td><td><code>true</code></td></tr>
             <tr><td><code>disabled</code></td><td>Comma-separated list of disabled component keys</td><td>(empty)</td></tr>
             <tr><td><code>require_hook_approval</code></td><td>Require explicit approval before running registry hooks</td><td><code>true</code></td></tr>
+            <tr><td><code>remote_control</code></td><td>Enable remote control detection for Claude sessions</td><td><code>false</code></td></tr>
           </tbody>
         </table>
         <p>Add registries with <code>[ai_components.registry.&lt;name&gt;]</code> sections. Git registries use <code>url</code> and <code>branch</code>; localskills registries use <code>type = "localskills"</code> and <code>slugs</code>; local registries use <code>type = "local"</code> and <code>path</code>.</p>
@@ -1125,6 +1131,14 @@ slugs = "ZpDEwZj1Yq"</code></pre>
           </tbody>
         </table>
 
+        <h3>Recording Settings</h3>
+        <table class="doc-table">
+          <thead><tr><th>Key</th><th>Description</th><th>Default</th></tr></thead>
+          <tbody>
+            <tr><td><code>recording.max_duration</code></td><td>Maximum recording duration in seconds (0 = no limit)</td><td><code>300</code></td></tr>
+          </tbody>
+        </table>
+
         <h3>Danger Mode</h3>
         <p>Danger Mode skips all AI tool confirmation prompts, allowing the AI to execute commands, edit files, and make changes without asking for permission. When enabled, new sessions launch with unrestricted permissions (e.g., <code>--dangerously-skip-permissions</code> for Claude).</p>
         <p>Visual indicators appear when Danger Mode is active: a red accent line on the tab bar, a warning banner in the side panel, and a badge in the status bar.</p>
@@ -1152,13 +1166,14 @@ slugs = "ZpDEwZj1Yq"</code></pre>
             <tr><td>General</td><td><code>Cmd+Shift+P</code></td><td>Command Palette</td></tr>
             <tr><td>Tabs</td><td><code>Cmd+T</code></td><td>New tab</td></tr>
             <tr><td>Tabs</td><td><code>Cmd+W</code></td><td>Close tab</td></tr>
+            <tr><td>Tabs</td><td><code>Cmd+Shift+R</code></td><td>Rename tab</td></tr>
             <tr><td>Tabs</td><td><code>Cmd+Shift+]</code></td><td>Next tab</td></tr>
             <tr><td>Tabs</td><td><code>Cmd+Shift+[</code></td><td>Previous tab</td></tr>
 <tr><td>AI</td><td><code>Cmd+Shift+I</code></td><td>Toggle AI side panel</td></tr>
             <tr><td>AI</td><td><code>Cmd+Shift+D</code></td><td>Toggle Mission Control</td></tr>
             <tr><td>AI</td><td><code>Cmd+Option+Shift+R</code></td><td>Start/stop session recording</td></tr>
             <tr><td>AI</td><td><code>Cmd+Shift+Y</code></td><td>Sync AI Components</td></tr>
-            <tr><td>AI</td><td><code>Cmd+Shift+M</code></td><td>Manage AI Components</td></tr>
+
             <tr><td>Terminal</td><td><code>Ctrl+`</code></td><td>Quick terminal</td></tr>
             <tr><td>AI</td><td><code>Cmd+Shift+S</code></td><td>Screenshot to Session</td></tr>
             <tr><td>Voice</td><td><code>Ctrl+Shift+Space</code></td><td>Push-to-talk</td></tr>
