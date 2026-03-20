@@ -12,10 +12,26 @@ struct Completion {
 /// Protocol for completion providers.
 protocol CompletionProvider {
     func completions(for input: String, cursorPos: Int) -> [Completion]
+    func completionsAsync(for input: String, cursorPos: Int, completion: @escaping ([Completion]) -> Void)
+}
+
+extension CompletionProvider {
+    func completionsAsync(for input: String, cursorPos: Int, completion: @escaping ([Completion]) -> Void) {
+        completion(completions(for: input, cursorPos: cursorPos))
+    }
 }
 
 /// Provides file path completions.
 class FilePathProvider: CompletionProvider {
+    private static let ioQueue = DispatchQueue(label: "com.awalterminal.completion-io", qos: .userInitiated)
+
+    func completionsAsync(for input: String, cursorPos: Int, completion: @escaping ([Completion]) -> Void) {
+        Self.ioQueue.async {
+            let results = self.completions(for: input, cursorPos: cursorPos)
+            DispatchQueue.main.async { completion(results) }
+        }
+    }
+
     func completions(for input: String, cursorPos: Int) -> [Completion] {
         // Extract the path token being typed
         let prefix = String(input.prefix(cursorPos))
@@ -84,7 +100,7 @@ class FilePathProvider: CompletionProvider {
         // Walk backwards from end to find start of path token
         var i = text.count - 1
         for ch in text.reversed() {
-            if ch == " " || ch == "'" || ch == "\"" || ch == "(" || ch == ")" || ch == ";" || ch == "|" || ch == "&" {
+            if ch == " " || ch == "'" || ch == "\"" || ch == "(" || ch == ")" || ch == ";" || ch == "|" || ch == "&" || ch == "$" || ch == "`" || ch == "<" || ch == ">" {
                 return i + 1
             }
             i -= 1
