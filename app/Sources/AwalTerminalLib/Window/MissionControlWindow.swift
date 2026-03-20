@@ -79,6 +79,11 @@ class MissionControlWindow: NSWindowController, NSWindowDelegate, NSTableViewDat
 
     required init?(coder: NSCoder) { fatalError() }
 
+    deinit {
+        refreshTimer?.invalidate()
+        refreshTimer = nil
+    }
+
     func windowWillClose(_ notification: Notification) {
         refreshTimer?.invalidate()
         refreshTimer = nil
