@@ -574,19 +574,7 @@ class PreferencesWindow: NSWindowController, NSWindowDelegate {
         enabledCheck.state = config.voiceEnabled ? .on : .off
         grid.addRow(with: [enabledLabel, enabledCheck])
 
-        // Mode picker
-        let modeLabel = NSTextField(labelWithString: "Mode")
-        modeLabel.font = .systemFont(ofSize: 13)
-        let modePicker = NSPopUpButton(frame: .zero, pullsDown: false)
-        modePicker.addItems(withTitles: ["Push-to-Talk", "Continuous", "Wake Word"])
-        switch config.voiceMode {
-        case "continuous": modePicker.selectItem(at: 1)
-        case "wake_word": modePicker.selectItem(at: 2)
-        default: modePicker.selectItem(at: 0)
-        }
-        modePicker.target = self
-        modePicker.action = #selector(voiceModeChanged(_:))
-        grid.addRow(with: [modeLabel, modePicker])
+        // Mode (push-to-talk only)
 
         // Whisper model
         let modelLabel = NSTextField(labelWithString: "Whisper Model")
@@ -617,15 +605,7 @@ class PreferencesWindow: NSWindowController, NSWindowDelegate {
         hotkeyField.action = #selector(voiceFieldChanged(_:))
         grid.addRow(with: [hotkeyLabel, hotkeyField])
 
-        // Wake word
-        let wakeLabel = NSTextField(labelWithString: "Wake Word")
-        wakeLabel.font = .systemFont(ofSize: 13)
-        let wakeField = NSTextField(string: config.voiceWakeWord)
-        wakeField.font = .systemFont(ofSize: 13)
-        wakeField.identifier = NSUserInterfaceItemIdentifier("voice.wake_word")
-        wakeField.target = self
-        wakeField.action = #selector(voiceFieldChanged(_:))
-        grid.addRow(with: [wakeLabel, wakeField])
+        // (Wake word and continuous modes removed)
 
         // Auto-enter
         let enterLabel = NSTextField(labelWithString: "Auto-Enter")
@@ -668,11 +648,7 @@ class PreferencesWindow: NSWindowController, NSWindowDelegate {
         ConfigWriter.updateValue(key: "voice.enabled", value: sender.state == .on ? "true" : "false")
     }
 
-    @objc private func voiceModeChanged(_ sender: NSPopUpButton) {
-        let modes = ["push_to_talk", "continuous", "wake_word"]
-        let value = modes[sender.indexOfSelectedItem]
-        ConfigWriter.updateValue(key: "voice.mode", value: "\"\(value)\"")
-    }
+    // Voice mode is now push-to-talk only — no mode picker needed
 
     @objc private func voiceModelChanged(_ sender: NSPopUpButton) {
         let model = ModelDownloadManager.availableModels[sender.indexOfSelectedItem]

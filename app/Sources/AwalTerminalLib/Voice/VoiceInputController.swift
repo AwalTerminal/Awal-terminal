@@ -1,26 +1,17 @@
 import Foundation
 
-/// Central voice input state machine managing audio capture, VAD, transcription, and commands.
+/// Central voice input controller managing audio capture, transcription, and commands.
+/// Supports push-to-talk mode only.
 class VoiceInputController {
 
     enum State {
         case idle
-        case listening    // Mic active, waiting for speech (continuous/wake mode)
         case recording    // Actively capturing speech
         case processing   // Transcribing audio
     }
 
-    enum Mode: String {
-        case pushToTalk = "push_to_talk"
-        case continuous = "continuous"
-        case wakeWord = "wake_word"
-    }
-
     /// Current state
     private(set) var state: State = .idle
-
-    /// Current mode
-    var mode: Mode = .pushToTalk
 
     /// Whether voice input is enabled
     var isEnabled: Bool = false {
@@ -37,7 +28,6 @@ class VoiceInputController {
 
     // Components
     private let audioManager = AudioCaptureManager.shared
-    private let vad = VoiceActivityDetector()
     private let transcriber = WhisperTranscriber.shared
     private let commandParser = VoiceCommandParser()
 
@@ -45,10 +35,6 @@ class VoiceInputController {
     var dictationAutoEnter = false
     var dictationAutoSpace = true
     var commandPrefix = ""
-    var wakeWord = "hey terminal"
-
-    // Wake word state
-    private var isWakeWordActive = false
 
     static let shared = VoiceInputController()
 
@@ -59,9 +45,9 @@ class VoiceInputController {
 
     // MARK: - Public API
 
-    /// Start recording (used by both PTT hotkey and mic button click).
+    /// Start recording (used by PTT hotkey and mic button click).
     func startRecording() {
-        guard state == .idle || state == .listening else {
+        guard state == .idle else {
             NSLog("VoiceInput: startRecording() skipped, state=\(state)")
             return
         }
@@ -103,14 +89,14 @@ class VoiceInputController {
 
             await MainActor.run {
                 self.handleTranscription(result)
-                self.setState(self.mode == .continuous || self.mode == .wakeWord ? .listening : .idle)
+                self.setState(.idle)
             }
         }
     }
 
     /// Start push-to-talk recording (alias for startRecording)
     func startPushToTalk() {
-        guard isEnabled, state == .idle || state == .listening else { return }
+        guard isEnabled, state == .idle else { return }
         startRecording()
     }
 
@@ -119,39 +105,17 @@ class VoiceInputController {
         stopRecording()
     }
 
-    /// Start continuous listening mode
-    func startContinuous() {
-        guard isEnabled, state == .idle else { return }
-        setState(.listening)
-
-        Task {
-            let authorized = await transcriber.requestAccess()
-
-            await MainActor.run {
-                guard authorized else {
-                    NSLog("VoiceInput: continuous mode not authorized, aborting")
-                    self.setState(.idle)
-                    return
-                }
-                self.audioManager.startCapture()
-                NSLog("VoiceInput: continuous listening started")
-            }
-        }
-    }
-
     /// Stop all voice input
     func stop() {
         audioManager.onBuffer = nil
         audioManager.stopCapture()
-        vad.reset()
         transcriber.stopStreaming(completion: nil)
         setState(.idle)
-        isWakeWordActive = false
     }
 
-    /// Toggle voice input on/off. When in PTT mode, directly starts/stops recording.
+    /// Toggle voice input on/off.
     func toggle() {
-        NSLog("VoiceInput: toggle() called, state=\(state), mode=\(mode), isEnabled=\(isEnabled)")
+        NSLog("VoiceInput: toggle() called, state=\(state), isEnabled=\(isEnabled)")
         if state == .recording {
             NSLog("VoiceInput: stopping recording")
             stopRecording()
@@ -160,82 +124,20 @@ class VoiceInputController {
             stop()
         } else {
             isEnabled = true
-            NSLog("VoiceInput: starting, mode=\(mode)")
-            switch mode {
-            case .pushToTalk:
-                startRecording()
-            case .continuous:
-                startContinuous()
-            case .wakeWord:
-                startContinuous()
-            }
+            NSLog("VoiceInput: starting push-to-talk")
+            startRecording()
         }
     }
 
     // MARK: - Private
 
     private func setupCallbacks() {
-        audioManager.onSamples = { [weak self] samples in
-            guard let self else { return }
-            if self.state == .listening {
-                self.vad.process(samples: samples)
-            }
-        }
-
         audioManager.onAudioLevel = { [weak self] level in
             self?.onAudioLevel?(level)
         }
 
-        vad.onSpeechSegment = { [weak self] segment in
-            guard let self else { return }
-            DispatchQueue.main.async {
-                // In continuous mode, process the segment
-                self.setState(.processing)
-                self.processAudio(segment)
-            }
-        }
-
-        vad.onStateChanged = { [weak self] vadState in
-            guard let self else { return }
-            DispatchQueue.main.async {
-                if vadState == .speech && self.state == .listening {
-                    self.setState(.recording)
-                }
-            }
-        }
-
         transcriber.onPartialResult = { [weak self] text in
             self?.onPartialTranscription?(text)
-        }
-    }
-
-    private func processAudio(_ samples: [Float]) {
-        guard !samples.isEmpty else {
-            setState(mode == .continuous || mode == .wakeWord ? .listening : .idle)
-            return
-        }
-
-        Task {
-            let result = await transcriber.transcribe(audioSamples: samples)
-
-            await MainActor.run {
-                if self.mode == .wakeWord && !self.isWakeWordActive {
-                    if result.text.lowercased().contains(self.wakeWord.lowercased()) {
-                        self.isWakeWordActive = true
-                        self.setState(.listening)
-                        return
-                    }
-                    self.setState(.listening)
-                    return
-                }
-
-                if self.mode == .wakeWord {
-                    self.isWakeWordActive = false
-                }
-
-                self.handleTranscription(result)
-                self.setState(self.mode == .continuous || self.mode == .wakeWord ? .listening : .idle)
-            }
         }
     }
 
@@ -275,11 +177,8 @@ class VoiceInputController {
     private func loadConfig() {
         let config = AppConfig.shared
         isEnabled = config.voiceEnabled
-        mode = Mode(rawValue: config.voiceMode) ?? .pushToTalk
-        vad.threshold = config.voiceVadThreshold
         dictationAutoEnter = config.voiceDictationAutoEnter
         dictationAutoSpace = config.voiceDictationAutoSpace
         commandPrefix = config.voiceCommandPrefix
-        wakeWord = config.voiceWakeWord
     }
 }

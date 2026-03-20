@@ -53,7 +53,7 @@ struct AppConfig {
 
     // Voice
     var voiceEnabled: Bool = false
-    var voiceMode: String = "push_to_talk"
+    // Voice mode is push-to-talk only (continuous/wake-word removed)
     var voicePushToTalkKey: String = "ctrl+shift+space"
     var voiceVadThreshold: Float = 0.02
     var voiceLanguage: String = "en"
@@ -61,7 +61,7 @@ struct AppConfig {
     var voiceDictationAutoEnter: Bool = false
     var voiceDictationAutoSpace: Bool = true
     var voiceCommandPrefix: String = ""
-    var voiceWakeWord: String = "hey terminal"
+    // voiceWakeWord removed
 
     // Recording
     var recordingMaxDuration: Int = 300  // seconds, 0 = no limit
@@ -187,7 +187,7 @@ struct AppConfig {
 
         // Voice
         if let v = parsed["voice.enabled"] { config.voiceEnabled = v == "true" }
-        if let v = parsed["voice.mode"] { config.voiceMode = v }
+        // voice.mode config key ignored (push-to-talk only)
         if let v = parsed["voice.push_to_talk_key"] { config.voicePushToTalkKey = v }
         if let v = parsed["voice.vad_threshold"], let f = Float(v) { config.voiceVadThreshold = f }
         if let v = parsed["voice.language"] { config.voiceLanguage = v }
@@ -195,7 +195,7 @@ struct AppConfig {
         if let v = parsed["voice.dictation_auto_enter"] { config.voiceDictationAutoEnter = v == "true" }
         if let v = parsed["voice.dictation_auto_space"] { config.voiceDictationAutoSpace = v == "true" || v.isEmpty }
         if let v = parsed["voice.command_prefix"] { config.voiceCommandPrefix = v }
-        if let v = parsed["voice.wake_word"] { config.voiceWakeWord = v }
+        // voice.wake_word config key ignored (removed)
 
         // Recording
         if let v = parsed["recording.max_duration"], let n = Int(v) { config.recordingMaxDuration = n }

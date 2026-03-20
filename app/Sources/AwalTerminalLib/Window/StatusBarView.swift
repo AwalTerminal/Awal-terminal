@@ -804,12 +804,6 @@ class StatusBarView: NSView, NSMenuDelegate {
             stopPulsingDot()
             voiceWaveform.stopAnimating()
             voiceWaveform.isHidden = true
-        case .listening:
-            voiceButton.image = NSImage(systemSymbolName: "mic.fill", accessibilityDescription: "Listening")
-            voiceButton.contentTintColor = NSColor(red: 120.0/255.0, green: 220.0/255.0, blue: 120.0/255.0, alpha: 1.0)
-            stopPulsingDot()
-            voiceWaveform.isHidden = true
-            voiceWaveform.stopAnimating()
         case .recording:
             voiceButton.image = NSImage(systemSymbolName: "mic.fill", accessibilityDescription: "Recording")
             voiceButton.contentTintColor = NSColor(red: 255.0/255.0, green: 80.0/255.0, blue: 80.0/255.0, alpha: 1.0)
