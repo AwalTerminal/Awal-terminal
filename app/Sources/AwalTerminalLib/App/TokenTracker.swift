@@ -4,6 +4,8 @@ class TokenTracker {
 
     static let shared = TokenTracker()
 
+    private let lock = NSLock()
+
     /// Cumulative output tokens across all turns (for cost estimation).
     private(set) var totalOutput: Int = 0
     /// Last turn's input tokens — represents current context window usage.
@@ -163,6 +165,7 @@ class TokenTracker {
             }
         }
 
+        lock.lock()
         lastFile = latestPath
         lastFileSize = fileSize
         currentInput = lastTurnInput
@@ -173,6 +176,7 @@ class TokenTracker {
         toolCalls = tools
         modelUsed = model
         sessionId = sid
+        lock.unlock()
     }
 
     var displayString: String {
@@ -181,6 +185,7 @@ class TokenTracker {
     }
 
     func reset() {
+        lock.lock()
         currentInput = 0
         cumulativeInputFull = 0
         cumulativeCacheRead = 0
@@ -192,6 +197,7 @@ class TokenTracker {
         lastFile = ""
         lastFileSize = 0
         sessionStart = Date()
+        lock.unlock()
     }
 
     private func formatTokenCount(_ n: Int) -> String {
