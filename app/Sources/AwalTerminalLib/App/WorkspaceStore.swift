@@ -60,7 +60,7 @@ class WorkspaceStore {
             decoder.dateDecodingStrategy = .iso8601
             workspaces = try decoder.decode([Workspace].self, from: data)
         } catch {
-            NSLog("WorkspaceStore: failed to load: \(error)")
+            debugLog("WorkspaceStore: failed to load: \(error)")
         }
     }
 
@@ -78,7 +78,7 @@ class WorkspaceStore {
             let data = try encoder.encode(workspaces)
             try data.write(to: storePath, options: .atomic)
         } catch {
-            NSLog("WorkspaceStore: failed to save: \(error)")
+            debugLog("WorkspaceStore: failed to save: \(error)")
         }
     }
 }

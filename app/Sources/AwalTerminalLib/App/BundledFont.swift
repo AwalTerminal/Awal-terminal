@@ -20,7 +20,7 @@ enum BundledFont {
                     let code = CFErrorGetCode(err)
                     // 105 = already registered — safe to ignore
                     if code != 105 {
-                        NSLog("Failed to register font \(file): \(err)")
+                        debugLog("Failed to register font \(file): \(err)")
                     }
                 }
             }

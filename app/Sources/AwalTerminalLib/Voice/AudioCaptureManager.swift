@@ -43,9 +43,9 @@ class AudioCaptureManager {
         // requesting mic access crashes the process via TCC on macOS.
         let info = Bundle.main.infoDictionary
         let hasKey = info?["NSMicrophoneUsageDescription"] != nil
-        NSLog("AudioCaptureManager: startCapture() called, bundle=\(Bundle.main.bundlePath), infoDictionary keys=\(info?.keys.joined(separator: ",") ?? "nil"), hasMicKey=\(hasKey)")
+        debugLog("AudioCaptureManager: startCapture() called, bundle=\(Bundle.main.bundlePath), infoDictionary keys=\(info?.keys.joined(separator: ",") ?? "nil"), hasMicKey=\(hasKey)")
         if !hasKey {
-            NSLog("AudioCaptureManager: NSMicrophoneUsageDescription missing from Info.plist. " +
+            debugLog("AudioCaptureManager: NSMicrophoneUsageDescription missing from Info.plist. " +
                   "Voice input requires the bundled .app — run `just bundle` then open AwalTerminal.app")
             return
         }
@@ -60,7 +60,7 @@ class AudioCaptureManager {
                 }
             }
         default:
-            NSLog("AudioCaptureManager: Microphone access denied — enable in System Settings > Privacy > Microphone")
+            debugLog("AudioCaptureManager: Microphone access denied — enable in System Settings > Privacy > Microphone")
         }
     }
 

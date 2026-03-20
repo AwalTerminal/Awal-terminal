@@ -54,7 +54,7 @@ class WhisperTranscriber {
         if isAvailable { return true }
 
         guard Self.hasTCCKeys else {
-            NSLog("WhisperTranscriber: NSSpeechRecognitionUsageDescription missing. Voice requires bundled .app (just bundle).")
+            debugLog("WhisperTranscriber: NSSpeechRecognitionUsageDescription missing. Voice requires bundled .app (just bundle).")
             authorizationChecked = true
             return false
         }
@@ -74,9 +74,9 @@ class WhisperTranscriber {
         authorizationChecked = true
 
         if authorized {
-            NSLog("WhisperTranscriber: Speech recognition authorized")
+            debugLog("WhisperTranscriber: Speech recognition authorized")
         } else {
-            NSLog("WhisperTranscriber: Speech recognition denied — enable in System Settings > Privacy > Speech Recognition")
+            debugLog("WhisperTranscriber: Speech recognition denied — enable in System Settings > Privacy > Speech Recognition")
         }
         return authorized
     }
@@ -86,7 +86,7 @@ class WhisperTranscriber {
     /// Start a streaming recognition session.
     func startStreaming() {
         guard isAvailable, let recognizer = speechRecognizer, recognizer.isAvailable else {
-            NSLog("WhisperTranscriber: Cannot start streaming — not authorized or not available")
+            debugLog("WhisperTranscriber: Cannot start streaming — not authorized or not available")
             return
         }
 
@@ -112,12 +112,12 @@ class WhisperTranscriber {
                 }
             }
             if let error {
-                NSLog("WhisperTranscriber: Recognition error: \(error.localizedDescription)")
+                debugLog("WhisperTranscriber: Recognition error: \(error.localizedDescription)")
             }
         }
 
         recognitionRequest = request
-        NSLog("WhisperTranscriber: Streaming started")
+        debugLog("WhisperTranscriber: Streaming started")
     }
 
     /// Append an audio buffer to the active streaming session.
@@ -143,7 +143,7 @@ class WhisperTranscriber {
         let elapsed = DispatchTime.now().uptimeNanoseconds - startTime.uptimeNanoseconds
         let durationMs = Int(elapsed / 1_000_000)
 
-        NSLog("WhisperTranscriber: Streaming stopped, got: \"\(text)\" in \(durationMs)ms")
+        debugLog("WhisperTranscriber: Streaming stopped, got: \"\(text)\" in \(durationMs)ms")
 
         return TranscriptionResult(
             text: text.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -199,7 +199,7 @@ class WhisperTranscriber {
                     continuation.resume(returning: result.bestTranscription.formattedString)
                 } else if let error {
                     resumed = true
-                    NSLog("WhisperTranscriber: Batch error: \(error.localizedDescription)")
+                    debugLog("WhisperTranscriber: Batch error: \(error.localizedDescription)")
                     continuation.resume(returning: "")
                 }
             }

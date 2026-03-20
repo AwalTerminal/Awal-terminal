@@ -382,7 +382,7 @@ class TerminalView: NSView {
                 scale: scale
             )
         } catch {
-            NSLog("MetalRenderer init failed: \(error.localizedDescription). GPU rendering unavailable.")
+            debugLog("MetalRenderer init failed: \(error.localizedDescription). GPU rendering unavailable.")
         }
 
         return layer
@@ -559,7 +559,7 @@ class TerminalView: NSView {
                         scale: scale
                     )
                 } catch {
-                    NSLog("MetalRenderer reinit failed: \(error.localizedDescription)")
+                    debugLog("MetalRenderer reinit failed: \(error.localizedDescription)")
                 }
                 startDisplayLink()
             }
@@ -1197,7 +1197,7 @@ class TerminalView: NSView {
                 }
             }
             if result != 0 {
-                NSLog("Failed to spawn command, falling back to shell")
+                debugLog("Failed to spawn command, falling back to shell")
                 spawnShell()
             }
         } else {
@@ -1297,7 +1297,7 @@ class TerminalView: NSView {
         }
 
         if result != 0 {
-            NSLog("Failed to spawn shell")
+            debugLog("Failed to spawn shell")
             return
         }
 
@@ -1345,7 +1345,7 @@ class TerminalView: NSView {
 
         let fd = at_surface_get_fd(s)
         if fd < 0 {
-            NSLog("Invalid PTY fd")
+            debugLog("Invalid PTY fd")
             return
         }
 

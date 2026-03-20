@@ -48,20 +48,20 @@ class VoiceInputController {
     /// Start recording (used by PTT hotkey and mic button click).
     func startRecording() {
         guard state == .idle else {
-            NSLog("VoiceInput: startRecording() skipped, state=\(state)")
+            debugLog("VoiceInput: startRecording() skipped, state=\(state)")
             return
         }
         isEnabled = true
-        NSLog("VoiceInput: startRecording() called")
+        debugLog("VoiceInput: startRecording() called")
         setState(.recording)  // Set early to prevent re-entry during async gap
 
         Task {
             let authorized = await transcriber.requestAccess()
-            NSLog("VoiceInput: speech auth=\(authorized)")
+            debugLog("VoiceInput: speech auth=\(authorized)")
 
             await MainActor.run {
                 guard authorized else {
-                    NSLog("VoiceInput: not authorized, aborting")
+                    debugLog("VoiceInput: not authorized, aborting")
                     self.setState(.idle)
                     return
                 }
@@ -71,7 +71,7 @@ class VoiceInputController {
                     self?.transcriber.appendBuffer(buffer)
                 }
                 self.audioManager.startCapture()
-                NSLog("VoiceInput: capture started, isCapturing=\(self.audioManager.isCapturing)")
+                debugLog("VoiceInput: capture started, isCapturing=\(self.audioManager.isCapturing)")
             }
         }
     }
@@ -115,16 +115,16 @@ class VoiceInputController {
 
     /// Toggle voice input on/off.
     func toggle() {
-        NSLog("VoiceInput: toggle() called, state=\(state), isEnabled=\(isEnabled)")
+        debugLog("VoiceInput: toggle() called, state=\(state), isEnabled=\(isEnabled)")
         if state == .recording {
-            NSLog("VoiceInput: stopping recording")
+            debugLog("VoiceInput: stopping recording")
             stopRecording()
         } else if state != .idle {
-            NSLog("VoiceInput: stopping (state was not idle)")
+            debugLog("VoiceInput: stopping (state was not idle)")
             stop()
         } else {
             isEnabled = true
-            NSLog("VoiceInput: starting push-to-talk")
+            debugLog("VoiceInput: starting push-to-talk")
             startRecording()
         }
     }

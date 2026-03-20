@@ -258,7 +258,7 @@ class GitWorktreeManager {
             cwd: info.repoRoot
         )
         if removeResult == nil {
-            NSLog("[Worktree] Failed to remove worktree at %@, attempting manual cleanup", root)
+            debugLog("[Worktree] Failed to remove worktree at \(root), attempting manual cleanup")
             // Fallback: try to remove directory manually
             try? FileManager.default.removeItem(atPath: root)
             _ = runGit(["worktree", "prune"], cwd: info.repoRoot)
@@ -275,7 +275,7 @@ class GitWorktreeManager {
     func isDirty(_ path: String) -> Bool {
         let result = runGit(["status", "--porcelain"], cwd: path)
         guard let output = result else {
-            NSLog("[Worktree] git status failed for %@, assuming dirty", path)
+            debugLog("[Worktree] git status failed for \(path), assuming dirty")
             return true  // Fail safe: treat errors as dirty to prevent data loss
         }
         return !output.isEmpty
@@ -336,8 +336,7 @@ class GitWorktreeManager {
                     let age = Date().timeIntervalSince(mtime)
 
                     if age > dirtyOrphanMaxAge {
-                        NSLog("[Worktree] Removing stale dirty orphan (%.0f days old): %@",
-                              age / 86400, worktreePath)
+                        debugLog("[Worktree] Removing stale dirty orphan (\(Int(age / 86400)) days old): \(worktreePath)")
                         _ = runGit(["worktree", "remove", "--force", worktreePath], cwd: repoRoot)
                         if entry.hasPrefix("tab-") {
                             let uuid = String(entry.dropFirst(4))
@@ -345,8 +344,7 @@ class GitWorktreeManager {
                             _ = runGit(["branch", "-D", "\(prefix)-\(uuid)"], cwd: repoRoot)
                         }
                     } else {
-                        NSLog("[Worktree] Keeping dirty orphan (%.0f days old): %@",
-                              age / 86400, worktreePath)
+                        debugLog("[Worktree] Keeping dirty orphan (\(Int(age / 86400)) days old): \(worktreePath)")
                         keptDirtyPaths.append(worktreePath)
                     }
                 }
@@ -488,7 +486,7 @@ class GitWorktreeManager {
         do {
             try process.run()
         } catch {
-            NSLog("[Worktree] Failed to launch git %@: %@", args.joined(separator: " "), error.localizedDescription)
+            debugLog("[Worktree] Failed to launch git \(args.joined(separator: " ")): \(error.localizedDescription)")
             return nil
         }
 

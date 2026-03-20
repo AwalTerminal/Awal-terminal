@@ -25,6 +25,8 @@ enum AIComponentInjector {
     /// Inject AI components for the given model and project.
     /// Returns an AIComponentContext with detected info and optional command modifier.
     static func inject(modelName: String, projectPath: String) -> AIComponentContext? {
+        debugLog("AIComponentInjector.inject: model=\(modelName) path=\(projectPath)")
+
         let config = AppConfig.shared
         guard config.aiComponentsEnabled else { return nil }
 
@@ -57,6 +59,11 @@ enum AIComponentInjector {
         if config.aiComponentsAutoSync {
             RegistryManager.shared.syncAll(registries: registries)
         }
+
+        // Ensure mapping modes are resolved before assembly (syncAll sets them async)
+        RegistryManager.shared.resolveMappingsIfNeeded(registries: registries)
+
+        debugLog("AIComponentInjector: stacks=\(stacks), registries=\(registries.map { $0.name })")
 
         // Compute disabled and security-blocked components
         let disabledComponents = config.aiComponentsDisabled

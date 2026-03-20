@@ -298,7 +298,7 @@ final class GlyphAtlas {
             let candidate = CTFontCreateWithFontDescriptor(fd, size, nil)
             var glyph: CGGlyph = 0
             if CTFontGetGlyphsForCharacters(candidate, [testChar], &glyph, 1), glyph != 0 {
-                NSLog("Found symbol font: \(CTFontCopyFullName(candidate))")
+                debugLog("Found symbol font: \(CTFontCopyFullName(candidate))")
                 return candidate
             }
         }
