@@ -16,6 +16,7 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
 
     private let tabBar = CustomTabBarView()
     private let contentArea = NSView()
+    private var sleepPreventionPopover: NSPopover?
 
     private(set) var tabs: [TabState] = []
     private(set) var activeTabIndex: Int = 0
@@ -626,6 +627,22 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
             guard let self, let tab else { return }
             self.showRemoteControlPopover(for: tab)
         }
+        terminal.onSleepPreventionChanged = { active in
+            // Sleep prevention is system-wide — update all tabs in all windows
+            for controller in TerminalWindowTracker.shared.allControllers {
+                for tab in controller.tabs {
+                    tab.statusBar.setAwake(active)
+                    tab.isSleepPrevented = active
+                }
+            }
+            if !active {
+                StealthOverlayWindow.shared.dismiss()
+            }
+        }
+        tab.statusBar.onAwakeBadgeClicked = { [weak self, weak tab] in
+            guard let self, let tab else { return }
+            self.showSleepPreventionPopover(for: tab)
+        }
         terminal.onGeneratingChanged = { [weak terminal, weak tab] isGenerating in
             guard let terminal, let tab else { return }
             if isGenerating {
@@ -635,6 +652,15 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
                 tab.statusBar.setGenerating(false)
                 tab.aiSidePanel.setGenerating(false)
             }
+        }
+
+        // Show AWAKE badge if sleep prevention is already active globally
+        let globallyAwake = TerminalWindowTracker.shared.allControllers.contains { c in
+            c.tabs.contains { $0.isSleepPrevented }
+        }
+        if globallyAwake {
+            tab.statusBar.setAwake(true)
+            tab.isSleepPrevented = true
         }
     }
 
@@ -1112,6 +1138,20 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         popover.behavior = .transient
         popover.contentSize = controller.view.frame.size
         let badge = tab.statusBar.remoteControlBadgeView
+        popover.show(relativeTo: badge.bounds, of: badge, preferredEdge: .maxY)
+    }
+
+    private func showSleepPreventionPopover(for tab: TabState) {
+        let controller = SleepPreventionPopoverView(
+            isActive: tab.isSleepPrevented,
+            isRemoteControlLinked: tab.remoteControlURL != nil
+        )
+        let popover = NSPopover()
+        popover.contentViewController = controller
+        popover.behavior = .transient
+        popover.contentSize = controller.view.frame.size
+        sleepPreventionPopover = popover
+        let badge = tab.statusBar.awakeBadgeView
         popover.show(relativeTo: badge.bounds, of: badge, preferredEdge: .maxY)
     }
 

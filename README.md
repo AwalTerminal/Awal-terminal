@@ -54,6 +54,7 @@ A native macOS terminal built from scratch with Swift and Rust, designed specifi
 | Copy as Markdown | Right-click or `Cmd+Shift+C` to copy terminal output with code fences, blockquotes, and formatting preserved |
 | Smart Autocomplete | File path and command history completions as you type |
 | Remote Control | Detect Claude Code's remote control mode, show a REMOTE badge in the status bar, and display a QR code popover to connect from your phone. Enable from the View menu |
+| Prevent Sleep | Prevent macOS from sleeping during active terminal sessions. Auto-activates during remote control sessions |
 | Fully Configurable | Theme colors, fonts, keybindings, and voice settings in a single config file |
 
 ## Getting Started
@@ -147,6 +148,9 @@ worktree_isolation = false
 
 [quit]
 confirm_close = true
+
+[system]
+prevent_sleep = false
 
 [ai_components]
 enabled = true

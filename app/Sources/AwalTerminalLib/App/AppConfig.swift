@@ -98,6 +98,9 @@ struct AppConfig {
     // Remote Control (auto-launch with --remote-control flag)
     var remoteControlEnabled: Bool = false
 
+    // Sleep prevention (keep display awake during terminal activity)
+    var preventSleep: Bool = false
+
     // AI Components Export
     var aiComponentsExportEnabled: Bool = false
     var aiComponentsExportFormats: [String] = []
@@ -217,6 +220,9 @@ struct AppConfig {
 
         // Remote control
         if let v = parsed["ai_components.remote_control"] { config.remoteControlEnabled = v == "true" }
+
+        // Sleep prevention
+        if let v = parsed["system.prevent_sleep"] { config.preventSleep = v == "true" }
 
         // AI Components
         if let v = parsed["ai_components.enabled"] { config.aiComponentsEnabled = v == "true" }

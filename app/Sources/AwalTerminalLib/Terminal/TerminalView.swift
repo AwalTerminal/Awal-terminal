@@ -1,4 +1,6 @@
 import AppKit
+import IOKit
+import IOKit.pwr_mgt
 import Metal
 import Quartz
 import QuartzCore
@@ -82,9 +84,13 @@ class TerminalView: NSView {
     var onWorkspacePicked: ((_ dir: String, _ completion: @escaping (String) -> Void) -> Void)?
     var onPlanTitleDetected: ((_ title: String) -> Void)?
     var onRemoteControlChanged: ((_ active: Bool, _ url: String?) -> Void)?
+    var onSleepPreventionChanged: ((_ active: Bool) -> Void)?
 
     private(set) var isRemoteControlActive = false
     private(set) var remoteControlURL: String?
+
+    private var sleepAssertionID: IOPMAssertionID = IOPMAssertionID(kIOPMNullAssertionID)
+    var isSleepPrevented: Bool { sleepAssertionID != IOPMAssertionID(kIOPMNullAssertionID) }
 
     // Deferred launch for new panes (set before adding to window)
     var pendingLaunchModel: MenuItem?
@@ -292,10 +298,13 @@ class TerminalView: NSView {
         syncOutputTimer?.invalidate()
         syncOutputTimer = nil
 
-        // 4. Remove notification observers
+        // 4. Release sleep assertion
+        releaseSleepAssertion()
+
+        // 5. Remove notification observers
         NSWorkspace.shared.notificationCenter.removeObserver(self)
 
-        // 5. Terminate child process, then destroy surface
+        // 6. Terminate child process, then destroy surface
         if let s = surface {
             at_surface_terminate(s)
             at_surface_destroy(s)
@@ -1425,6 +1434,8 @@ class TerminalView: NSView {
             // Check for remote control activation and URL updates
             let rcActive = at_surface_is_remote_control_active(s)
             if rcActive {
+                // Always prevent sleep during remote control
+                acquireSleepAssertion()
                 var url: String?
                 if let urlPtr = at_surface_get_remote_control_url(s) {
                     url = String(cString: urlPtr)
@@ -1436,6 +1447,13 @@ class TerminalView: NSView {
                     isRemoteControlActive = true
                     remoteControlURL = url
                     onRemoteControlChanged?(true, url)
+                }
+            } else if isRemoteControlActive {
+                isRemoteControlActive = false
+                onRemoteControlChanged?(false, nil)
+                // Release sleep assertion when remote control ends (unless manual prevent_sleep is active with output)
+                if !AppConfig.shared.preventSleep || !hadRecentOutput {
+                    releaseSleepAssertion()
                 }
             }
 
@@ -1469,6 +1487,10 @@ class TerminalView: NSView {
 
             hadRecentOutput = true
             isWaitingForOutput = false
+            // Acquire sleep assertion if configured
+            if AppConfig.shared.preventSleep {
+                acquireSleepAssertion()
+            }
             if !isGenerating && !activeModelName.isEmpty {
                 isGenerating = true
                 onGeneratingChanged?(true)
@@ -1491,7 +1513,31 @@ class TerminalView: NSView {
             isGenerating = false
             onGeneratingChanged?(false)
         }
+        // Release sleep assertion on idle unless remote control or manual prevent_sleep is active
+        if !isRemoteControlActive && !AppConfig.shared.preventSleep {
+            releaseSleepAssertion()
+        }
         onTerminalIdle?()
+    }
+
+    // MARK: - Sleep Prevention
+
+    private func acquireSleepAssertion() {
+        guard sleepAssertionID == IOPMAssertionID(kIOPMNullAssertionID) else { return }
+        IOPMAssertionCreateWithName(
+            kIOPMAssertionTypePreventUserIdleDisplaySleep as CFString,
+            IOPMAssertionLevel(kIOPMAssertionLevelOn),
+            "Awal Terminal: active terminal output" as CFString,
+            &sleepAssertionID
+        )
+        onSleepPreventionChanged?(true)
+    }
+
+    private func releaseSleepAssertion() {
+        guard sleepAssertionID != IOPMAssertionID(kIOPMNullAssertionID) else { return }
+        IOPMAssertionRelease(sleepAssertionID)
+        sleepAssertionID = IOPMAssertionID(kIOPMNullAssertionID)
+        onSleepPreventionChanged?(false)
     }
 
     // MARK: - Grid Size

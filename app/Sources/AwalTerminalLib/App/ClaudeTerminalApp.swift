@@ -145,6 +145,33 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
         AppConfig.reload()
     }
 
+    @objc func togglePreventSleep(_ sender: Any?) {
+        let current = AppConfig.shared.preventSleep
+        if current {
+            // Block disable when any tab has active remote control
+            for controller in TerminalWindowTracker.shared.allControllers {
+                for tab in controller.tabs where tab.remoteControlURL != nil {
+                    let alert = NSAlert.branded()
+                    alert.messageText = "Cannot Disable Sleep Prevention"
+                    alert.informativeText = "A remote control session is active. Sleep prevention must remain enabled while a remote session is connected."
+                    alert.addButton(withTitle: "OK")
+                    alert.runModal()
+                    return
+                }
+            }
+        }
+        ConfigWriter.updateValue(key: "system.prevent_sleep", value: current ? "false" : "true")
+        AppConfig.reload()
+    }
+
+    @objc func toggleStealthMode(_ sender: Any?) {
+        if StealthOverlayWindow.shared.isActive {
+            StealthOverlayWindow.shared.dismiss()
+        } else {
+            StealthOverlayWindow.shared.activate()
+        }
+    }
+
     @objc func toggleRecording(_ sender: Any?) {
         guard let controller = NSApp.keyWindow?.windowController as? TerminalWindowController else { return }
         let tab = controller.tabs[controller.activeTabIndex]
@@ -507,6 +534,16 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
         if menuItem.action == #selector(toggleRemoteControl(_:)) {
             menuItem.state = AppConfig.shared.remoteControlEnabled ? .on : .off
         }
+        if menuItem.action == #selector(togglePreventSleep(_:)) {
+            menuItem.state = AppConfig.shared.preventSleep ? .on : .off
+        }
+        if menuItem.action == #selector(toggleStealthMode(_:)) {
+            menuItem.state = StealthOverlayWindow.shared.isActive ? .on : .off
+            let isSleepPrevented = TerminalWindowTracker.shared.allControllers.contains { controller in
+                controller.tabs.contains { $0.isSleepPrevented }
+            }
+            return isSleepPrevented
+        }
         if menuItem.action == #selector(toggleVoiceInput(_:)) {
             menuItem.state = VoiceInputController.shared.state != .idle ? .on : .off
         }
@@ -614,6 +651,14 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
 
         let remoteItem = NSMenuItem(title: "Remote Control (Claude only)", action: #selector(toggleRemoteControl(_:)), keyEquivalent: "")
         viewMenu.addItem(remoteItem)
+
+        let preventSleepItem = NSMenuItem(title: "Prevent Sleep", action: #selector(togglePreventSleep(_:)), keyEquivalent: "")
+        viewMenu.addItem(preventSleepItem)
+
+        let stealthItem = NSMenuItem(title: "Stealth Mode", action: #selector(toggleStealthMode(_:)), keyEquivalent: "s")
+        stealthItem.keyEquivalentModifierMask = [.command, .shift, .option]
+        stealthItem.target = self
+        viewMenu.addItem(stealthItem)
 
         let notifItem = NSMenuItem(title: "Notifications", action: #selector(toggleNotifications(_:)), keyEquivalent: "")
         viewMenu.addItem(notifItem)
@@ -772,6 +817,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
         "start_recording": "Start/Stop Recording",
         "remote_control": "Remote Control (Claude only)",
         "command_palette": "Command Palette",
+        "stealth_mode": "Stealth Mode",
     ]
 
     private func applyKeybindings(_ menu: NSMenu) {

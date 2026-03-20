@@ -1032,6 +1032,9 @@ worktree_isolation = false
 [quit]
 confirm_close = true
 
+[system]
+prevent_sleep = false
+
 [ai_components]
 enabled = true
 auto_detect = true
@@ -1128,6 +1131,14 @@ slugs = "ZpDEwZj1Yq"</code></pre>
           <thead><tr><th>Key</th><th>Description</th><th>Default</th></tr></thead>
           <tbody>
             <tr><td><code>quit.confirm_close</code></td><td>Show a confirmation dialog before quitting the app</td><td><code>true</code></td></tr>
+          </tbody>
+        </table>
+
+        <h3>System Settings</h3>
+        <table class="doc-table">
+          <thead><tr><th>Key</th><th>Description</th><th>Default</th></tr></thead>
+          <tbody>
+            <tr><td><code>system.prevent_sleep</code></td><td>Prevent macOS from sleeping during active terminal sessions. Automatically enabled during remote control sessions regardless of this setting</td><td><code>false</code></td></tr>
           </tbody>
         </table>
 

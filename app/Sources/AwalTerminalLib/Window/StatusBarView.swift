@@ -88,6 +88,11 @@ class StatusBarView: NSView, NSMenuDelegate {
     private var remoteBadgeLeadingToDanger: NSLayoutConstraint!
     private var remoteBadgeLeadingToModel: NSLayoutConstraint!
 
+    // Toggle constraints for awake badge leading
+    private var awakeBadgeLeadingToRemote: NSLayoutConstraint!
+    private var awakeBadgeLeadingToDanger: NSLayoutConstraint!
+    private var awakeBadgeLeadingToModel: NSLayoutConstraint!
+
     private let dangerBadge: NSTextField = {
         let label = NSTextField(labelWithString: "DANGER")
         label.font = NSFont.monospacedSystemFont(ofSize: 9.0, weight: .medium)
@@ -122,10 +127,29 @@ class StatusBarView: NSView, NSMenuDelegate {
         return label
     }()
 
+    private let awakeBadge: NSTextField = {
+        let label = NSTextField(labelWithString: "AWAKE")
+        label.font = NSFont.monospacedSystemFont(ofSize: 9.0, weight: .medium)
+        label.textColor = NSColor(red: 0.3, green: 0.85, blue: 0.4, alpha: 0.9)
+        label.backgroundColor = NSColor(red: 0.3, green: 0.85, blue: 0.4, alpha: 0.12)
+        label.drawsBackground = true
+        label.isBordered = false
+        label.isEditable = false
+        label.wantsLayer = true
+        label.layer?.cornerRadius = 3
+        label.layer?.borderWidth = 1
+        label.layer?.borderColor = NSColor(red: 0.3, green: 0.85, blue: 0.4, alpha: 0.35).cgColor
+        label.alignment = .center
+        label.isHidden = true
+        return label
+    }()
+
     private var remoteControlPopover: NSPopover?
     var onRemoteControlBadgeClicked: (() -> Void)?
+    var onAwakeBadgeClicked: (() -> Void)?
 
-    // Toggle constraints for generating label leading (collapse remote badge space when hidden)
+    // Toggle constraints for generating label leading (collapse badge space when hidden)
+    private var generatingLeadingToAwake: NSLayoutConstraint!
     private var generatingLeadingToRemote: NSLayoutConstraint!
 
     private let generatingLabel = NSTextField(labelWithString: "")
@@ -241,6 +265,12 @@ class StatusBarView: NSView, NSMenuDelegate {
         let clickGesture = NSClickGestureRecognizer(target: self, action: #selector(remoteControlBadgeTapped(_:)))
         remoteControlBadge.addGestureRecognizer(clickGesture)
 
+        // Awake badge (after remote control badge)
+        awakeBadge.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(awakeBadge)
+        let awakeClickGesture = NSClickGestureRecognizer(target: self, action: #selector(awakeBadgeTapped(_:)))
+        awakeBadge.addGestureRecognizer(awakeClickGesture)
+
         // Generating indicator (fixed-width, between model and sep1)
         generatingLabel.font = monoFont
         generatingLabel.textColor = NSColor(red: 120.0/255.0, green: 220.0/255.0, blue: 120.0/255.0, alpha: 1.0)
@@ -342,6 +372,9 @@ class StatusBarView: NSView, NSMenuDelegate {
             // Remote control badge (leading is toggled dynamically)
             remoteControlBadge.centerYAnchor.constraint(equalTo: centerYAnchor),
 
+            // Awake badge (leading is toggled dynamically)
+            awakeBadge.centerYAnchor.constraint(equalTo: centerYAnchor),
+
             // Generating dots (fixed width, collapses to 0 when idle)
             generatingLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
 
@@ -420,13 +453,23 @@ class StatusBarView: NSView, NSMenuDelegate {
         generatingWidthConstraint = generatingLabel.widthAnchor.constraint(equalToConstant: 0)
         generatingWidthConstraint.isActive = true
 
-        // Toggle constraints: generating label leading anchors to badge (visible) or model (hidden)
+        // Toggle constraints: generating label leading anchors to rightmost visible badge or model
+        generatingLeadingToAwake = generatingLabel.leadingAnchor.constraint(equalTo: awakeBadge.trailingAnchor, constant: 6)
         generatingLeadingToRemote = generatingLabel.leadingAnchor.constraint(equalTo: remoteControlBadge.trailingAnchor, constant: 6)
         generatingLeadingToBadge = generatingLabel.leadingAnchor.constraint(equalTo: dangerBadge.trailingAnchor, constant: 6)
         generatingLeadingToModel = generatingLabel.leadingAnchor.constraint(equalTo: modelButton.trailingAnchor, constant: 6)
+        generatingLeadingToAwake.isActive = false
         generatingLeadingToRemote.isActive = false
         generatingLeadingToBadge.isActive = false
         generatingLeadingToModel.isActive = true
+
+        // Toggle constraints: awake badge anchors to remote (visible) or danger or model
+        awakeBadgeLeadingToRemote = awakeBadge.leadingAnchor.constraint(equalTo: remoteControlBadge.trailingAnchor, constant: 6)
+        awakeBadgeLeadingToDanger = awakeBadge.leadingAnchor.constraint(equalTo: dangerBadge.trailingAnchor, constant: 6)
+        awakeBadgeLeadingToModel = awakeBadge.leadingAnchor.constraint(equalTo: modelButton.trailingAnchor, constant: 6)
+        awakeBadgeLeadingToRemote.isActive = false
+        awakeBadgeLeadingToDanger.isActive = false
+        awakeBadgeLeadingToModel.isActive = false
 
         // Toggle constraints: remote badge anchors to danger (visible) or model (hidden)
         remoteBadgeLeadingToDanger = remoteControlBadge.leadingAnchor.constraint(equalTo: dangerBadge.trailingAnchor, constant: 6)
@@ -931,7 +974,13 @@ class StatusBarView: NSView, NSMenuDelegate {
         updateGeneratingLeadingConstraint()
     }
 
+    func setAwake(_ active: Bool) {
+        awakeBadge.isHidden = !active
+        updateGeneratingLeadingConstraint()
+    }
+
     private func updateGeneratingLeadingConstraint() {
+        let awakeVisible = !awakeBadge.isHidden
         let remoteVisible = !remoteControlBadge.isHidden
         let dangerVisible = !dangerBadge.isHidden
 
@@ -946,11 +995,28 @@ class StatusBarView: NSView, NSMenuDelegate {
             }
         }
 
-        // Toggle generating label leading anchor
+        // Toggle awake badge leading anchor
+        awakeBadgeLeadingToRemote.isActive = false
+        awakeBadgeLeadingToDanger.isActive = false
+        awakeBadgeLeadingToModel.isActive = false
+        if awakeVisible {
+            if remoteVisible {
+                awakeBadgeLeadingToRemote.isActive = true
+            } else if dangerVisible {
+                awakeBadgeLeadingToDanger.isActive = true
+            } else {
+                awakeBadgeLeadingToModel.isActive = true
+            }
+        }
+
+        // Toggle generating label leading anchor — chain to rightmost visible badge
+        generatingLeadingToAwake.isActive = false
         generatingLeadingToRemote.isActive = false
         generatingLeadingToBadge.isActive = false
         generatingLeadingToModel.isActive = false
-        if remoteVisible {
+        if awakeVisible {
+            generatingLeadingToAwake.isActive = true
+        } else if remoteVisible {
             generatingLeadingToRemote.isActive = true
         } else if dangerVisible {
             generatingLeadingToBadge.isActive = true
@@ -965,9 +1031,14 @@ class StatusBarView: NSView, NSMenuDelegate {
 
     /// Exposed for popover positioning.
     var remoteControlBadgeView: NSView { remoteControlBadge }
+    var awakeBadgeView: NSView { awakeBadge }
 
     @objc private func remoteControlBadgeTapped(_ sender: Any) {
         onRemoteControlBadgeClicked?()
+    }
+
+    @objc private func awakeBadgeTapped(_ sender: Any) {
+        onAwakeBadgeClicked?()
     }
 
     func setGenerating(_ generating: Bool) {
