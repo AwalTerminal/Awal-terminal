@@ -1025,14 +1025,25 @@ impl Screen {
         abs_row: i64,
         results: &mut Vec<(usize, i64)>,
     ) {
-        if query_chars.is_empty() || line_chars.len() < query_chars.len() {
+        let qlen = query_chars.len();
+        if qlen == 0 || line_chars.len() < qlen {
             return;
         }
-        let lower_line: Vec<char> = line_chars.iter().flat_map(|c| c.to_lowercase()).collect();
-        for col in 0..=lower_line.len() - query_chars.len() {
-            if lower_line[col..col + query_chars.len()] == *query_chars {
-                results.push((col, abs_row));
+        // Compare in-place without allocating a lowercase copy of the entire line
+        'outer: for col in 0..=line_chars.len() - qlen {
+            for (i, &qc) in query_chars.iter().enumerate() {
+                let lc = line_chars[col + i];
+                // Fast path: ASCII lowercase comparison
+                let matches = if lc.is_ascii() && qc.is_ascii() {
+                    lc.to_ascii_lowercase() == qc.to_ascii_lowercase()
+                } else {
+                    lc.to_lowercase().eq(qc.to_lowercase())
+                };
+                if !matches {
+                    continue 'outer;
+                }
             }
+            results.push((col, abs_row));
         }
     }
 
