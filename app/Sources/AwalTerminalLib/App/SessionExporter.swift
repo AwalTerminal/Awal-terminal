@@ -25,6 +25,19 @@ class SessionExporter {
         completion: @escaping (Result<URL, Error>) -> Void
     ) {
         DispatchQueue.global(qos: .userInitiated).async {
+            // Check available disk space (estimate ~2MB per frame as upper bound)
+            let outputDir = outputURL.deletingLastPathComponent()
+            if let attrs = try? FileManager.default.attributesOfFileSystem(forPath: outputDir.path),
+               let freeSpace = attrs[.systemFreeSize] as? UInt64 {
+                // Rough estimate: recording file size * 10 as safety margin for uncompressed frames
+                let recSize = (try? FileManager.default.attributesOfItem(atPath: recordingPath))?[.size] as? UInt64 ?? 0
+                let estimatedNeeded = max(recSize * 10, 50 * 1024 * 1024) // at least 50MB
+                if freeSpace < estimatedNeeded {
+                    DispatchQueue.main.async { completion(.failure(ExportError.insufficientDiskSpace(needed: estimatedNeeded, available: freeSpace))) }
+                    return
+                }
+            }
+
             guard let recording = at_recording_load(recordingPath.cString(using: .utf8)) else {
                 DispatchQueue.main.async { completion(.failure(ExportError.failedToLoad)) }
                 return
@@ -217,6 +230,7 @@ class SessionExporter {
         case emptyRecording
         case failedToCreateDestination
         case failedToFinalize
+        case insufficientDiskSpace(needed: UInt64, available: UInt64)
 
         var errorDescription: String? {
             switch self {
@@ -224,6 +238,10 @@ class SessionExporter {
             case .emptyRecording: return "Recording has no frames"
             case .failedToCreateDestination: return "Failed to create export destination"
             case .failedToFinalize: return "Failed to finalize export"
+            case .insufficientDiskSpace(let needed, let available):
+                let neededMB = needed / (1024 * 1024)
+                let availMB = available / (1024 * 1024)
+                return "Insufficient disk space: need ~\(neededMB)MB, \(availMB)MB available"
             }
         }
     }
