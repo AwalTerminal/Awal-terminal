@@ -169,6 +169,31 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         )
         tab.sidePanelWidthConstraint = widthConstraint
 
+        // Determine the bottom anchor for the main content area (split container + side panel)
+        #if DEBUG
+        let console = tab.debugConsole
+        console.translatesAutoresizingMaskIntoConstraints = false
+        console.wantsLayer = true
+        console.layer?.masksToBounds = true
+        contentArea.addSubview(console)
+
+        tab.debugConsoleHeightConstraint?.isActive = false
+        let consoleHeight = console.isPanelVisible ? DebugConsoleView.defaultHeight : 0
+        let heightConstraint = console.heightAnchor.constraint(equalToConstant: consoleHeight)
+        tab.debugConsoleHeightConstraint = heightConstraint
+
+        NSLayoutConstraint.activate([
+            console.leadingAnchor.constraint(equalTo: contentArea.leadingAnchor),
+            console.trailingAnchor.constraint(equalTo: contentArea.trailingAnchor),
+            console.bottomAnchor.constraint(equalTo: tab.statusBar.topAnchor),
+            heightConstraint,
+        ])
+
+        let bottomAnchorTarget = console.topAnchor
+        #else
+        let bottomAnchorTarget = tab.statusBar.topAnchor
+        #endif
+
         NSLayoutConstraint.activate([
             tab.statusBar.leadingAnchor.constraint(equalTo: contentArea.leadingAnchor),
             tab.statusBar.trailingAnchor.constraint(equalTo: contentArea.trailingAnchor),
@@ -178,14 +203,14 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
             // AI Side Panel on the right
             tab.aiSidePanel.trailingAnchor.constraint(equalTo: contentArea.trailingAnchor),
             tab.aiSidePanel.topAnchor.constraint(equalTo: contentArea.topAnchor),
-            tab.aiSidePanel.bottomAnchor.constraint(equalTo: tab.statusBar.topAnchor),
+            tab.aiSidePanel.bottomAnchor.constraint(equalTo: bottomAnchorTarget),
             widthConstraint,
 
             // Terminal fills the remaining space
             tab.splitContainer.leadingAnchor.constraint(equalTo: contentArea.leadingAnchor),
             tab.splitContainer.trailingAnchor.constraint(equalTo: tab.aiSidePanel.leadingAnchor),
             tab.splitContainer.topAnchor.constraint(equalTo: contentArea.topAnchor),
-            tab.splitContainer.bottomAnchor.constraint(equalTo: tab.statusBar.topAnchor),
+            tab.splitContainer.bottomAnchor.constraint(equalTo: bottomAnchorTarget),
         ])
 
         window?.makeFirstResponder(tab.splitContainer.focusedTerminal)
@@ -200,6 +225,9 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         tab.splitContainer.removeFromSuperview()
         tab.statusBar.removeFromSuperview()
         tab.aiSidePanel.removeFromSuperview()
+        #if DEBUG
+        tab.debugConsole.removeFromSuperview()
+        #endif
         tab.statusBar.isPaused = true
     }
 
@@ -962,6 +990,22 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
     }
 
     // MARK: - AI Side Panel
+
+    #if DEBUG
+    @objc func toggleDebugConsole(_ sender: Any?) {
+        let tab = activeTab
+        tab.debugConsole.toggle()
+
+        let targetHeight: CGFloat = tab.debugConsole.isPanelVisible ? DebugConsoleView.defaultHeight : 0
+        tab.debugConsoleHeightConstraint?.constant = targetHeight
+
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.2
+            context.allowsImplicitAnimation = true
+            self.contentArea.layoutSubtreeIfNeeded()
+        }
+    }
+    #endif
 
     @objc func toggleAISidePanel(_ sender: Any?) {
         let tab = activeTab

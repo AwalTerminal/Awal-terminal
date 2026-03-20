@@ -248,7 +248,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
                     scale: 2.0
                 )
             } catch {
-                NSLog("GIF export: MetalRenderer init failed: \(error.localizedDescription)")
+                debugLog("GIF export: MetalRenderer init failed: \(error.localizedDescription)")
                 try? FileManager.default.removeItem(at: url)
                 return
             }
@@ -659,6 +659,13 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
         let recordItem = NSMenuItem(title: "Start/Stop Recording", action: #selector(toggleRecording(_:)), keyEquivalent: "r")
         recordItem.keyEquivalentModifierMask = [.command, .option, .shift]
         viewMenu.addItem(recordItem)
+
+        #if DEBUG
+        viewMenu.addItem(NSMenuItem.separator())
+        let debugConsoleItem = NSMenuItem(title: "Debug Console", action: #selector(TerminalWindowController.toggleDebugConsole(_:)), keyEquivalent: "d")
+        debugConsoleItem.keyEquivalentModifierMask = [.command, .option]
+        viewMenu.addItem(debugConsoleItem)
+        #endif
 
         viewMenuItem.submenu = viewMenu
         mainMenu.addItem(viewMenuItem)

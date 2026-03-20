@@ -19,6 +19,11 @@ class TabState {
     /// Stored constraint for animating side panel width.
     var sidePanelWidthConstraint: NSLayoutConstraint?
 
+    #if DEBUG
+    var debugConsole = DebugConsoleView()
+    var debugConsoleHeightConstraint: NSLayoutConstraint?
+    #endif
+
     var title: String {
         if let custom = customTitle { return custom }
         let model = statusBar.currentModelName.isEmpty ? "Shell" : statusBar.currentModelName
