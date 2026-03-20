@@ -27,8 +27,8 @@ pub struct OutputRegion {
     pub line_count: usize, // number of lines in this region
 }
 
-/// Known tool names used by Claude Code.
-const TOOL_NAMES: &[&str] = &[
+/// Default tool names used by Claude Code.
+const DEFAULT_TOOL_NAMES: &[&str] = &[
     "Read",
     "Write",
     "Edit",
@@ -44,6 +44,10 @@ const TOOL_NAMES: &[&str] = &[
     "AskUser",
     "NotebookEdit",
     "MultiEdit",
+    "Skill",
+    "TaskCreate",
+    "TaskUpdate",
+    "CronCreate",
 ];
 
 /// AI Output Analyzer — detects Claude Code patterns in terminal cell rows.
@@ -69,10 +73,16 @@ pub struct AiAnalyzer {
     remote_control_active: bool,
     /// The remote control session URL, if detected.
     remote_control_url: Option<String>,
+    /// Configurable tool names (default: DEFAULT_TOOL_NAMES).
+    tool_names: Vec<String>,
+    /// Pre-compiled tool header patterns: "ToolName(" and "ToolName ("
+    tool_patterns: Vec<(String, String)>,
 }
 
 impl AiAnalyzer {
     pub fn new() -> Self {
+        let tool_names: Vec<String> = DEFAULT_TOOL_NAMES.iter().map(|s| s.to_string()).collect();
+        let tool_patterns = Self::build_tool_patterns(&tool_names);
         Self {
             regions: Vec::new(),
             last_scrollback_len: 0,
@@ -85,7 +95,22 @@ impl AiAnalyzer {
             dismissed_plan_titles: Vec::new(),
             remote_control_active: false,
             remote_control_url: None,
+            tool_names,
+            tool_patterns,
         }
+    }
+
+    /// Set custom tool names (rebuilds match patterns).
+    pub fn set_tool_names(&mut self, names: Vec<String>) {
+        self.tool_patterns = Self::build_tool_patterns(&names);
+        self.tool_names = names;
+    }
+
+    fn build_tool_patterns(names: &[String]) -> Vec<(String, String)> {
+        names
+            .iter()
+            .map(|n| (format!("{}(", n), format!("{} (", n)))
+            .collect()
     }
 
     pub fn set_enabled(&mut self, enabled: bool) {
@@ -428,10 +453,9 @@ impl AiAnalyzer {
     }
 
     fn is_tool_header(&self, text: &str) -> bool {
-        // Claude Code tool headers contain tool names
-        for name in TOOL_NAMES {
-            // Pattern: "⏺ ToolName(" or "ToolName:" or "── ToolName"
-            if text.contains(&format!("{}(", name)) || text.contains(&format!("{} (", name)) {
+        // Claude Code tool headers contain tool names (use pre-compiled patterns)
+        for (pat_paren, pat_space) in &self.tool_patterns {
+            if text.contains(pat_paren.as_str()) || text.contains(pat_space.as_str()) {
                 return true;
             }
         }
@@ -453,8 +477,8 @@ impl AiAnalyzer {
     }
 
     fn extract_tool_label(&self, text: &str) -> String {
-        for name in TOOL_NAMES {
-            if let Some(pos) = text.find(name) {
+        for name in &self.tool_names {
+            if let Some(pos) = text.find(name.as_str()) {
                 // Try to extract tool name + first argument
                 let after = &text[pos..];
                 // Find the end of the tool call description
@@ -485,11 +509,28 @@ impl AiAnalyzer {
     }
 
     fn is_cost_line(&self, text: &str) -> bool {
-        // Token/cost patterns: "Xk input · Yk output" or "tokens:" or "$X.XX"
-        let lower = text.to_lowercase();
-        (lower.contains("token") && (lower.contains("input") || lower.contains("output")))
-            || (lower.contains("cost") && lower.contains('$'))
-            || (text.contains(" in ·") && text.contains(" out"))
+        // Fast path: check for the unique middle-dot pattern first (no allocation)
+        if text.contains(" in ·") && text.contains(" out") {
+            return true;
+        }
+        // Check for token/cost patterns (only lowercase if needed)
+        let has_dollar = text.contains('$');
+        let bytes = text.as_bytes();
+        let has_token = bytes.windows(5).any(|w| w.eq_ignore_ascii_case(b"token"));
+        if has_token {
+            let has_input = bytes.windows(5).any(|w| w.eq_ignore_ascii_case(b"input"));
+            let has_output = bytes.windows(6).any(|w| w.eq_ignore_ascii_case(b"output"));
+            if has_input || has_output {
+                return true;
+            }
+        }
+        if has_dollar {
+            let has_cost = bytes.windows(4).any(|w| w.eq_ignore_ascii_case(b"cost"));
+            if has_cost {
+                return true;
+            }
+        }
+        false
     }
 
     fn is_diff_line(&self, text: &str) -> bool {
