@@ -125,7 +125,6 @@ status_bar_bg = "#161616"
 
 [voice]
 enabled = true
-mode = "push_to_talk"
 whisper_model = "tiny.en"
 language = "en"
 vad_threshold = 0.02

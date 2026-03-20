@@ -872,26 +872,21 @@ truncate_length = 10000      # Characters to keep when truncating</code></pre>
         <h2>Voice Input</h2>
         <p>Awal Terminal includes voice input powered by Apple's on-device speech recognition (SFSpeechRecognizer).</p>
 
-        <h3>Input Modes</h3>
+        <h3>How It Works</h3>
         <div class="feature-grid">
           <div class="feature-card">
             <strong>Push-to-Talk</strong>
             <span>Hold Ctrl+Shift+Space (configurable) to record. Release to transcribe.</span>
           </div>
           <div class="feature-card">
-            <strong>Continuous Listening <span style="color: var(--text-muted); font-size: 0.85em;">(coming soon)</span></strong>
-            <span>Always-on with Voice Activity Detection (VAD) gating. Currently disabled.</span>
-          </div>
-          <div class="feature-card">
-            <strong>Wake Word Mode <span style="color: var(--text-muted); font-size: 0.85em;">(coming soon)</span></strong>
-            <span>Configurable trigger phrase (default: "hey terminal"). Currently disabled.</span>
-          </div>
-          <div class="feature-card">
             <strong>Dictation Mode</strong>
             <span>Transcribed text is typed directly as terminal input.</span>
           </div>
+          <div class="feature-card">
+            <strong>On-Device Processing</strong>
+            <span>All transcription happens locally via Apple's SFSpeechRecognizer. No data leaves your machine.</span>
+          </div>
         </div>
-        <p>VAD sensitivity threshold is configurable in <code>config.toml</code>.</p>
 
         <h3>Voice Commands</h3>
         <table class="doc-table">
