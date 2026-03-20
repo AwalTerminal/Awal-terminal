@@ -860,6 +860,33 @@ pub extern "C" fn at_surface_clear_plan_title(surface: *mut ATSurface) {
     surface.analyzer.clear_plan_title();
 }
 
+/// Check if remote control mode has been detected.
+#[no_mangle]
+pub extern "C" fn at_surface_is_remote_control_active(surface: *const ATSurface) -> bool {
+    let surface = ref_or!(surface, false);
+    surface.analyzer.is_remote_control_active()
+}
+
+/// Get the remote control session URL. Returns a C string that must be freed with `at_free_string`, or null.
+#[no_mangle]
+pub extern "C" fn at_surface_get_remote_control_url(surface: *const ATSurface) -> *mut c_char {
+    let surface = ref_or!(surface, std::ptr::null_mut());
+    match surface.analyzer.remote_control_url() {
+        Some(url) => match CString::new(url) {
+            Ok(cs) => cs.into_raw(),
+            Err(_) => std::ptr::null_mut(),
+        },
+        None => std::ptr::null_mut(),
+    }
+}
+
+/// Clear remote control state.
+#[no_mangle]
+pub extern "C" fn at_surface_clear_remote_control(surface: *mut ATSurface) {
+    let surface = mut_ref_or!(surface);
+    surface.analyzer.clear_remote_control();
+}
+
 /// Manually trigger AI analysis (e.g. after scrollback changes without PTY activity).
 #[no_mangle]
 pub extern "C" fn at_surface_analyze(surface: *mut ATSurface) {

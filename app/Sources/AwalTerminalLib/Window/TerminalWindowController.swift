@@ -583,6 +583,10 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
             } else {
                 tab.statusBar.clearAIComponentInfo()
             }
+            // If remote control is enabled and this is a Claude session, show badge immediately
+            if AppConfig.shared.remoteControlEnabled && model.lowercased().contains("claude") {
+                tab.statusBar.setRemoteControl(true)
+            }
             self.reloadTabBar()
             self.updateWindowTitle()
         }
@@ -612,6 +616,15 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
             guard let self, let tab else { return }
             if tab.customTitle == title { return }
             self.showPlanRenameBanner(title: title, tab: tab)
+        }
+        terminal.onRemoteControlChanged = { [weak tab] active, url in
+            guard let tab else { return }
+            tab.statusBar.setRemoteControl(active)
+            tab.remoteControlURL = url
+        }
+        tab.statusBar.onRemoteControlBadgeClicked = { [weak self, weak tab] in
+            guard let self, let tab else { return }
+            self.showRemoteControlPopover(for: tab)
         }
         terminal.onGeneratingChanged = { [weak terminal, weak tab] isGenerating in
             guard let terminal, let tab else { return }
@@ -1086,6 +1099,20 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
 
         syncBannerView = banner
         banner.showAnimated()
+    }
+
+    private func showRemoteControlPopover(for tab: TabState) {
+        guard let url = tab.remoteControlURL else {
+            tab.statusBar.showFlash("Waiting for remote control URL…")
+            return
+        }
+        let controller = RemoteControlPopoverView(url: url)
+        let popover = NSPopover()
+        popover.contentViewController = controller
+        popover.behavior = .transient
+        popover.contentSize = controller.view.frame.size
+        let badge = tab.statusBar.remoteControlBadgeView
+        popover.show(relativeTo: badge.bounds, of: badge, preferredEdge: .maxY)
     }
 
     private func showPlanRenameBanner(title: String, tab: TabState) {

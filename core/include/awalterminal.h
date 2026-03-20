@@ -394,6 +394,21 @@ char *at_surface_get_plan_title(const struct ATSurface *surface);
 void at_surface_clear_plan_title(struct ATSurface *surface);
 
 /**
+ * Check if remote control mode has been detected.
+ */
+bool at_surface_is_remote_control_active(const struct ATSurface *surface);
+
+/**
+ * Get the remote control session URL. Returns a C string that must be freed with `at_free_string`, or null.
+ */
+char *at_surface_get_remote_control_url(const struct ATSurface *surface);
+
+/**
+ * Clear remote control state.
+ */
+void at_surface_clear_remote_control(struct ATSurface *surface);
+
+/**
  * Manually trigger AI analysis (e.g. after scrollback changes without PTY activity).
  */
 void at_surface_analyze(struct ATSurface *surface);

@@ -65,6 +65,10 @@ pub struct AiAnalyzer {
     plan_header_row: Option<i64>,
     /// Titles the user already dismissed (prevents re-showing).
     dismissed_plan_titles: Vec<String>,
+    /// Whether remote control mode has been detected.
+    remote_control_active: bool,
+    /// The remote control session URL, if detected.
+    remote_control_url: Option<String>,
 }
 
 impl AiAnalyzer {
@@ -79,6 +83,8 @@ impl AiAnalyzer {
             detected_plan_title: None,
             plan_header_row: None,
             dismissed_plan_titles: Vec::new(),
+            remote_control_active: false,
+            remote_control_url: None,
         }
     }
 
@@ -88,6 +94,8 @@ impl AiAnalyzer {
             self.regions.clear();
             self.current_region = None;
             self.in_code_fence = false;
+            self.remote_control_active = false;
+            self.remote_control_url = None;
         }
     }
 
@@ -98,6 +106,22 @@ impl AiAnalyzer {
     /// Get the latest detected plan title, if any.
     pub fn detected_plan_title(&self) -> Option<&str> {
         self.detected_plan_title.as_deref()
+    }
+
+    /// Check if remote control mode is active.
+    pub fn is_remote_control_active(&self) -> bool {
+        self.remote_control_active
+    }
+
+    /// Get the remote control session URL, if any.
+    pub fn remote_control_url(&self) -> Option<&str> {
+        self.remote_control_url.as_deref()
+    }
+
+    /// Clear remote control state.
+    pub fn clear_remote_control(&mut self) {
+        self.remote_control_active = false;
+        self.remote_control_url = None;
     }
 
     /// Clear the detected plan title and mark it as dismissed.
@@ -224,6 +248,22 @@ impl AiAnalyzer {
             || trimmed.contains("Here is Claude\u{2019}s plan:")
         {
             self.plan_header_row = Some(abs_row);
+        }
+
+        // Remote control detection
+        // Claude Code outputs: "/remote-control is active. Code in CLI or at"
+        // followed by a URL line, and later "Remote Control active" in the status area
+        if trimmed.contains("remote-control is active")
+            || trimmed.contains("Remote Control active")
+            || trimmed.contains("Remote Control connecting")
+            || trimmed.contains("claude.ai/code/session")
+        {
+            self.remote_control_active = true;
+            if self.remote_control_url.is_none() {
+                self.remote_control_url = Self::extract_url(trimmed);
+            }
+        } else if self.remote_control_active && self.remote_control_url.is_none() {
+            self.remote_control_url = Self::extract_url(trimmed);
         }
 
         // Detect code fence boundaries
@@ -519,6 +559,21 @@ impl AiAnalyzer {
             }
         }
         summary
+    }
+
+    /// Extract a URL starting with https:// from a line of text.
+    fn extract_url(text: &str) -> Option<String> {
+        if let Some(start) = text.find("https://") {
+            let url_part = &text[start..];
+            let end = url_part
+                .find(|c: char| c.is_whitespace() || c == ')' || c == '>' || c == '"' || c == '\'')
+                .unwrap_or(url_part.len());
+            let url = &url_part[..end];
+            if url.len() > 10 {
+                return Some(url.to_string());
+            }
+        }
+        None
     }
 
     /// Extract file path from a tool label like "Read(src/main.rs)".

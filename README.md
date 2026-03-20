@@ -53,6 +53,7 @@ A native macOS terminal built from scratch with Swift and Rust, designed specifi
 | Command Palette | Quick-access to all actions via `Cmd+Shift+P` with fuzzy search |
 | Copy as Markdown | Right-click or `Cmd+Shift+C` to copy terminal output with code fences, blockquotes, and formatting preserved |
 | Smart Autocomplete | File path and command history completions as you type |
+| Remote Control | Detect Claude Code's remote control mode, show a REMOTE badge in the status bar, and display a QR code popover to connect from your phone. Enable from the View menu |
 | Fully Configurable | Theme colors, fonts, keybindings, and voice settings in a single config file |
 
 ## Getting Started
@@ -139,6 +140,7 @@ auto_detect = true
 auto_sync = true
 security_scan = true
 require_hook_approval = true
+remote_control = false
 
 [ai_components.registry.awal-components]
 url = "https://github.com/AwalTerminal/awal-ai-components-registry.git"

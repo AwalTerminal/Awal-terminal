@@ -631,6 +631,16 @@ worktree_branch_prefix = "awal/tab"  # default prefix for worktree branches</cod
           <li><strong>Git changes tree</strong> &mdash; with status badges (M/A/D/R/?). Click a file to view its colored diff in a popover; double-click to copy its path</li>
           <li><strong>Elapsed time</strong> &mdash; since session start</li>
         </ul>
+
+        <h3>Remote Control</h3>
+        <p>Awal Terminal automatically detects when Claude Code enables remote control mode. When detected:</p>
+        <ul>
+          <li>A blue <strong>REMOTE</strong> badge appears in the status bar</li>
+          <li>Click the badge to open a QR code popover &mdash; scan it with your phone to connect to the session</li>
+          <li>The popover also shows the session URL with a <strong>Copy URL</strong> button</li>
+          <li>Use <strong>View &rarr; Enable Remote Control</strong> to send the <code>/remote-control</code> command to an active Claude session</li>
+          <li>Remote control state automatically resets when a new session starts</li>
+        </ul>
       </section>
 
       <!-- 6. LLM Integration -->

@@ -81,6 +81,10 @@ class TerminalView: NSView {
     var onProcessExited: (() -> Void)?
     var onWorkspacePicked: ((_ dir: String, _ completion: @escaping (String) -> Void) -> Void)?
     var onPlanTitleDetected: ((_ title: String) -> Void)?
+    var onRemoteControlChanged: ((_ active: Bool, _ url: String?) -> Void)?
+
+    private(set) var isRemoteControlActive = false
+    private(set) var remoteControlURL: String?
 
     // Deferred launch for new panes (set before adding to window)
     var pendingLaunchModel: MenuItem?
@@ -1085,6 +1089,9 @@ class TerminalView: NSView {
 
         activeModelName = model.name
         activeProvider = model.provider
+        isRemoteControlActive = false
+        remoteControlURL = nil
+        if let s = surface { at_surface_clear_remote_control(s) }
         appState = .terminal
         menuRenderPending = false
         deferredMenuRender?.cancel()
@@ -1146,6 +1153,12 @@ class TerminalView: NSView {
         // Danger mode: append skip-permissions flag if supported
         isDangerMode = dangerMode
         if dangerMode, commandOverride == nil, let flag = model.dangerFlag, !flag.isEmpty {
+            modelCmd += " \(flag)"
+        }
+
+        // Remote control: append --remote-control flag if supported
+        if AppConfig.shared.remoteControlEnabled, commandOverride == nil,
+           let flag = model.remoteControlFlag, !flag.isEmpty {
             modelCmd += " \(flag)"
         }
 
@@ -1407,6 +1420,23 @@ class TerminalView: NSView {
                 at_free_string(titlePtr)
                 at_surface_clear_plan_title(s)
                 onPlanTitleDetected?(title)
+            }
+
+            // Check for remote control activation and URL updates
+            let rcActive = at_surface_is_remote_control_active(s)
+            if rcActive {
+                var url: String?
+                if let urlPtr = at_surface_get_remote_control_url(s) {
+                    url = String(cString: urlPtr)
+                    at_free_string(urlPtr)
+                }
+                let isNew = !isRemoteControlActive
+                let urlChanged = url != nil && url != remoteControlURL
+                if isNew || urlChanged {
+                    isRemoteControlActive = true
+                    remoteControlURL = url
+                    onRemoteControlChanged?(true, url)
+                }
             }
 
             let isSynchronized = at_surface_is_synchronized(s)

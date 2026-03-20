@@ -139,6 +139,12 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
         CommandPaletteWindow.toggle()
     }
 
+    @objc func toggleRemoteControl(_ sender: Any?) {
+        let current = AppConfig.shared.remoteControlEnabled
+        ConfigWriter.updateValue(key: "ai_components.remote_control", value: current ? "false" : "true")
+        AppConfig.reload()
+    }
+
     @objc func toggleRecording(_ sender: Any?) {
         guard let controller = NSApp.keyWindow?.windowController as? TerminalWindowController else { return }
         let tab = controller.tabs[controller.activeTabIndex]
@@ -498,6 +504,9 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
             let hasFindings = RegistryManager.shared.scanResults.values.contains { !$0.isEmpty }
             return hasFindings
         }
+        if menuItem.action == #selector(toggleRemoteControl(_:)) {
+            menuItem.state = AppConfig.shared.remoteControlEnabled ? .on : .off
+        }
         if menuItem.action == #selector(toggleVoiceInput(_:)) {
             menuItem.state = VoiceInputController.shared.state != .idle ? .on : .off
         }
@@ -588,7 +597,6 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
         let paletteItem = NSMenuItem(title: "Command Palette", action: #selector(showCommandPalette(_:)), keyEquivalent: "p")
         paletteItem.keyEquivalentModifierMask = [.command, .shift]
         viewMenu.addItem(paletteItem)
-        viewMenu.addItem(NSMenuItem.separator())
 
         let sidePanelItem = NSMenuItem(title: "AI Side Panel", action: #selector(TerminalWindowController.toggleAISidePanel(_:)), keyEquivalent: "i")
         sidePanelItem.keyEquivalentModifierMask = [.command, .shift]
@@ -603,6 +611,9 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
         let dangerItem = NSMenuItem(title: "Danger Mode", action: #selector(toggleDangerMode(_:)), keyEquivalent: "")
         dangerItem.target = self
         viewMenu.addItem(dangerItem)
+
+        let remoteItem = NSMenuItem(title: "Remote Control (Claude only)", action: #selector(toggleRemoteControl(_:)), keyEquivalent: "")
+        viewMenu.addItem(remoteItem)
 
         let notifItem = NSMenuItem(title: "Notifications", action: #selector(toggleNotifications(_:)), keyEquivalent: "")
         viewMenu.addItem(notifItem)
@@ -759,6 +770,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
         "sync_components": "Sync Now",
         "mission_control": "Mission Control",
         "start_recording": "Start/Stop Recording",
+        "remote_control": "Remote Control (Claude only)",
         "command_palette": "Command Palette",
     ]
 

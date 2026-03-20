@@ -11,6 +11,7 @@ class TabState {
     var hasSession = false
     var isDangerMode = false
     var worktreeInfo: WorktreeInfo?
+    var remoteControlURL: String?
     /// Set when the user manually closes the AI side panel; prevents auto-reopen.
     var userClosedAIPanel = false
 

@@ -95,6 +95,9 @@ struct AppConfig {
     // Danger Mode (skip AI tool confirmation prompts)
     var dangerModeEnabled: Bool = false
 
+    // Remote Control (auto-launch with --remote-control flag)
+    var remoteControlEnabled: Bool = false
+
     // AI Components Export
     var aiComponentsExportEnabled: Bool = false
     var aiComponentsExportFormats: [String] = []
@@ -211,6 +214,9 @@ struct AppConfig {
 
         // Danger mode
         if let v = parsed["ai_components.danger_mode"] { config.dangerModeEnabled = v == "true" }
+
+        // Remote control
+        if let v = parsed["ai_components.remote_control"] { config.remoteControlEnabled = v == "true" }
 
         // AI Components
         if let v = parsed["ai_components.enabled"] { config.aiComponentsEnabled = v == "true" }
