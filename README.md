@@ -33,7 +33,7 @@ A native macOS terminal built from scratch with Swift and Rust, designed specifi
 | AI Side Panel | Track token usage, costs, context window, file references, and git changes in real time |
 | Smart Output Folding | AI tool calls, code blocks, and diffs auto-collapse into foldable regions. Click to expand |
 | Screenshot to Session | Press `Cmd+Shift+S` or click the camera icon to capture a screen region and paste its file path into the terminal. Perfect for sharing screenshots with AI agents |
-| Voice Input | Push-to-talk voice input powered by on-device speech recognition. Continuous and wake word modes coming soon |
+| Voice Input | Push-to-talk voice input powered by on-device speech recognition |
 | AI Components | Auto-detect your project stack and inject skills, rules, prompts, agents, MCP servers, and hooks into AI sessions from shared registries. Supports git, [localskills](https://localskills.dev), and local directory sources. Visual mapping editor for non-standard registry structures. Per-component enable/disable, security scanning, hook approval gate, and import/export |
 | Sub-Stack Detection | Automatically detects frameworks like Next.js, Django, Flask, Vapor, NestJS, and more on top of base stack detection for more targeted component injection |
 | Resume Sessions | Browse and resume past AI sessions from the startup menu. Claude sessions show turn count and time ago; Codex and Gemini launch their built-in session pickers |
@@ -55,6 +55,8 @@ A native macOS terminal built from scratch with Swift and Rust, designed specifi
 | Smart Autocomplete | File path and command history completions as you type |
 | Remote Control | Detect Claude Code's remote control mode, show a REMOTE badge in the status bar, and display a QR code popover to connect from your phone. Enable from the View menu |
 | Prevent Sleep | Prevent macOS from sleeping during active terminal sessions. Auto-activates during remote control sessions |
+| Split Panes | Split terminal tabs horizontally or vertically for side-by-side sessions within a single tab |
+| Stealth Mode | Full-screen black overlay that hides all terminal content while your session continues safely in the background. Press any key to return |
 | Fully Configurable | Theme colors, fonts, keybindings, and voice settings in a single config file |
 
 ## Getting Started
@@ -130,7 +132,6 @@ vad_threshold = 0.02
 dictation_auto_enter = false
 dictation_auto_space = true
 # command_prefix = ""
-# wake_word = "hey terminal"
 
 [recording]
 max_duration = 300

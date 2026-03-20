@@ -585,6 +585,19 @@ worktree_branch_prefix = "awal/tab"  # default prefix for worktree branches</cod
         <h3>Plan-Aware Tab Naming</h3>
         <p>When an AI agent outputs a plan header (e.g. "Here is Claude's plan:"), Awal detects the plan title from the following line and shows a banner at the bottom of the terminal offering to rename the tab. Click <strong>Rename</strong> to apply the plan title as the tab name, or dismiss the banner to keep the current title. Previously dismissed titles won't re-trigger.</p>
 
+        <h3>Split Panes</h3>
+        <p>Split any tab into multiple panes for side-by-side terminal sessions:</p>
+        <table class="doc-table">
+          <thead><tr><th>Shortcut</th><th>Action</th></tr></thead>
+          <tbody>
+            <tr><td><code>Cmd+D</code></td><td>Split horizontally (side by side)</td></tr>
+            <tr><td><code>Cmd+Shift+D</code></td><td>Split vertically (top and bottom)</td></tr>
+            <tr><td><code>Cmd+Option+Arrow</code></td><td>Move focus between panes</td></tr>
+            <tr><td><code>Cmd+Shift+W</code></td><td>Close the focused pane</td></tr>
+          </tbody>
+        </table>
+        <p>Each pane runs its own independent terminal session. Drag the divider between panes to resize them.</p>
+
       </section>
 
       <!-- 4. Quick Terminal -->
@@ -640,6 +653,15 @@ worktree_branch_prefix = "awal/tab"  # default prefix for worktree branches</cod
           <li>The popover also shows the session URL with a <strong>Copy URL</strong> button</li>
           <li>Use <strong>View &rarr; Enable Remote Control</strong> to send the <code>/remote-control</code> command to an active Claude session</li>
           <li>Remote control state automatically resets when a new session starts</li>
+        </ul>
+
+        <h3>Stealth Mode</h3>
+        <p>Stealth mode covers all screens with a black overlay, hiding your terminal content while your session continues running safely in the background. Useful when you need to step away or share your screen without revealing terminal output.</p>
+        <ul>
+          <li>Activate from <strong>View &rarr; Stealth Mode</strong> (requires Prevent Sleep to be active)</li>
+          <li>A breathing LED indicator shows the terminal is still running behind the overlay</li>
+          <li>Press <strong>any key</strong> or <strong>click</strong> to dismiss the overlay and return to your session</li>
+          <li>Multi-monitor aware &mdash; all screens are covered simultaneously</li>
         </ul>
       </section>
 
@@ -1010,11 +1032,9 @@ command_palette = "cmd+shift+p"
 
 [voice]
 enabled = false
-mode = "push_to_talk"
 push_to_talk_key = "ctrl+shift+space"
 vad_threshold = 0.02
 language = "en"
-wake_word = "hey terminal"
 dictation_auto_enter = false
 dictation_auto_space = true
 
@@ -1085,7 +1105,7 @@ slugs = "ZpDEwZj1Yq"</code></pre>
         </ul>
 
         <h3>Voice Settings</h3>
-        <p>Enable voice input by setting <code>enabled = true</code> under <code>[voice]</code>. Available modes: <code>push_to_talk</code> and <code>dictation</code>. The <code>continuous</code> and <code>wake_word</code> modes are currently disabled and will be available in a future release. Configure sensitivity threshold, language, and wake word phrase.</p>
+        <p>Enable voice input by setting <code>enabled = true</code> under <code>[voice]</code>. Voice uses push-to-talk mode with on-device Whisper transcription. Configure the hotkey, sensitivity threshold, and language.</p>
 
         <h3>AI Components Settings</h3>
         <table class="doc-table">
