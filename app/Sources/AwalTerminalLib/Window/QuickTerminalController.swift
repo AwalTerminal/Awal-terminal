@@ -26,8 +26,11 @@ class QuickTerminalController {
         var ref: EventHotKeyRef?
         let modifiers: UInt32 = UInt32(controlKey)
 
-        RegisterEventHotKey(UInt32(kVK_ANSI_Grave), modifiers, hotKeyID,
+        let status = RegisterEventHotKey(UInt32(kVK_ANSI_Grave), modifiers, hotKeyID,
                             GetApplicationEventTarget(), 0, &ref)
+        if status != noErr {
+            NSLog("QuickTerminal: failed to register hotkey (Ctrl+`), status=\(status). Another app may have claimed it.")
+        }
         hotKeyRef = ref
 
         // Install handler
