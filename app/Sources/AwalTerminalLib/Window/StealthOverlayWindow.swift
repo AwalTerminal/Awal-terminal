@@ -10,6 +10,18 @@ class StealthOverlayWindow {
     private var previousKeyWindow: NSWindow?
     private var eventMonitor: Any?
 
+    private init() {
+        // Safety net: unhide cursor on app termination in case dismiss() never runs
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification,
+            object: nil, queue: .main
+        ) { [weak self] _ in
+            if self?.isActive == true {
+                NSCursor.unhide()
+            }
+        }
+    }
+
     func activate() {
         guard !isActive else { return }
         let isSleepPrevented = TerminalWindowTracker.shared.allControllers.contains { controller in
@@ -51,8 +63,24 @@ class StealthOverlayWindow {
                     ledView.widthAnchor.constraint(equalToConstant: 8),
                     ledView.heightAnchor.constraint(equalToConstant: 8),
                 ])
-                showIntroOverlay(in: contentView, ledView: ledView)
+                if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+                    // Skip intro animation, show LED immediately
+                    ledView.alphaValue = 1.0
+                    ledView.layer?.opacity = 0.6
+                } else {
+                    showIntroOverlay(in: contentView, ledView: ledView)
+                }
             }
+
+            // Post accessibility announcement
+            NSAccessibility.post(
+                element: window,
+                notification: .announcementRequested,
+                userInfo: [
+                    NSAccessibility.NotificationUserInfoKey.announcement: "Stealth mode activated. Press any key to return.",
+                    NSAccessibility.NotificationUserInfoKey.priority: NSAccessibilityPriorityLevel.high.rawValue,
+                ]
+            )
 
             window.makeKeyAndOrderFront(nil)
             window.makeFirstResponder(contentView)
@@ -160,8 +188,9 @@ class StealthOverlayWindow {
 
         NSCursor.unhide()
 
+        let duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0.0 : 0.2
         NSAnimationContext.runAnimationGroup({ context in
-            context.duration = 0.2
+            context.duration = duration
             for window in windows {
                 window.animator().alphaValue = 0.0
             }
