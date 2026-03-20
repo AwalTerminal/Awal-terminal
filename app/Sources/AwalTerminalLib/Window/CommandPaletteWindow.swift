@@ -174,7 +174,7 @@ class CommandPaletteWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
         for item in menu.items {
             if item.isSeparatorItem { continue }
             if let submenu = item.submenu {
-                collectMenuActions(submenu, prefix: item.title)
+                collectMenuActions(submenu, prefix: submenu.title)
                 continue
             }
             guard item.action != nil else { continue }
