@@ -237,14 +237,21 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
             let cellWidth = font.advancement(forGlyph: font.glyph(withName: "M")).width
             let cellHeight = ceil(font.ascender - font.descender + font.leading)
 
-            let renderer = MetalRenderer(
-                device: device,
-                font: font,
-                boldFont: boldFont,
-                cellWidth: cellWidth,
-                cellHeight: cellHeight,
-                scale: 2.0
-            )
+            let renderer: MetalRenderer
+            do {
+                renderer = try MetalRenderer(
+                    device: device,
+                    font: font,
+                    boldFont: boldFont,
+                    cellWidth: cellWidth,
+                    cellHeight: cellHeight,
+                    scale: 2.0
+                )
+            } catch {
+                NSLog("GIF export: MetalRenderer init failed: \(error.localizedDescription)")
+                try? FileManager.default.removeItem(at: url)
+                return
+            }
 
             tab?.statusBar.showFlash("Exporting…")
 
@@ -428,22 +435,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
     }
 
     @objc func setVoiceModePTT(_ sender: Any?) {
-        VoiceInputController.shared.mode = .pushToTalk
         VoiceInputController.shared.stop()
-    }
-
-    @objc func setVoiceModeContinuous(_ sender: Any?) {
-        VoiceInputController.shared.mode = .continuous
-        VoiceInputController.shared.stop()
-        VoiceInputController.shared.isEnabled = true
-        VoiceInputController.shared.startContinuous()
-    }
-
-    @objc func setVoiceModeWakeWord(_ sender: Any?) {
-        VoiceInputController.shared.mode = .wakeWord
-        VoiceInputController.shared.stop()
-        VoiceInputController.shared.isEnabled = true
-        VoiceInputController.shared.startContinuous()
     }
 
     func registerVoiceHotKey() {
@@ -479,8 +471,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
             let kind = Int(GetEventKind(event))
             DispatchQueue.main.async {
                 if kind == kEventHotKeyPressed {
-                    guard VoiceInputController.shared.isEnabled,
-                          VoiceInputController.shared.mode == .pushToTalk else { return }
+                    guard VoiceInputController.shared.isEnabled else { return }
                     delegate.isPTTPressed = true
                     VoiceInputController.shared.startPushToTalk()
                 } else if kind == kEventHotKeyReleased {
@@ -545,17 +536,17 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
             return isSleepPrevented
         }
         if menuItem.action == #selector(toggleVoiceInput(_:)) {
+            // Only enable voice input in LLM sessions (not plain Shell)
+            if let controller = NSApp.keyWindow?.windowController as? TerminalWindowController {
+                let model = controller.tabs[controller.activeTabIndex].statusBar.currentModelName
+                if model.isEmpty || model == "Shell" {
+                    return false
+                }
+            }
             menuItem.state = VoiceInputController.shared.state != .idle ? .on : .off
         }
-        let currentMode = VoiceInputController.shared.mode
         if menuItem.action == #selector(setVoiceModePTT(_:)) {
-            menuItem.state = currentMode == .pushToTalk ? .on : .off
-        }
-        if menuItem.action == #selector(setVoiceModeContinuous(_:)) {
-            return false
-        }
-        if menuItem.action == #selector(setVoiceModeWakeWord(_:)) {
-            return false
+            menuItem.state = .on
         }
         return true
     }
@@ -746,16 +737,6 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
         let pttItem = NSMenuItem(title: "Push-to-Talk Mode", action: #selector(setVoiceModePTT(_:)), keyEquivalent: "")
         pttItem.target = self
         voiceMenu.addItem(pttItem)
-
-        let continuousItem = NSMenuItem(title: "Continuous Mode", action: #selector(setVoiceModeContinuous(_:)), keyEquivalent: "")
-        continuousItem.target = self
-        continuousItem.isEnabled = false
-        voiceMenu.addItem(continuousItem)
-
-        let wakeWordItem = NSMenuItem(title: "Wake Word Mode", action: #selector(setVoiceModeWakeWord(_:)), keyEquivalent: "")
-        wakeWordItem.target = self
-        wakeWordItem.isEnabled = false
-        voiceMenu.addItem(wakeWordItem)
 
         voiceMenuItem.submenu = voiceMenu
         mainMenu.addItem(voiceMenuItem)

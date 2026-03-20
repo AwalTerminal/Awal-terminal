@@ -275,7 +275,23 @@ final class MetalRenderer {
         }
     }
 
-    init(device: MTLDevice, font: NSFont, boldFont: NSFont, cellWidth: CGFloat, cellHeight: CGFloat, scale: CGFloat, bgColor: NSColor? = nil, cursorColor cursorNSColor: NSColor? = nil) {
+    enum InitError: Error, LocalizedError {
+        case commandQueueFailed
+        case shaderCompileFailed(String)
+        case pipelineFailed(String)
+        case bufferFailed
+
+        var errorDescription: String? {
+            switch self {
+            case .commandQueueFailed: return "Metal: failed to create command queue"
+            case .shaderCompileFailed(let msg): return "Failed to compile Metal shaders: \(msg)"
+            case .pipelineFailed(let msg): return "Failed to create Metal pipeline: \(msg)"
+            case .bufferFailed: return "Metal: failed to create uniform buffer"
+            }
+        }
+    }
+
+    init(device: MTLDevice, font: NSFont, boldFont: NSFont, cellWidth: CGFloat, cellHeight: CGFloat, scale: CGFloat, bgColor: NSColor? = nil, cursorColor cursorNSColor: NSColor? = nil) throws {
         self.device = device
         self.cellWidth = cellWidth
         self.cellHeight = cellHeight
@@ -298,7 +314,7 @@ final class MetalRenderer {
             UInt8(cc.alphaComponent * 255)
         )
         guard let queue = device.makeCommandQueue() else {
-            fatalError("Metal: failed to create command queue")
+            throw InitError.commandQueueFailed
         }
         self.commandQueue = queue
         self.frameSemaphore = DispatchSemaphore(value: maxInflightFrames)
@@ -308,7 +324,7 @@ final class MetalRenderer {
         do {
             library = try device.makeLibrary(source: MetalRenderer.shaderSource, options: nil)
         } catch {
-            fatalError("Failed to compile Metal shaders: \(error)")
+            throw InitError.shaderCompileFailed(error.localizedDescription)
         }
 
         // Background pipeline (opaque + alpha blend for cursor)
@@ -325,7 +341,7 @@ final class MetalRenderer {
         do {
             bgPipeline = try device.makeRenderPipelineState(descriptor: bgDesc)
         } catch {
-            fatalError("Failed to create bg pipeline: \(error)")
+            throw InitError.pipelineFailed("bg: \(error.localizedDescription)")
         }
 
         // Glyph pipeline (alpha-blended)
@@ -342,7 +358,7 @@ final class MetalRenderer {
         do {
             glyphPipeline = try device.makeRenderPipelineState(descriptor: glyphDesc)
         } catch {
-            fatalError("Failed to create glyph pipeline: \(error)")
+            throw InitError.pipelineFailed("glyph: \(error.localizedDescription)")
         }
 
         // Line decoration pipeline (alpha-blended)
@@ -359,7 +375,7 @@ final class MetalRenderer {
         do {
             linePipeline = try device.makeRenderPipelineState(descriptor: lineDesc)
         } catch {
-            fatalError("Failed to create line pipeline: \(error)")
+            throw InitError.pipelineFailed("line: \(error.localizedDescription)")
         }
 
         // Atlas — rasterize glyphs at native pixel resolution
@@ -369,7 +385,7 @@ final class MetalRenderer {
         // Uniform buffer
         guard let ub = device.makeBuffer(length: MemoryLayout<Uniforms>.size,
                                         options: .storageModeShared) else {
-            fatalError("Metal: failed to create uniform buffer")
+            throw InitError.bufferFailed
         }
         self.uniformBuffer = ub
     }

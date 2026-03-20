@@ -372,14 +372,18 @@ class TerminalView: NSView {
         self.metalLayer = layer
         let scale = NSScreen.main?.backingScaleFactor ?? 2.0
         self.currentScale = scale
-        self.renderer = MetalRenderer(
-            device: device,
-            font: font,
-            boldFont: boldFont,
-            cellWidth: cellWidth,
-            cellHeight: cellHeight,
-            scale: scale
-        )
+        do {
+            self.renderer = try MetalRenderer(
+                device: device,
+                font: font,
+                boldFont: boldFont,
+                cellWidth: cellWidth,
+                cellHeight: cellHeight,
+                scale: scale
+            )
+        } catch {
+            NSLog("MetalRenderer init failed: \(error.localizedDescription). GPU rendering unavailable.")
+        }
 
         return layer
     }
@@ -545,14 +549,18 @@ class TerminalView: NSView {
                 // Stop display link while recreating renderer to prevent
                 // the callback from using the renderer mid-swap.
                 stopDisplayLink()
-                renderer = MetalRenderer(
-                    device: device,
-                    font: font,
-                    boldFont: boldFont,
-                    cellWidth: cellWidth,
-                    cellHeight: cellHeight,
-                    scale: scale
-                )
+                do {
+                    renderer = try MetalRenderer(
+                        device: device,
+                        font: font,
+                        boldFont: boldFont,
+                        cellWidth: cellWidth,
+                        cellHeight: cellHeight,
+                        scale: scale
+                    )
+                } catch {
+                    NSLog("MetalRenderer reinit failed: \(error.localizedDescription)")
+                }
                 startDisplayLink()
             }
         }
