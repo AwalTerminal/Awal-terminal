@@ -4,7 +4,9 @@ use std::os::raw::c_char;
 /// Magic bytes for .awalrec format.
 const MAGIC: [u8; 4] = [b'A', b'W', b'R', b'C'];
 /// Current recording format version.
-const FORMAT_VERSION: u32 = 1;
+/// v1: original format
+/// v2: adds keyframe index + CRC32 checksum trailer
+const FORMAT_VERSION: u32 = 2;
 
 /// A region snapshot for chapter markers in recordings.
 #[repr(C)]
@@ -65,6 +67,8 @@ pub struct Recording {
     keyframe_interval: u32,
     /// Frame counter since last keyframe.
     frames_since_keyframe: u32,
+    /// Index of frame indices that are keyframes (for O(1) lookup).
+    keyframe_index: Vec<u32>,
 }
 
 /// C-compatible region for FFI.
@@ -120,6 +124,7 @@ impl Recording {
             ],
             keyframe_interval: 300,
             frames_since_keyframe: 300, // Force keyframe on first frame
+            keyframe_index: Vec::new(),
         }
     }
 
@@ -144,7 +149,16 @@ impl Recording {
             let changed = cells_slice
                 .iter()
                 .zip(self.prev_cells.iter())
-                .any(|(a, b)| a.codepoint != b.codepoint || a.fg_r != b.fg_r || a.bg_r != b.bg_r);
+                .any(|(a, b)| {
+                    a.codepoint != b.codepoint
+                        || a.fg_r != b.fg_r
+                        || a.fg_g != b.fg_g
+                        || a.fg_b != b.fg_b
+                        || a.bg_r != b.bg_r
+                        || a.bg_g != b.bg_g
+                        || a.bg_b != b.bg_b
+                        || a.attrs != b.attrs
+                });
             if !changed {
                 // Check cursor change
                 if let Some(last) = self.frames.last() {
@@ -160,9 +174,12 @@ impl Recording {
 
         self.frames_since_keyframe += 1;
 
+        let frame_idx = self.frames.len() as u32;
+
         let data = if self.frames_since_keyframe >= self.keyframe_interval {
             // Keyframe
             self.frames_since_keyframe = 0;
+            self.keyframe_index.push(frame_idx);
             FrameData::Keyframe(cells_slice.to_vec())
         } else {
             // Delta: compare with previous
@@ -184,6 +201,7 @@ impl Recording {
             // If >50% changed, use keyframe instead
             if changes.len() > total / 2 {
                 self.frames_since_keyframe = 0;
+                self.keyframe_index.push(frame_idx);
                 FrameData::Keyframe(cells_slice.to_vec())
             } else {
                 FrameData::Delta(changes)
@@ -235,18 +253,30 @@ impl Recording {
             total
         ];
 
-        // Walk from the most recent keyframe up to and including idx
-        let mut start = idx;
-        for i in (0..=idx).rev() {
-            if matches!(self.frames[i].data, FrameData::Keyframe(_)) {
-                start = i;
-                break;
+        // Find the most recent keyframe at or before idx using the keyframe index
+        let start = if self.keyframe_index.is_empty() {
+            // Fallback: linear scan (for v1-loaded recordings without an index)
+            let mut s = 0;
+            for i in (0..=idx).rev() {
+                if matches!(self.frames[i].data, FrameData::Keyframe(_)) {
+                    s = i;
+                    break;
+                }
             }
-            if i == 0 {
-                start = 0;
-                break;
+            s
+        } else {
+            // Binary search for the largest keyframe index <= idx
+            match self.keyframe_index.binary_search(&(idx as u32)) {
+                Ok(pos) => self.keyframe_index[pos] as usize,
+                Err(pos) => {
+                    if pos > 0 {
+                        self.keyframe_index[pos - 1] as usize
+                    } else {
+                        0
+                    }
+                }
             }
-        }
+        };
 
         for i in start..=idx {
             match &self.frames[i].data {
@@ -339,6 +369,16 @@ impl Recording {
             }
         }
 
+        // Keyframe index (v2)
+        data.extend_from_slice(&(self.keyframe_index.len() as u32).to_le_bytes());
+        for &kf_idx in &self.keyframe_index {
+            data.extend_from_slice(&kf_idx.to_le_bytes());
+        }
+
+        // CRC32 checksum over everything before this point
+        let checksum = crc32(&data);
+        data.extend_from_slice(&checksum.to_le_bytes());
+
         match std::fs::write(path, &data) {
             Ok(_) => 0,
             Err(_) => -1,
@@ -360,7 +400,7 @@ impl Recording {
         pos += 4;
 
         let version = read_u32(&data, &mut pos)?;
-        if version != FORMAT_VERSION {
+        if version != 1 && version != 2 {
             return None;
         }
 
@@ -434,6 +474,37 @@ impl Recording {
             });
         }
 
+        // v2: read keyframe index + validate CRC32 checksum
+        let keyframe_index = if version >= 2 {
+            let kf_count = read_u32(&data, &mut pos)? as usize;
+            let mut kf_idx = Vec::with_capacity(kf_count);
+            for _ in 0..kf_count {
+                kf_idx.push(read_u32(&data, &mut pos)?);
+            }
+
+            // Validate CRC32: checksum is over everything before this point
+            let payload_end = pos;
+            let stored_crc = read_u32(&data, &mut pos)?;
+            let computed_crc = crc32(&data[..payload_end]);
+            if stored_crc != computed_crc {
+                return None; // Corrupt file
+            }
+            kf_idx
+        } else {
+            // v1: rebuild keyframe index from frames
+            frames
+                .iter()
+                .enumerate()
+                .filter_map(|(i, f)| {
+                    if matches!(f.data, FrameData::Keyframe(_)) {
+                        Some(i as u32)
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        };
+
         Some(Self {
             header: RecordingHeader {
                 cols,
@@ -460,6 +531,7 @@ impl Recording {
             ],
             keyframe_interval: 300,
             frames_since_keyframe: 0,
+            keyframe_index,
         })
     }
 
@@ -469,6 +541,22 @@ impl Recording {
     pub fn rows(&self) -> u32 {
         self.header.rows
     }
+}
+
+// CRC32 (IEEE polynomial) for file integrity checking
+fn crc32(data: &[u8]) -> u32 {
+    let mut crc: u32 = 0xFFFF_FFFF;
+    for &byte in data {
+        crc ^= byte as u32;
+        for _ in 0..8 {
+            if crc & 1 != 0 {
+                crc = (crc >> 1) ^ 0xEDB8_8320;
+            } else {
+                crc >>= 1;
+            }
+        }
+    }
+    !crc
 }
 
 // Binary helpers
@@ -824,6 +912,186 @@ mod tests {
         let (loaded_cells, _, _, _, _, _) = loaded.get_frame_cells(1).unwrap();
         assert_eq!(loaded_cells[5].codepoint, b'X' as u32);
         assert_eq!(loaded_cells[6].codepoint, b'Y' as u32);
+
+        std::fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn test_color_only_change_detected() {
+        let mut rec = Recording::new(10, 5, "Claude", "/tmp/test");
+        let total = 10 * 5;
+        let mut cells = vec![
+            CCell {
+                codepoint: b'A' as u32,
+                fg_r: 229,
+                fg_g: 229,
+                fg_b: 229,
+                fg_a: 255,
+                bg_r: 30,
+                bg_g: 30,
+                bg_b: 30,
+                bg_a: 255,
+                attrs: 0,
+            };
+            total
+        ];
+
+        // Frame 1: initial
+        rec.add_frame(&cells, 0, 0, true, vec![], 0);
+        assert_eq!(rec.frame_count(), 1);
+
+        // Frame 2: change only fg_g (green component) — no codepoint change
+        cells[0].fg_g = 100;
+        rec.add_frame(&cells, 0, 0, true, vec![], 100);
+        assert_eq!(
+            rec.frame_count(),
+            2,
+            "Color-only change in fg_g should create a new frame"
+        );
+
+        // Verify playback preserves the color change
+        let (playback, _, _, _, _, _) = rec.get_frame_cells(1).unwrap();
+        assert_eq!(playback[0].fg_g, 100);
+
+        // Frame 3: change only bg_b
+        cells[1].bg_b = 200;
+        rec.add_frame(&cells, 0, 0, true, vec![], 200);
+        assert_eq!(
+            rec.frame_count(),
+            3,
+            "Color-only change in bg_b should create a new frame"
+        );
+
+        // Frame 4: change only attrs (e.g. bold)
+        cells[2].attrs = 0x01;
+        rec.add_frame(&cells, 0, 0, true, vec![], 300);
+        assert_eq!(
+            rec.frame_count(),
+            4,
+            "Attribute-only change should create a new frame"
+        );
+
+        let (playback2, _, _, _, _, _) = rec.get_frame_cells(3).unwrap();
+        assert_eq!(playback2[2].attrs, 0x01);
+    }
+
+    #[test]
+    fn test_identical_frame_skipped() {
+        let mut rec = Recording::new(10, 5, "Claude", "/tmp/test");
+        let total = 10 * 5;
+        let cells = vec![
+            CCell {
+                codepoint: b'X' as u32,
+                fg_r: 229,
+                fg_g: 229,
+                fg_b: 229,
+                fg_a: 255,
+                bg_r: 30,
+                bg_g: 30,
+                bg_b: 30,
+                bg_a: 255,
+                attrs: 0,
+            };
+            total
+        ];
+
+        rec.add_frame(&cells, 0, 0, true, vec![], 0);
+        rec.add_frame(&cells, 0, 0, true, vec![], 100);
+        assert_eq!(rec.frame_count(), 1, "Identical frame should be skipped");
+
+        // Cursor-only change should still create a frame
+        rec.add_frame(&cells, 1, 0, true, vec![], 200);
+        assert_eq!(
+            rec.frame_count(),
+            2,
+            "Cursor move should create a new frame"
+        );
+    }
+
+    #[test]
+    fn test_checksum_detects_corruption() {
+        let mut rec = Recording::new(10, 5, "Claude", "/tmp/test");
+        let total = 10 * 5;
+        let cells = vec![
+            CCell {
+                codepoint: b'A' as u32,
+                fg_r: 229,
+                fg_g: 229,
+                fg_b: 229,
+                fg_a: 255,
+                bg_r: 30,
+                bg_g: 30,
+                bg_b: 30,
+                bg_a: 255,
+                attrs: 0,
+            };
+            total
+        ];
+
+        rec.add_frame(&cells, 0, 0, true, vec![], 0);
+
+        let path = "/tmp/test_checksum.awalrec";
+        assert_eq!(rec.save(path), 0);
+
+        // Corrupt a byte in the middle of the file
+        let mut data = std::fs::read(path).unwrap();
+        let mid = data.len() / 2;
+        data[mid] ^= 0xFF;
+        std::fs::write(path, &data).unwrap();
+
+        // Load should fail due to checksum mismatch
+        assert!(
+            Recording::load(path).is_none(),
+            "Corrupted file should fail to load"
+        );
+
+        std::fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn test_keyframe_index_built() {
+        let mut rec = Recording::new(10, 5, "Claude", "/tmp/test");
+        let total = 10 * 5;
+        let mut cells = vec![
+            CCell {
+                codepoint: 32,
+                fg_r: 229,
+                fg_g: 229,
+                fg_b: 229,
+                fg_a: 255,
+                bg_r: 30,
+                bg_g: 30,
+                bg_b: 30,
+                bg_a: 255,
+                attrs: 0,
+            };
+            total
+        ];
+
+        // First frame is always a keyframe (frames_since_keyframe starts at 300)
+        rec.add_frame(&cells, 0, 0, true, vec![], 0);
+        assert_eq!(rec.keyframe_index.len(), 1);
+        assert_eq!(rec.keyframe_index[0], 0);
+
+        // Add some delta frames
+        for i in 1..10u32 {
+            cells[0].codepoint = 32 + i;
+            rec.add_frame(&cells, 0, i, true, vec![], i as u64 * 100);
+        }
+
+        // Should still have only 1 keyframe (interval is 300)
+        assert_eq!(rec.keyframe_index.len(), 1);
+
+        // Save and reload — keyframe index should survive
+        let path = "/tmp/test_kf_index.awalrec";
+        rec.save(path);
+        let loaded = Recording::load(path).expect("Should load successfully");
+        assert_eq!(loaded.keyframe_index.len(), 1);
+        assert_eq!(loaded.keyframe_index[0], 0);
+
+        // Verify playback still works with the index
+        let (cells_out, _, _, _, _, _) = loaded.get_frame_cells(5).unwrap();
+        assert_eq!(cells_out[0].codepoint, 32 + 5);
 
         std::fs::remove_file(path).ok();
     }
