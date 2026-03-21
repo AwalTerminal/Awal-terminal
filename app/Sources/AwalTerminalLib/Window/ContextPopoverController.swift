@@ -400,6 +400,11 @@ class ContextPopoverController: NSViewController {
             scrollView.drawsBackground = false
             scrollView.borderType = .noBorder
             self.view = scrollView
+            // Scroll to top so the popover opens at the beginning
+            DispatchQueue.main.async {
+                let topY = contentHeight - popoverHeight
+                scrollView.contentView.scroll(to: NSPoint(x: 0, y: topY))
+            }
         } else {
             self.view = container
         }

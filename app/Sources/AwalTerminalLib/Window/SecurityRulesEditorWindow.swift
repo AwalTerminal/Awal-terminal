@@ -183,17 +183,23 @@ class SecurityRulesEditorWindow: NSWindowController, NSWindowDelegate {
 
         let addBtn = NSButton(title: "Add Rule", target: self, action: #selector(addRuleClicked))
         addBtn.bezelStyle = .rounded
+        addBtn.focusRingType = .none
+        addBtn.refusesFirstResponder = true
         addBtn.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(addBtn)
 
         let removeBtn = NSButton(title: "Remove", target: self, action: #selector(removeRuleClicked))
         removeBtn.bezelStyle = .rounded
+        removeBtn.focusRingType = .none
+        removeBtn.refusesFirstResponder = true
         removeBtn.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(removeBtn)
 
-        let saveBtn = NSButton(title: "Save", target: self, action: #selector(saveClicked))
-        saveBtn.bezelStyle = .rounded
-        saveBtn.keyEquivalent = "\r"
+        let saveBtn = NSButton(title: "  Save  ", target: self, action: #selector(saveClicked))
+        saveBtn.isBordered = false
+        saveBtn.focusRingType = .none
+        saveBtn.refusesFirstResponder = true
+        saveBtn.font = .systemFont(ofSize: 13, weight: .medium)
         saveBtn.contentTintColor = .white
         saveBtn.wantsLayer = true
         saveBtn.layer?.backgroundColor = Theme.accent.cgColor
@@ -218,7 +224,8 @@ class SecurityRulesEditorWindow: NSWindowController, NSWindowDelegate {
             removeBtn.bottomAnchor.constraint(equalTo: addBtn.bottomAnchor),
 
             saveBtn.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
-            saveBtn.bottomAnchor.constraint(equalTo: addBtn.bottomAnchor),
+            saveBtn.centerYAnchor.constraint(equalTo: addBtn.centerYAnchor),
+            saveBtn.heightAnchor.constraint(equalTo: addBtn.heightAnchor),
         ])
     }
 

@@ -114,6 +114,8 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
         let dismissBtn = NSButton(title: "Done", target: nil, action: nil)
         dismissBtn.translatesAutoresizingMaskIntoConstraints = false
         dismissBtn.bezelStyle = .rounded
+        dismissBtn.focusRingType = .none
+        dismissBtn.refusesFirstResponder = true
         dismissBtn.keyEquivalent = "\u{1b}"
         contentView.addSubview(dismissBtn)
 
@@ -174,7 +176,7 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
         intervalField = NSTextField(string: "\(AppConfig.shared.aiComponentsSyncInterval / 3600)")
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 700, height: 520),
+            contentRect: NSRect(x: 0, y: 0, width: 700, height: 560),
             styleMask: [.titled, .closable, .resizable, .miniaturizable],
             backing: .buffered,
             defer: false
@@ -236,6 +238,8 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
 
         syncAllButton.translatesAutoresizingMaskIntoConstraints = false
         syncAllButton.bezelStyle = .rounded
+        syncAllButton.focusRingType = .none
+        syncAllButton.refusesFirstResponder = true
         contentView.addSubview(syncAllButton)
 
         let regScroll = NSScrollView()
@@ -283,21 +287,29 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
         let addBtn = NSButton(title: "+ Add", target: self, action: #selector(addRegistryClicked(_:)))
         addBtn.translatesAutoresizingMaskIntoConstraints = false
         addBtn.bezelStyle = .rounded
+        addBtn.focusRingType = .none
+        addBtn.refusesFirstResponder = true
         contentView.addSubview(addBtn)
 
         let removeBtn = NSButton(title: "- Remove", target: self, action: #selector(removeRegistryClicked(_:)))
         removeBtn.translatesAutoresizingMaskIntoConstraints = false
         removeBtn.bezelStyle = .rounded
+        removeBtn.focusRingType = .none
+        removeBtn.refusesFirstResponder = true
         contentView.addSubview(removeBtn)
 
         let syncSelectedBtn = NSButton(title: "Sync", target: self, action: #selector(syncSelectedClicked(_:)))
         syncSelectedBtn.translatesAutoresizingMaskIntoConstraints = false
         syncSelectedBtn.bezelStyle = .rounded
+        syncSelectedBtn.focusRingType = .none
+        syncSelectedBtn.refusesFirstResponder = true
         contentView.addSubview(syncSelectedBtn)
 
         let configureMappingBtn = NSButton(title: "Mapping...", target: self, action: #selector(configureMappingClicked(_:)))
         configureMappingBtn.translatesAutoresizingMaskIntoConstraints = false
         configureMappingBtn.bezelStyle = .rounded
+        configureMappingBtn.focusRingType = .none
+        configureMappingBtn.refusesFirstResponder = true
         contentView.addSubview(configureMappingBtn)
 
         errorLabel.font = .systemFont(ofSize: 11)
@@ -311,6 +323,8 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
 
         viewFindingsButton.translatesAutoresizingMaskIntoConstraints = false
         viewFindingsButton.bezelStyle = .rounded
+        viewFindingsButton.focusRingType = .none
+        viewFindingsButton.refusesFirstResponder = true
         viewFindingsButton.font = .systemFont(ofSize: 11)
         viewFindingsButton.isHidden = true
         contentView.addSubview(viewFindingsButton)
@@ -420,7 +434,7 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
             regScroll.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
             regScroll.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
             regScroll.topAnchor.constraint(equalTo: regHeader.bottomAnchor, constant: 8),
-            regScroll.heightAnchor.constraint(equalToConstant: 80),
+            regScroll.heightAnchor.constraint(equalToConstant: 120),
 
             // Registry buttons
             addBtn.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
@@ -732,6 +746,8 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
         let browseBtn = NSButton(title: "Browse...", target: nil, action: nil)
         browseBtn.frame = NSRect(x: 285, y: 90, width: 70, height: 24)
         browseBtn.bezelStyle = .rounded
+        browseBtn.focusRingType = .none
+        browseBtn.refusesFirstResponder = true
         browseBtn.isHidden = true
         container.addSubview(browseBtn)
 
@@ -1418,6 +1434,8 @@ extension AIComponentsManagerWindow: NSTableViewDataSource, NSTableViewDelegate 
         let dismissBtn = NSButton(title: "Done", target: nil, action: nil)
         dismissBtn.translatesAutoresizingMaskIntoConstraints = false
         dismissBtn.bezelStyle = .rounded
+        dismissBtn.focusRingType = .none
+        dismissBtn.refusesFirstResponder = true
         dismissBtn.keyEquivalent = "\u{1b}"
         contentView.addSubview(dismissBtn)
 

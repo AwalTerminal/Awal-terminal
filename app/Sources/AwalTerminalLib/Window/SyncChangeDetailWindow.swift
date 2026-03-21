@@ -137,6 +137,8 @@ class SyncChangeDetailWindow: NSWindowController {
         // Close button
         let closeButton = NSButton(title: "Close", target: self, action: #selector(closeTapped))
         closeButton.bezelStyle = .rounded
+        closeButton.focusRingType = .none
+        closeButton.refusesFirstResponder = true
         closeButton.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(closeButton)
 

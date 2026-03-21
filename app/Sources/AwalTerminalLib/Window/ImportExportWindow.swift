@@ -142,6 +142,8 @@ class ImportExportWindow: NSWindowController, NSWindowDelegate {
 
         selectFolderButton.translatesAutoresizingMaskIntoConstraints = false
         selectFolderButton.bezelStyle = .rounded
+        selectFolderButton.focusRingType = .none
+        selectFolderButton.refusesFirstResponder = true
         importContainer.addSubview(selectFolderButton)
 
         selectedPathLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -151,8 +153,11 @@ class ImportExportWindow: NSWindowController, NSWindowDelegate {
         importContainer.addSubview(selectedPathLabel)
 
         importButton.translatesAutoresizingMaskIntoConstraints = false
-        importButton.bezelStyle = .rounded
+        importButton.isBordered = false
+        importButton.focusRingType = .none
+        importButton.refusesFirstResponder = true
         importButton.isEnabled = false
+        importButton.font = .systemFont(ofSize: 13, weight: .medium)
         importButton.contentTintColor = .white
         importButton.wantsLayer = true
         importButton.layer?.backgroundColor = Theme.accent.cgColor
@@ -198,6 +203,7 @@ class ImportExportWindow: NSWindowController, NSWindowDelegate {
 
             importButton.topAnchor.constraint(equalTo: selectFolderButton.bottomAnchor, constant: 12),
             importButton.leadingAnchor.constraint(equalTo: importContainer.leadingAnchor, constant: 20),
+            importButton.heightAnchor.constraint(equalTo: selectFolderButton.heightAnchor),
 
             resultsScroll.topAnchor.constraint(equalTo: importButton.bottomAnchor, constant: 10),
             resultsScroll.leadingAnchor.constraint(equalTo: importContainer.leadingAnchor, constant: 20),
@@ -235,7 +241,10 @@ class ImportExportWindow: NSWindowController, NSWindowDelegate {
         exportContainer.addSubview(targetProjectRadio)
 
         exportButton.translatesAutoresizingMaskIntoConstraints = false
-        exportButton.bezelStyle = .rounded
+        exportButton.isBordered = false
+        exportButton.focusRingType = .none
+        exportButton.refusesFirstResponder = true
+        exportButton.font = .systemFont(ofSize: 13, weight: .medium)
         exportButton.contentTintColor = .white
         exportButton.wantsLayer = true
         exportButton.layer?.backgroundColor = Theme.accent.cgColor
@@ -286,6 +295,7 @@ class ImportExportWindow: NSWindowController, NSWindowDelegate {
 
             exportButton.topAnchor.constraint(equalTo: targetLabel.bottomAnchor, constant: 12),
             exportButton.leadingAnchor.constraint(equalTo: exportContainer.leadingAnchor, constant: 20),
+            exportButton.heightAnchor.constraint(equalToConstant: 28),
 
             resultsScroll.topAnchor.constraint(equalTo: exportButton.bottomAnchor, constant: 10),
             resultsScroll.leadingAnchor.constraint(equalTo: exportContainer.leadingAnchor, constant: 20),

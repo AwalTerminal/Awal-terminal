@@ -314,17 +314,22 @@ class MappingEditorWindow: NSWindowController, NSWindowDelegate {
         // Buttons
         let addBtn = NSButton(title: "Add Mapping", target: self, action: #selector(addMappingClicked))
         addBtn.bezelStyle = .rounded
+        addBtn.focusRingType = .none
+        addBtn.refusesFirstResponder = true
         addBtn.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(addBtn)
 
         let removeBtn = NSButton(title: "Remove", target: self, action: #selector(removeMappingClicked))
         removeBtn.bezelStyle = .rounded
+        removeBtn.focusRingType = .none
+        removeBtn.refusesFirstResponder = true
         removeBtn.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(removeBtn)
 
         let saveBtn = NSButton(title: "Save", target: self, action: #selector(saveClicked))
         saveBtn.bezelStyle = .rounded
-        saveBtn.keyEquivalent = "\r"
+        saveBtn.focusRingType = .none
+        saveBtn.refusesFirstResponder = true
         saveBtn.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(saveBtn)
 

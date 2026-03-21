@@ -329,6 +329,8 @@ class MissionControlWindow: NSWindowController, NSWindowDelegate, NSTableViewDat
         let btn = NSButton(title: "Kill", target: self, action: #selector(killAgent(_:)))
         btn.tag = row
         btn.bezelStyle = .rounded
+        btn.focusRingType = .none
+        btn.refusesFirstResponder = true
         btn.contentTintColor = .systemRed
         btn.font = NSFont.monospacedSystemFont(ofSize: 10, weight: .medium)
         btn.translatesAutoresizingMaskIntoConstraints = false

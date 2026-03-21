@@ -1206,6 +1206,8 @@ class AIComponentPopoverController: NSViewController, NSTableViewDataSource, NST
         let manageButton = NSButton(title: "Manage Components...", target: self, action: #selector(manageClicked(_:)))
         manageButton.translatesAutoresizingMaskIntoConstraints = false
         manageButton.bezelStyle = .rounded
+        manageButton.focusRingType = .none
+        manageButton.refusesFirstResponder = true
         container.addSubview(manageButton)
 
         // Empty state label (shown when no components)

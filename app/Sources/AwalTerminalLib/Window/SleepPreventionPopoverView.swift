@@ -71,6 +71,8 @@ class SleepPreventionPopoverView: NSViewController {
                 }
             }
             stealthButton.bezelStyle = .rounded
+            stealthButton.focusRingType = .none
+            stealthButton.refusesFirstResponder = true
             stealthButton.controlSize = .regular
             stealthButton.translatesAutoresizingMaskIntoConstraints = false
             container.addSubview(stealthButton)

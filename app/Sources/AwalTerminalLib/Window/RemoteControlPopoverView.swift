@@ -44,6 +44,8 @@ class RemoteControlPopoverView: NSViewController {
 
         let copyButton = NSButton(title: "Copy URL", target: self, action: #selector(copyURL))
         copyButton.bezelStyle = .rounded
+        copyButton.focusRingType = .none
+        copyButton.refusesFirstResponder = true
         copyButton.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(copyButton)
 
