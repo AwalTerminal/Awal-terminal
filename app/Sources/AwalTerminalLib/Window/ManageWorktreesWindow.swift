@@ -29,7 +29,9 @@ class ManageWorktreesWindow: NSWindowController, NSWindowDelegate, NSTableViewDa
 
     init() {
         removeButton = NSButton(title: "Remove", target: nil, action: nil)
+        removeButton.contentTintColor = .systemRed
         removeAllCleanButton = NSButton(title: "Remove All Clean", target: nil, action: nil)
+        removeAllCleanButton.contentTintColor = .systemRed
         refreshButton = NSButton(title: "Refresh", target: nil, action: nil)
 
         let window = NSWindow(
@@ -42,6 +44,8 @@ class ManageWorktreesWindow: NSWindowController, NSWindowDelegate, NSTableViewDa
         window.center()
         window.isReleasedWhenClosed = false
         window.minSize = NSSize(width: 600, height: 300)
+        window.appearance = NSAppearance(named: .darkAqua)
+        window.backgroundColor = Theme.windowBg
 
         super.init(window: window)
         window.delegate = self
@@ -75,7 +79,7 @@ class ManageWorktreesWindow: NSWindowController, NSWindowDelegate, NSTableViewDa
 
         let branchCol = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("branch"))
         branchCol.title = "Branch"
-        branchCol.width = 140
+        branchCol.width = 180
         branchCol.minWidth = 80
         tableView.addTableColumn(branchCol)
 
@@ -134,15 +138,15 @@ class ManageWorktreesWindow: NSWindowController, NSWindowDelegate, NSTableViewDa
         bottomBar.addSubview(refreshButton)
 
         NSLayoutConstraint.activate([
-            scrollView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 8),
-            scrollView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 8),
-            scrollView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -8),
+            scrollView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 16),
+            scrollView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+            scrollView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
             scrollView.bottomAnchor.constraint(equalTo: bottomBar.topAnchor, constant: -8),
 
-            bottomBar.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 8),
-            bottomBar.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -8),
-            bottomBar.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -8),
-            bottomBar.heightAnchor.constraint(equalToConstant: 30),
+            bottomBar.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+            bottomBar.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            bottomBar.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -16),
+            bottomBar.heightAnchor.constraint(equalToConstant: 36),
 
             totalLabel.leadingAnchor.constraint(equalTo: bottomBar.leadingAnchor),
             totalLabel.centerYAnchor.constraint(equalTo: bottomBar.centerYAnchor),
