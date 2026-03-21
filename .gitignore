@@ -26,6 +26,14 @@ build/
 *.swo
 *~
 
+# Secrets & credentials
+.env
+.env.*
+*.pem
+*.key
+*.cert
+*.p12
+
 # Claude local settings
 app/.claude/
 .claude/settings.local.json

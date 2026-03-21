@@ -9,7 +9,12 @@ enum ConfigWriter {
 
     /// Update or insert a key in the TOML config file.
     static func updateValue(key: String, value: String) {
-        try? FileManager.default.createDirectory(at: configDir, withIntermediateDirectories: true)
+        do {
+            try FileManager.default.createDirectory(at: configDir, withIntermediateDirectories: true)
+        } catch {
+            NSLog("Failed to create config directory: %@", error.localizedDescription)
+            return
+        }
 
         let contents = (try? String(contentsOf: configFile, encoding: .utf8)) ?? ""
         var lines = contents.components(separatedBy: "\n")
@@ -50,7 +55,11 @@ enum ConfigWriter {
         }
 
         let output = lines.joined(separator: "\n")
-        try? output.write(to: configFile, atomically: true, encoding: .utf8)
+        do {
+            try output.write(to: configFile, atomically: true, encoding: .utf8)
+        } catch {
+            NSLog("Failed to write config: %@", error.localizedDescription)
+        }
     }
 
     /// Remove a key from the TOML config file.
@@ -65,6 +74,10 @@ enum ConfigWriter {
             return trimmed.hasPrefix("\(field) =") || trimmed.hasPrefix("\(field)=")
         }
         let output = lines.joined(separator: "\n")
-        try? output.write(to: configFile, atomically: true, encoding: .utf8)
+        do {
+            try output.write(to: configFile, atomically: true, encoding: .utf8)
+        } catch {
+            NSLog("Failed to write config: %@", error.localizedDescription)
+        }
     }
 }

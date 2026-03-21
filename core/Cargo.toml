@@ -1,6 +1,6 @@
 [package]
 name = "awalterminal"
-version = "0.16.1"
+version = "0.17.0"
 edition = "2021"
 description = "LLM-native terminal emulator core library"
 

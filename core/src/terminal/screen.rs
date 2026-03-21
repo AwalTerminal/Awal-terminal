@@ -121,16 +121,19 @@ impl Grid {
         let blank = (0..self.cols).map(|_| Cell::default()).collect();
         self.cells.insert(bottom - 1, blank);
         self.wrapped.insert(bottom - 1, false);
-        // Remove hyperlinks for the removed row, shift affected rows
-        self.hyperlinks.retain(|&(r, _), _| r != top);
-        let old: Vec<_> = self.hyperlinks.drain().collect();
-        for ((r, c), v) in old {
+        // Remove hyperlinks for the removed row, shift affected rows down by 1
+        let mut new_links = HashMap::with_capacity(self.hyperlinks.len());
+        for ((r, c), v) in self.hyperlinks.drain() {
+            if r == top {
+                continue; // evicted row
+            }
             if r > top && r < bottom {
-                self.hyperlinks.insert((r - 1, c), v);
+                new_links.insert((r - 1, c), v);
             } else {
-                self.hyperlinks.insert((r, c), v);
+                new_links.insert((r, c), v);
             }
         }
+        self.hyperlinks = new_links;
         Some((removed, was_wrapped))
     }
 
@@ -144,16 +147,19 @@ impl Grid {
         let blank = (0..self.cols).map(|_| Cell::default()).collect();
         self.cells.insert(top, blank);
         self.wrapped.insert(top, false);
-        // Remove hyperlinks for the removed bottom row, shift affected rows up
-        self.hyperlinks.retain(|&(r, _), _| r != bottom - 1);
-        let old: Vec<_> = self.hyperlinks.drain().collect();
-        for ((r, c), v) in old {
-            if r >= top && r < bottom {
-                self.hyperlinks.insert((r + 1, c), v);
+        // Remove hyperlinks for the removed bottom row, shift affected rows up by 1
+        let mut new_links = HashMap::with_capacity(self.hyperlinks.len());
+        for ((r, c), v) in self.hyperlinks.drain() {
+            if r == bottom - 1 {
+                continue; // evicted row
+            }
+            if r >= top && r < bottom - 1 {
+                new_links.insert((r + 1, c), v);
             } else {
-                self.hyperlinks.insert((r, c), v);
+                new_links.insert((r, c), v);
             }
         }
+        self.hyperlinks = new_links;
     }
 
     pub fn resize(&mut self, new_cols: usize, new_rows: usize) {
@@ -184,11 +190,12 @@ impl Grid {
         self.cells.rotate_left(physical_base);
         self.wrapped.rotate_left(physical_base);
         // Remap hyperlink keys from old physical indices to new (logical, since base becomes 0)
-        let old: Vec<_> = self.hyperlinks.drain().collect();
-        for ((p, c), v) in old {
+        let mut new_links = HashMap::with_capacity(self.hyperlinks.len());
+        for ((p, c), v) in self.hyperlinks.drain() {
             let new_p = (p + self.rows - physical_base) % self.rows;
-            self.hyperlinks.insert((new_p, c), v);
+            new_links.insert((new_p, c), v);
         }
+        self.hyperlinks = new_links;
         self.base = 0;
     }
 }

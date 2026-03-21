@@ -2,9 +2,12 @@ import AppKit
 import IOKit
 import IOKit.pwr_mgt
 import Metal
+import os.log
 import Quartz
 import QuartzCore
 import CAwalTerminal
+
+private let hookLog = OSLog(subsystem: "com.awal.terminal", category: "hooks")
 
 class TerminalView: NSView {
 
@@ -1313,8 +1316,13 @@ class TerminalView: NSView {
         }
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
-        try? process.run()
-        process.waitUntilExit()
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            os_log(.error, log: hookLog, "Pre-session hook failed: %{public}@ — %{public}@",
+                   scriptURL.lastPathComponent, error.localizedDescription)
+        }
     }
 
     /// Execute post-session hooks asynchronously.
@@ -1333,8 +1341,13 @@ class TerminalView: NSView {
                 }
                 process.standardOutput = FileHandle.nullDevice
                 process.standardError = FileHandle.nullDevice
-                try? process.run()
-                process.waitUntilExit()
+                do {
+                    try process.run()
+                    process.waitUntilExit()
+                } catch {
+                    os_log(.error, log: hookLog, "Post-session hook failed: %{public}@ — %{public}@",
+                           hookURL.lastPathComponent, error.localizedDescription)
+                }
             }
         }
     }

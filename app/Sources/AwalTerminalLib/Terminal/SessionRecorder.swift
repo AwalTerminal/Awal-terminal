@@ -107,7 +107,14 @@ class SessionRecorder {
             .replacingOccurrences(of: ":", with: "-")
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
             .appendingPathComponent("Awal Terminal/recordings", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        } catch {
+            NSLog("Failed to create recordings directory: %@", error.localizedDescription)
+            at_recording_destroy(recording)
+            self.recording = nil
+            return nil
+        }
 
         let fileURL = dir.appendingPathComponent(fileName)
         let pathC = fileURL.path.cString(using: .utf8)

@@ -69,6 +69,8 @@ pub struct Recording {
     frames_since_keyframe: u32,
     /// Index of frame indices that are keyframes (for O(1) lookup).
     keyframe_index: Vec<u32>,
+    /// Maximum number of frames to retain. 0 = unlimited.
+    max_frames: u32,
 }
 
 /// C-compatible region for FFI.
@@ -125,6 +127,7 @@ impl Recording {
             keyframe_interval: 300,
             frames_since_keyframe: 300, // Force keyframe on first frame
             keyframe_index: Vec::new(),
+            max_frames: 100_000, // ~28 min at 60fps
         }
     }
 
@@ -221,6 +224,27 @@ impl Recording {
             },
             regions,
         });
+
+        // Evict oldest frames when over the limit
+        if self.max_frames > 0 && self.frames.len() as u32 > self.max_frames {
+            // Find the second keyframe — evict everything before it so the
+            // remaining recording starts with a keyframe.
+            let evict_count = if self.keyframe_index.len() >= 2 {
+                self.keyframe_index[1] as usize
+            } else {
+                // No second keyframe yet — evict one frame at a time
+                1
+            };
+
+            self.frames.drain(..evict_count);
+
+            // Shift keyframe indices down and remove evicted entries
+            self.keyframe_index
+                .retain(|idx| (*idx as usize) >= evict_count);
+            for idx in &mut self.keyframe_index {
+                *idx -= evict_count as u32;
+            }
+        }
     }
 
     pub fn frame_count(&self) -> u32 {
@@ -532,6 +556,7 @@ impl Recording {
             keyframe_interval: 300,
             frames_since_keyframe: 0,
             keyframe_index,
+            max_frames: 100_000,
         })
     }
 
@@ -1094,5 +1119,64 @@ mod tests {
         assert_eq!(cells_out[0].codepoint, 32 + 5);
 
         std::fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn test_frame_eviction_at_max() {
+        let mut rec = Recording::new(4, 2, "Claude", "/tmp/test");
+        // Set a small max for testing
+        rec.max_frames = 20;
+        rec.keyframe_interval = 5;
+
+        let total = 4 * 2;
+        let mut cells = vec![
+            CCell {
+                codepoint: b'A' as u32,
+                fg_r: 229,
+                fg_g: 229,
+                fg_b: 229,
+                fg_a: 255,
+                bg_r: 30,
+                bg_g: 30,
+                bg_b: 30,
+                bg_a: 255,
+                attrs: 0,
+            };
+            total
+        ];
+
+        // Add 30 distinct frames (exceeds max of 20)
+        for i in 0..30u32 {
+            cells[0].codepoint = 65 + i; // A, B, C, ...
+            rec.add_frame(&cells, 0, 0, true, vec![], i as u64 * 100);
+        }
+
+        // Should have evicted older frames
+        assert!(
+            rec.frame_count() <= 20,
+            "frame count {} should be <= max_frames 20",
+            rec.frame_count()
+        );
+
+        // Last frame should still be accessible and correct
+        let last_idx = rec.frame_count() - 1;
+        let (last_cells, _, _, _, _, _) = rec.get_frame_cells(last_idx).unwrap();
+        assert_eq!(last_cells[0].codepoint, 65 + 29); // last frame's content
+
+        // Keyframe indices should be valid (all within bounds)
+        for &ki in &rec.keyframe_index {
+            assert!(
+                ki < rec.frame_count(),
+                "keyframe index {} out of bounds (frame_count={})",
+                ki,
+                rec.frame_count()
+            );
+        }
+
+        // First frame should be a keyframe (eviction preserves this invariant)
+        assert!(
+            matches!(rec.frames[0].data, FrameData::Keyframe(_)),
+            "first frame after eviction should be a keyframe"
+        );
     }
 }

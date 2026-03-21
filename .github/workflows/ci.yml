@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-rust:
+    name: Rust Tests
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            core/target
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('core/Cargo.toml') }}
+
+      - name: Run tests
+        working-directory: core
+        run: cargo test
+
+      - name: Clippy
+        working-directory: core
+        run: cargo clippy -- -W warnings
+
+      - name: Check formatting
+        working-directory: core
+        run: cargo fmt -- --check
+
+  test-swift:
+    name: Swift Tests
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (needed for core library)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            core/target
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('core/Cargo.toml') }}
+
+      - name: Build Rust core (debug)
+        working-directory: core
+        run: cargo build
+
+      - name: Run Swift tests
+        working-directory: app
+        run: swift test
