@@ -21,7 +21,7 @@ class LLMTabBar: NSView {
 
         segmentedControl = NSSegmentedControl()
         segmentedControl.segmentCount = models.count
-        segmentedControl.segmentStyle = .texturedSquare
+        segmentedControl.segmentStyle = .capsule
         segmentedControl.trackingMode = .selectOne
         for (i, model) in models.enumerated() {
             segmentedControl.setLabel(model.name, forSegment: i)

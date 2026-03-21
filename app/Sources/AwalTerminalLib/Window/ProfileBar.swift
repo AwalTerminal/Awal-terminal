@@ -78,10 +78,10 @@ class ProfileBar: NSView {
             newButton.leadingAnchor.constraint(equalTo: activeLabel.trailingAnchor, constant: 12),
             newButton.centerYAnchor.constraint(equalTo: centerYAnchor),
 
-            renameButton.leadingAnchor.constraint(equalTo: newButton.trailingAnchor, constant: 2),
+            renameButton.leadingAnchor.constraint(equalTo: newButton.trailingAnchor, constant: 8),
             renameButton.centerYAnchor.constraint(equalTo: centerYAnchor),
 
-            deleteButton.leadingAnchor.constraint(equalTo: renameButton.trailingAnchor, constant: 2),
+            deleteButton.leadingAnchor.constraint(equalTo: renameButton.trailingAnchor, constant: 8),
             deleteButton.centerYAnchor.constraint(equalTo: centerYAnchor),
 
             activateButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
@@ -114,7 +114,7 @@ class ProfileBar: NSView {
         btn.bezelStyle = .recessed
         btn.isBordered = false
         btn.font = Theme.barFont
-        btn.contentTintColor = NSColor(white: 0.65, alpha: 1)
+        btn.contentTintColor = NSColor(white: 0.70, alpha: 1)
         if let img = NSImage(systemSymbolName: image, accessibilityDescription: title) {
             let config = NSImage.SymbolConfiguration(pointSize: 10, weight: .medium)
             btn.image = img.withSymbolConfiguration(config)
