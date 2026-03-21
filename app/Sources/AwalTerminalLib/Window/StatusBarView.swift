@@ -2,7 +2,7 @@ import AppKit
 
 class StatusBarView: NSView, NSMenuDelegate {
 
-    static let barHeight: CGFloat = 26.0
+    static let barHeight: CGFloat = 30.0
 
     // Callbacks
     var onFolderSelected: ((_ path: String) -> Void)?
@@ -95,7 +95,7 @@ class StatusBarView: NSView, NSMenuDelegate {
 
     private let dangerBadge: NSTextField = {
         let label = NSTextField(labelWithString: "DANGER")
-        label.font = NSFont.monospacedSystemFont(ofSize: 9.0, weight: .medium)
+        label.font = NSFont.monospacedSystemFont(ofSize: 10.0, weight: .medium)
         label.textColor = NSColor(red: 1.0, green: 0.65, blue: 0.0, alpha: 0.9)
         label.backgroundColor = NSColor(red: 1.0, green: 0.6, blue: 0.0, alpha: 0.12)
         label.drawsBackground = true
@@ -112,7 +112,7 @@ class StatusBarView: NSView, NSMenuDelegate {
 
     private let remoteControlBadge: NSTextField = {
         let label = NSTextField(labelWithString: "REMOTE")
-        label.font = NSFont.monospacedSystemFont(ofSize: 9.0, weight: .medium)
+        label.font = NSFont.monospacedSystemFont(ofSize: 10.0, weight: .medium)
         label.textColor = NSColor(red: 0.3, green: 0.75, blue: 1.0, alpha: 0.9)
         label.backgroundColor = NSColor(red: 0.3, green: 0.7, blue: 1.0, alpha: 0.12)
         label.drawsBackground = true
@@ -129,7 +129,7 @@ class StatusBarView: NSView, NSMenuDelegate {
 
     private let awakeBadge: NSTextField = {
         let label = NSTextField(labelWithString: "AWAKE")
-        label.font = NSFont.monospacedSystemFont(ofSize: 9.0, weight: .medium)
+        label.font = NSFont.monospacedSystemFont(ofSize: 10.0, weight: .medium)
         label.textColor = NSColor(red: 0.3, green: 0.85, blue: 0.4, alpha: 0.9)
         label.backgroundColor = NSColor(red: 0.3, green: 0.85, blue: 0.4, alpha: 0.12)
         label.drawsBackground = true
@@ -193,9 +193,9 @@ class StatusBarView: NSView, NSMenuDelegate {
     var onVoiceToggle: (() -> Void)?
     var onScreenshotToSession: (() -> Void)?
 
-    private var sep1: NSTextField!
-    private var sep2: NSTextField!
-    private var sep3: NSTextField!
+    private var sep1: NSView!
+    private var sep2: NSView!
+    private var sep3: NSView!
 
     private var sessionStart: Date = Date()
     private var updateTimer: Timer?
@@ -219,9 +219,9 @@ class StatusBarView: NSView, NSMenuDelegate {
         layer?.backgroundColor = AppConfig.shared.themeStatusBarBg.cgColor
 
         let monoFont = NSFont.monospacedSystemFont(ofSize: 11.0, weight: .regular)
-        let dimColor = NSColor(white: 0.45, alpha: 1.0)
+        let dimColor = NSColor(white: 0.60, alpha: 1.0)
         let accentColor = AppConfig.shared.themeAccent
-        let pathColor = NSColor(white: 0.55, alpha: 1.0)
+        let pathColor = NSColor(white: 0.60, alpha: 1.0)
         let branchColor = NSColor(red: 45.0/255.0, green: 127.0/255.0, blue: 212.0/255.0, alpha: 1.0)
 
         let labels: [NSTextField] = [gitLabel, cpuLabel, dimsLabel, timeLabel]
@@ -324,7 +324,7 @@ class StatusBarView: NSView, NSMenuDelegate {
         aiComponentLabel.translatesAutoresizingMaskIntoConstraints = false
         aiComponentLabel.toolTip = "Click to view active AI components"
         aiComponentLabel.stringValue = "AI"
-        aiComponentLabel.textColor = NSColor(white: 0.35, alpha: 1.0)
+        aiComponentLabel.textColor = NSColor(white: 0.50, alpha: 1.0)
         aiComponentLabel.onClick = { [weak self] in
             self?.showAIComponentPopover()
         }
@@ -495,15 +495,16 @@ class StatusBarView: NSView, NSMenuDelegate {
         }
     }
 
-    private func makeSeparator() -> NSTextField {
-        let sep = NSTextField(labelWithString: "|")
-        sep.font = NSFont.monospacedSystemFont(ofSize: 11.0, weight: .regular)
-        sep.textColor = NSColor(white: 0.25, alpha: 1.0)
-        sep.isEditable = false
-        sep.isBordered = false
-        sep.drawsBackground = false
+    private func makeSeparator() -> NSView {
+        let sep = NSView()
+        sep.wantsLayer = true
+        sep.layer?.backgroundColor = Theme.separator.cgColor
         sep.translatesAutoresizingMaskIntoConstraints = false
         addSubview(sep)
+        NSLayoutConstraint.activate([
+            sep.widthAnchor.constraint(equalToConstant: 1),
+            sep.heightAnchor.constraint(equalToConstant: 14),
+        ])
         return sep
     }
 
@@ -906,14 +907,14 @@ class StatusBarView: NSView, NSMenuDelegate {
             aiComponentLabel.textColor = NSColor(red: 100.0/255.0, green: 200.0/255.0, blue: 160.0/255.0, alpha: 1.0)
         } else {
             aiComponentLabel.stringValue = "AI"
-            aiComponentLabel.textColor = NSColor(white: 0.35, alpha: 1.0)
+            aiComponentLabel.textColor = NSColor(white: 0.50, alpha: 1.0)
         }
     }
 
     func clearAIComponentInfo() {
         activeAIComponentDetails = []
         aiComponentLabel.stringValue = "AI"
-        aiComponentLabel.textColor = NSColor(white: 0.35, alpha: 1.0)
+        aiComponentLabel.textColor = NSColor(white: 0.50, alpha: 1.0)
     }
 
     private weak var activePopover: NSPopover?
@@ -1318,8 +1319,38 @@ class AIComponentPopoverController: NSViewController, NSTableViewDataSource, NST
 }
 
 /// NSButton that refuses first responder so clicking it doesn't steal focus from the terminal.
+/// Supports hover feedback: tint raises from normalTint to hoverTint on mouse enter.
 class StatusBarButton: NSButton {
     override var acceptsFirstResponder: Bool { false }
+
+    private var trackingArea: NSTrackingArea?
+    private var isHovered = false
+    var normalTint: NSColor = NSColor(white: 0.55, alpha: 1.0)
+    var hoverTint: NSColor = NSColor(white: 0.85, alpha: 1.0)
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let existing = trackingArea { removeTrackingArea(existing) }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .activeInKeyWindow],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        trackingArea = area
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        isHovered = true
+        contentTintColor = hoverTint
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        isHovered = false
+        contentTintColor = normalTint
+    }
+
     override func resetCursorRects() {
         addCursorRect(bounds, cursor: .pointingHand)
     }
