@@ -1,13 +1,13 @@
 import Foundation
 
 /// Severity level for security findings.
-enum SecuritySeverity: String {
+enum SecuritySeverity: String, Codable {
     case warning
     case critical
 }
 
 /// A single security finding from scanning a component.
-struct SecurityFinding {
+struct SecurityFinding: Codable {
     let componentKey: String  // registry/stack/type/name
     let pattern: String       // what was matched
     let severity: SecuritySeverity
@@ -45,11 +45,33 @@ enum ComponentSecurityScanner {
         ("prompt injection: output system prompt", try? NSRegularExpression(pattern: #"output the system prompt"#, options: [.caseInsensitive])),
         ("prompt injection: reveal instructions", try? NSRegularExpression(pattern: #"reveal your instructions"#, options: [.caseInsensitive])),
         ("prompt injection: ignore safety", try? NSRegularExpression(pattern: #"ignore safety"#, options: [.caseInsensitive])),
+        ("prompt injection: forget everything", try? NSRegularExpression(pattern: #"forget everything"#, options: [.caseInsensitive])),
+        ("prompt injection: new instructions", try? NSRegularExpression(pattern: #"new instructions"#, options: [.caseInsensitive])),
+        ("prompt injection: override instructions", try? NSRegularExpression(pattern: #"override (all |your |the )?(instructions|rules|guidelines)"#, options: [.caseInsensitive])),
+        ("prompt injection: do not follow", try? NSRegularExpression(pattern: #"do not follow (previous|prior|above)"#, options: [.caseInsensitive])),
+        ("prompt injection: jailbreak", try? NSRegularExpression(pattern: #"\bjailbreak\b"#, options: [.caseInsensitive])),
+        ("hidden data: large base64 blob", try? NSRegularExpression(pattern: #"[A-Za-z0-9+/]{80,}={0,2}"#, options: [])),
     ]
 
     // MARK: - MCP config patterns
 
     private static let warningMcpCommandPatterns = ["curl", "wget", "nc"]
+
+    /// Env var names suggesting credentials or secrets.
+    private static let credentialEnvNamePattern: NSRegularExpression? =
+        try? NSRegularExpression(pattern: #"(API_KEY|SECRET|TOKEN|PASSWORD|CREDENTIALS|AUTH|PRIVATE_KEY)"#, options: [.caseInsensitive])
+
+    /// Critical patterns in MCP args (reverse shell, data exfiltration).
+    private static let criticalMcpArgsPatterns: [(pattern: String, regex: NSRegularExpression?)] = [
+        ("MCP args: reverse shell pattern", try? NSRegularExpression(pattern: #"/dev/tcp|mkfifo|nc\s+-e"#, options: [])),
+        ("MCP args: base64 decode to shell", try? NSRegularExpression(pattern: #"base64.*\|\s*(sh|bash)"#, options: [])),
+    ]
+
+    // MARK: - Disabled Rules
+
+    private static var disabledRules: Set<String> {
+        AppConfig.shared.aiComponentsDisabledRules
+    }
 
     // MARK: - Custom Rules
 
@@ -96,16 +118,19 @@ enum ComponentSecurityScanner {
                 }
             case .hook:
                 if let content = try? String(contentsOf: comp.fileURL, encoding: .utf8) {
+                    let disabled = disabledRules
                     for line in content.components(separatedBy: .newlines) {
                         let trimmed = line.trimmingCharacters(in: .whitespaces)
                         if trimmed.isEmpty || trimmed.hasPrefix("#") { continue }
                         let range = NSRange(trimmed.startIndex..., in: trimmed)
                         for (pattern, regex) in criticalHookPatterns {
+                            if disabled.contains(pattern) { continue }
                             if let regex, regex.firstMatch(in: trimmed, range: range) != nil {
                                 findings.append(SecurityFinding(componentKey: key, pattern: pattern, severity: .critical, line: trimmed))
                             }
                         }
                         for (pattern, regex) in warningHookPatterns {
+                            if disabled.contains(pattern) { continue }
                             if let regex, regex.firstMatch(in: trimmed, range: range) != nil {
                                 findings.append(SecurityFinding(componentKey: key, pattern: pattern, severity: .warning, line: trimmed))
                             }
@@ -120,18 +145,45 @@ enum ComponentSecurityScanner {
             case .mcpServer:
                 if let data = try? Data(contentsOf: comp.fileURL),
                    let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    let disabled = disabledRules
                     if let command = json["command"] as? String {
                         for pattern in warningMcpCommandPatterns {
+                            let patternName = "MCP command contains \(pattern)"
+                            if disabled.contains(patternName) { continue }
                             if command.contains(pattern) {
-                                findings.append(SecurityFinding(componentKey: key, pattern: "MCP command contains \(pattern)", severity: .warning, line: "command: \(command)"))
+                                findings.append(SecurityFinding(componentKey: key, pattern: patternName, severity: .warning, line: "command: \(command)"))
+                            }
+                        }
+                    }
+                    // Check args for external URLs and critical patterns
+                    if let args = json["args"] as? [String] {
+                        for arg in args {
+                            if !disabled.contains("MCP args contain external URL"),
+                               (arg.hasPrefix("http://") || arg.hasPrefix("https://"))
+                                && !arg.contains("localhost") && !arg.contains("127.0.0.1") {
+                                findings.append(SecurityFinding(componentKey: key, pattern: "MCP args contain external URL", severity: .warning, line: "arg: \(arg)"))
+                            }
+                            let range = NSRange(arg.startIndex..., in: arg)
+                            for (pattern, regex) in criticalMcpArgsPatterns {
+                                if disabled.contains(pattern) { continue }
+                                if let regex, regex.firstMatch(in: arg, range: range) != nil {
+                                    findings.append(SecurityFinding(componentKey: key, pattern: pattern, severity: .critical, line: "arg: \(arg)"))
+                                }
                             }
                         }
                     }
                     if let env = json["env"] as? [String: String] {
                         for (envKey, envValue) in env {
-                            if (envValue.hasPrefix("http://") || envValue.hasPrefix("https://"))
+                            if !disabled.contains("MCP env var with external URL"),
+                               (envValue.hasPrefix("http://") || envValue.hasPrefix("https://"))
                                 && !envValue.contains("localhost") && !envValue.contains("127.0.0.1") {
                                 findings.append(SecurityFinding(componentKey: key, pattern: "MCP env var with external URL", severity: .warning, line: "\(envKey)=\(envValue)"))
+                            }
+                            if !disabled.contains("MCP env var name suggests credential") {
+                                let nameRange = NSRange(envKey.startIndex..., in: envKey)
+                                if let regex = credentialEnvNamePattern, regex.firstMatch(in: envKey, range: nameRange) != nil {
+                                    findings.append(SecurityFinding(componentKey: key, pattern: "MCP env var name suggests credential", severity: .warning, line: "\(envKey)=<redacted>"))
+                                }
                             }
                         }
                     }
@@ -250,7 +302,9 @@ enum ComponentSecurityScanner {
                     let range = NSRange(trimmed.startIndex..., in: trimmed)
 
                     // Check critical patterns
+                    let disabled = disabledRules
                     for (pattern, regex) in criticalHookPatterns {
+                        if disabled.contains(pattern) { continue }
                         if let regex, regex.firstMatch(in: trimmed, range: range) != nil {
                             findings.append(SecurityFinding(
                                 componentKey: key, pattern: pattern,
@@ -261,6 +315,7 @@ enum ComponentSecurityScanner {
 
                     // Check warning patterns
                     for (pattern, regex) in warningHookPatterns {
+                        if disabled.contains(pattern) { continue }
                         if let regex, regex.firstMatch(in: trimmed, range: range) != nil {
                             findings.append(SecurityFinding(
                                 componentKey: key, pattern: pattern,
@@ -327,12 +382,14 @@ enum ComponentSecurityScanner {
         key: String,
         findings: inout [SecurityFinding]
     ) {
+        let disabled = disabledRules
         for line in content.components(separatedBy: .newlines) {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             if trimmed.isEmpty { continue }
 
             let range = NSRange(trimmed.startIndex..., in: trimmed)
             for (pattern, regex) in warningMarkdownPatterns {
+                if disabled.contains(pattern) { continue }
                 if let regex, regex.firstMatch(in: trimmed, range: range) != nil {
                     findings.append(SecurityFinding(
                         componentKey: key, pattern: pattern,
@@ -362,6 +419,7 @@ enum ComponentSecurityScanner {
         let fm = FileManager.default
         guard let items = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) else { return }
 
+        let disabled = disabledRules
         for item in items where item.pathExtension == "json" {
             guard let data = try? Data(contentsOf: item),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
@@ -372,10 +430,12 @@ enum ComponentSecurityScanner {
             // Check command field
             if let command = json["command"] as? String {
                 for pattern in warningMcpCommandPatterns {
+                    let patternName = "MCP command contains \(pattern)"
+                    if disabled.contains(patternName) { continue }
                     if command.contains(pattern) {
                         findings.append(SecurityFinding(
                             componentKey: key,
-                            pattern: "MCP command contains \(pattern)",
+                            pattern: patternName,
                             severity: .warning,
                             line: "command: \(command)"
                         ))
@@ -383,10 +443,34 @@ enum ComponentSecurityScanner {
                 }
             }
 
-            // Check env vars for non-localhost URLs
+            // Check args for external URLs and critical patterns
+            if let args = json["args"] as? [String] {
+                for arg in args {
+                    if !disabled.contains("MCP args contain external URL"),
+                       (arg.hasPrefix("http://") || arg.hasPrefix("https://"))
+                        && !arg.contains("localhost") && !arg.contains("127.0.0.1") {
+                        findings.append(SecurityFinding(
+                            componentKey: key,
+                            pattern: "MCP args contain external URL",
+                            severity: .warning,
+                            line: "arg: \(arg)"
+                        ))
+                    }
+                    let range = NSRange(arg.startIndex..., in: arg)
+                    for (pattern, regex) in criticalMcpArgsPatterns {
+                        if disabled.contains(pattern) { continue }
+                        if let regex, regex.firstMatch(in: arg, range: range) != nil {
+                            findings.append(SecurityFinding(componentKey: key, pattern: pattern, severity: .critical, line: "arg: \(arg)"))
+                        }
+                    }
+                }
+            }
+
+            // Check env vars for non-localhost URLs and credential names
             if let env = json["env"] as? [String: String] {
                 for (envKey, envValue) in env {
-                    if (envValue.hasPrefix("http://") || envValue.hasPrefix("https://"))
+                    if !disabled.contains("MCP env var with external URL"),
+                       (envValue.hasPrefix("http://") || envValue.hasPrefix("https://"))
                         && !envValue.contains("localhost") && !envValue.contains("127.0.0.1") {
                         findings.append(SecurityFinding(
                             componentKey: key,
@@ -394,6 +478,18 @@ enum ComponentSecurityScanner {
                             severity: .warning,
                             line: "\(envKey)=\(envValue)"
                         ))
+                    }
+                    // Check env var name for credential patterns
+                    if !disabled.contains("MCP env var name suggests credential") {
+                        let nameRange = NSRange(envKey.startIndex..., in: envKey)
+                        if let regex = credentialEnvNamePattern, regex.firstMatch(in: envKey, range: nameRange) != nil {
+                            findings.append(SecurityFinding(
+                                componentKey: key,
+                                pattern: "MCP env var name suggests credential",
+                                severity: .warning,
+                                line: "\(envKey)=<redacted>"
+                            ))
+                        }
                     }
                 }
             }

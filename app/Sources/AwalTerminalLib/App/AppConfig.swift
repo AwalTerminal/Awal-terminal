@@ -91,6 +91,7 @@ struct AppConfig {
     var aiComponentsBlockCritical: Bool = true
     var aiComponentsRequireHookApproval: Bool = true
     var aiComponentsCustomSecurityRules: [CustomSecurityRule] = []
+    var aiComponentsDisabledRules: Set<String> = []
 
     // Danger Mode (skip AI tool confirmation prompts)
     var dangerModeEnabled: Bool = false
@@ -241,6 +242,13 @@ struct AppConfig {
         if let v = parsed["ai_components.security_scan"] { config.aiComponentsSecurityScan = v == "true" }
         if let v = parsed["ai_components.block_critical"] { config.aiComponentsBlockCritical = v == "true" }
         if let v = parsed["ai_components.require_hook_approval"] { config.aiComponentsRequireHookApproval = v == "true" }
+
+        // Disabled built-in rules
+        if let v = parsed["ai_components.disabled_rules"] {
+            config.aiComponentsDisabledRules = Set(
+                v.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+            )
+        }
 
         // Export settings
         if let v = parsed["ai_components.export.enabled"] { config.aiComponentsExportEnabled = v == "true" }

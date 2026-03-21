@@ -29,6 +29,7 @@ class SecurityRulesEditorWindow: NSWindowController, NSWindowDelegate {
         var target: String    // "all" | "hook" | "markdown" | "mcp"
         var description: String
         var isBuiltIn: Bool = false
+        var isEnabled: Bool = true
     }
 
     private static let builtInRules: [RuleRow] = [
@@ -45,21 +46,33 @@ class SecurityRulesEditorWindow: NSWindowController, NSWindowDelegate {
         RuleRow(name: "chmod 777", regex: "chmod\\s+777", severity: "warning", target: "hook", description: "Sets world-writable permissions", isBuiltIn: true),
         RuleRow(name: "sudo usage", regex: "\\bsudo\\b", severity: "warning", target: "hook", description: "Uses sudo", isBuiltIn: true),
         // Markdown - Warning
-        RuleRow(name: "ignore previous", regex: "ignore previous", severity: "warning", target: "markdown", description: "Prompt injection pattern", isBuiltIn: true),
-        RuleRow(name: "disregard all", regex: "disregard all", severity: "warning", target: "markdown", description: "Prompt injection pattern", isBuiltIn: true),
-        RuleRow(name: "you are now", regex: "you are now", severity: "warning", target: "markdown", description: "Prompt injection pattern", isBuiltIn: true),
-        RuleRow(name: "output system prompt", regex: "output the system prompt", severity: "warning", target: "markdown", description: "Prompt injection pattern", isBuiltIn: true),
-        RuleRow(name: "reveal instructions", regex: "reveal your instructions", severity: "warning", target: "markdown", description: "Prompt injection pattern", isBuiltIn: true),
-        RuleRow(name: "ignore safety", regex: "ignore safety", severity: "warning", target: "markdown", description: "Prompt injection pattern", isBuiltIn: true),
+        RuleRow(name: "prompt injection: ignore previous", regex: "ignore previous", severity: "warning", target: "markdown", description: "Prompt injection pattern", isBuiltIn: true),
+        RuleRow(name: "prompt injection: disregard all", regex: "disregard all", severity: "warning", target: "markdown", description: "Prompt injection pattern", isBuiltIn: true),
+        RuleRow(name: "prompt injection: you are now", regex: "you are now", severity: "warning", target: "markdown", description: "Prompt injection pattern", isBuiltIn: true),
+        RuleRow(name: "prompt injection: output system prompt", regex: "output the system prompt", severity: "warning", target: "markdown", description: "Prompt injection pattern", isBuiltIn: true),
+        RuleRow(name: "prompt injection: reveal instructions", regex: "reveal your instructions", severity: "warning", target: "markdown", description: "Prompt injection pattern", isBuiltIn: true),
+        RuleRow(name: "prompt injection: ignore safety", regex: "ignore safety", severity: "warning", target: "markdown", description: "Prompt injection pattern", isBuiltIn: true),
+        RuleRow(name: "prompt injection: forget everything", regex: "forget everything", severity: "warning", target: "markdown", description: "Prompt injection pattern", isBuiltIn: true),
+        RuleRow(name: "prompt injection: new instructions", regex: "new instructions", severity: "warning", target: "markdown", description: "Prompt injection pattern", isBuiltIn: true),
+        RuleRow(name: "prompt injection: override instructions", regex: "override (all |your |the )?(instructions|rules|guidelines)", severity: "warning", target: "markdown", description: "Prompt injection pattern", isBuiltIn: true),
+        RuleRow(name: "prompt injection: do not follow", regex: "do not follow (previous|prior|above)", severity: "warning", target: "markdown", description: "Prompt injection pattern", isBuiltIn: true),
+        RuleRow(name: "prompt injection: jailbreak", regex: "\\bjailbreak\\b", severity: "warning", target: "markdown", description: "Prompt injection pattern", isBuiltIn: true),
+        RuleRow(name: "hidden data: large base64 blob", regex: "[A-Za-z0-9+/]{80,}={0,2}", severity: "warning", target: "markdown", description: "Hidden data in base64 encoding", isBuiltIn: true),
+        // MCP - Critical
+        RuleRow(name: "MCP args: reverse shell pattern", regex: "/dev/tcp|mkfifo|nc\\s+-e", severity: "critical", target: "mcp", description: "Reverse shell pattern in MCP args", isBuiltIn: true),
+        RuleRow(name: "MCP args: base64 decode to shell", regex: "base64.*\\|\\s*(sh|bash)", severity: "critical", target: "mcp", description: "Base64 decoded into shell via MCP", isBuiltIn: true),
         // MCP - Warning
-        RuleRow(name: "MCP command: curl", regex: "curl", severity: "warning", target: "mcp", description: "MCP uses curl", isBuiltIn: true),
-        RuleRow(name: "MCP command: wget", regex: "wget", severity: "warning", target: "mcp", description: "MCP uses wget", isBuiltIn: true),
-        RuleRow(name: "MCP command: nc", regex: "nc", severity: "warning", target: "mcp", description: "MCP uses netcat", isBuiltIn: true),
+        RuleRow(name: "MCP command contains curl", regex: "curl", severity: "warning", target: "mcp", description: "MCP uses curl", isBuiltIn: true),
+        RuleRow(name: "MCP command contains wget", regex: "wget", severity: "warning", target: "mcp", description: "MCP uses wget", isBuiltIn: true),
+        RuleRow(name: "MCP command contains nc", regex: "nc", severity: "warning", target: "mcp", description: "MCP uses netcat", isBuiltIn: true),
+        RuleRow(name: "MCP args contain external URL", regex: "https?://(?!localhost|127\\.0\\.0\\.1)", severity: "warning", target: "mcp", description: "MCP args contain external URL", isBuiltIn: true),
+        RuleRow(name: "MCP env var with external URL", regex: "https?://(?!localhost|127\\.0\\.0\\.1)", severity: "warning", target: "mcp", description: "MCP env var points to external URL", isBuiltIn: true),
+        RuleRow(name: "MCP env var name suggests credential", regex: "(API_KEY|SECRET|TOKEN|PASSWORD|CREDENTIALS|AUTH|PRIVATE_KEY)", severity: "warning", target: "mcp", description: "Env var name suggests credentials", isBuiltIn: true),
     ]
 
     init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 740, height: 400),
+            contentRect: NSRect(x: 0, y: 0, width: 770, height: 400),
             styleMask: [.titled, .closable, .resizable],
             backing: .buffered,
             defer: false
@@ -96,6 +109,11 @@ class SecurityRulesEditorWindow: NSWindowController, NSWindowDelegate {
             )
         }
         rules = Self.builtInRules + customRules
+
+        let disabled = AppConfig.shared.aiComponentsDisabledRules
+        for i in rules.indices where rules[i].isBuiltIn {
+            rules[i].isEnabled = !disabled.contains(rules[i].name)
+        }
     }
 
     private var builtInCount: Int { Self.builtInRules.count }
@@ -105,7 +123,7 @@ class SecurityRulesEditorWindow: NSWindowController, NSWindowDelegate {
     private func setupUI() {
         guard let contentView = window?.contentView else { return }
 
-        let titleLabel = NSTextField(labelWithString: "Built-in rules are shown dimmed. Add custom rules below.")
+        let titleLabel = NSTextField(labelWithString: "Built-in rules can be toggled on/off. Add custom rules below.")
         titleLabel.font = .systemFont(ofSize: 12)
         titleLabel.textColor = .secondaryLabelColor
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -115,6 +133,13 @@ class SecurityRulesEditorWindow: NSWindowController, NSWindowDelegate {
         scrollView.hasVerticalScroller = true
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.borderType = .bezelBorder
+
+        let enabledCol = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("rule_enabled"))
+        enabledCol.title = ""
+        enabledCol.width = 24
+        enabledCol.minWidth = 24
+        enabledCol.maxWidth = 24
+        tableView.addTableColumn(enabledCol)
 
         let nameCol = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("rule_name"))
         nameCol.title = "Name"
@@ -226,6 +251,18 @@ class SecurityRulesEditorWindow: NSWindowController, NSWindowDelegate {
                 showError("Rule \"\(rule.name)\" has an invalid regex:\n\(error.localizedDescription)")
                 return
             }
+
+            // Warn about overly broad patterns
+            let broadPatterns: Set<String> = [".", ".*", ".+", "\\s", "\\S", "\\w", "\\W", "\\d", "[\\s\\S]"]
+            if broadPatterns.contains(rule.regex.trimmingCharacters(in: .whitespaces)) {
+                let alert = NSAlert()
+                alert.messageText = "Broad Pattern"
+                alert.informativeText = "Rule \"\(rule.name)\" has a very broad pattern (\(rule.regex)) that may produce excessive findings. Continue anyway?"
+                alert.addButton(withTitle: "Continue")
+                alert.addButton(withTitle: "Cancel")
+                alert.alertStyle = .warning
+                if alert.runModal() != .alertFirstButtonReturn { return }
+            }
         }
 
         // Remove existing security_rules section from config, then write new rules
@@ -237,6 +274,15 @@ class SecurityRulesEditorWindow: NSWindowController, NSWindowDelegate {
             ConfigWriter.updateValue(key: "\(prefix).severity", value: "\"\(rule.severity)\"")
             ConfigWriter.updateValue(key: "\(prefix).target", value: "\"\(rule.target)\"")
             ConfigWriter.updateValue(key: "\(prefix).description", value: "\"\(rule.description)\"")
+        }
+
+        // Persist disabled built-in rules
+        let disabledNames = rules.filter { $0.isBuiltIn && !$0.isEnabled }.map(\.name)
+        if disabledNames.isEmpty {
+            ConfigWriter.removeValue(key: "ai_components.disabled_rules")
+        } else {
+            let joined = disabledNames.joined(separator: ",")
+            ConfigWriter.updateValue(key: "ai_components.disabled_rules", value: "\"\(joined)\"")
         }
 
         AppConfig.reload()
@@ -296,6 +342,14 @@ extension SecurityRulesEditorWindow: NSTableViewDataSource, NSTableViewDelegate 
         let dimmed = rule.isBuiltIn
 
         switch tableColumn?.identifier.rawValue {
+        case "rule_enabled":
+            let checkbox = NSButton(checkboxWithTitle: "", target: self, action: #selector(enabledToggled(_:)))
+            checkbox.state = rule.isEnabled ? .on : .off
+            checkbox.tag = row
+            // Built-in rules: toggle is enabled; custom rules: always on, not toggleable
+            checkbox.isEnabled = rule.isBuiltIn
+            return checkbox
+
         case "rule_name":
             let field = NSTextField()
             field.stringValue = rule.name
@@ -372,6 +426,12 @@ extension SecurityRulesEditorWindow: NSTableViewDataSource, NSTableViewDelegate 
         let row = sender.tag / 10
         guard row < rules.count, !rules[row].isBuiltIn, let title = sender.selectedItem?.title else { return }
         rules[row].target = title
+    }
+
+    @objc private func enabledToggled(_ sender: NSButton) {
+        let row = sender.tag
+        guard row < rules.count, rules[row].isBuiltIn else { return }
+        rules[row].isEnabled = sender.state == .on
     }
 }
 
