@@ -27,6 +27,7 @@ class AboutWindow: NSWindowController {
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         window.isMovableByWindowBackground = true
+        window.appearance = NSAppearance(named: .darkAqua)
         window.backgroundColor = Theme.windowBg
         window.center()
 
@@ -56,7 +57,7 @@ class AboutWindow: NSWindowController {
 
         // --- Tagline ---
         let tagline = makeLabel("LLM-native terminal emulator", size: 12, weight: .regular,
-                                color: NSColor(white: 0.5, alpha: 1))
+                                color: NSColor(white: 0.55, alpha: 1))
         root.addSubview(tagline)
 
         // --- Version pill ---
@@ -120,7 +121,7 @@ class AboutWindow: NSWindowController {
 
         // --- Copyright ---
         let copyrightLabel = makeLabel("\u{00A9} 2026 Awal Terminal", size: 11, weight: .regular,
-                                       color: NSColor(white: 0.3, alpha: 1))
+                                       color: NSColor(white: 0.40, alpha: 1))
         root.addSubview(copyrightLabel)
 
         // --- Layout ---
@@ -214,7 +215,7 @@ class AboutWindow: NSWindowController {
 
         let keyLabel = NSTextField(labelWithString: key)
         keyLabel.font = .systemFont(ofSize: 11, weight: .medium)
-        keyLabel.textColor = NSColor(white: 0.45, alpha: 1)
+        keyLabel.textColor = NSColor(white: 0.50, alpha: 1)
         keyLabel.isSelectable = false
         keyLabel.setContentHuggingPriority(.defaultHigh, for: .horizontal)
         keyLabel.widthAnchor.constraint(equalToConstant: 50).isActive = true
@@ -262,7 +263,7 @@ class AboutWindow: NSWindowController {
 
         let actionLabel = NSTextField(labelWithString: action)
         actionLabel.font = .systemFont(ofSize: 9, weight: .regular)
-        actionLabel.textColor = NSColor(white: 0.4, alpha: 1)
+        actionLabel.textColor = NSColor(white: 0.50, alpha: 1)
         actionLabel.isSelectable = false
 
         stack.addArrangedSubview(keyContainer)

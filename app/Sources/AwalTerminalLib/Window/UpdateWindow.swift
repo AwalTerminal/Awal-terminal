@@ -35,6 +35,7 @@ class UpdateWindow: NSWindowController {
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         window.isMovableByWindowBackground = true
+        window.appearance = NSAppearance(named: .darkAqua)
         window.backgroundColor = Theme.windowBg
         window.center()
 
@@ -302,7 +303,7 @@ class UpdateWindow: NSWindowController {
             btn.contentTintColor = .white
             btn.layer?.backgroundColor = Theme.accent.cgColor
         } else {
-            btn.contentTintColor = NSColor(white: 0.6, alpha: 1)
+            btn.contentTintColor = NSColor(white: 0.70, alpha: 1)
             btn.layer?.backgroundColor = NSColor(white: 1, alpha: 0.08).cgColor
         }
         btn.layer?.cornerRadius = 6

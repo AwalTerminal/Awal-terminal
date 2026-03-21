@@ -29,7 +29,8 @@ class SyncChangeDetailWindow: NSWindowController {
             defer: false
         )
         window.title = "AI Component Updates"
-        window.backgroundColor = NSColor(white: 0.12, alpha: 1.0)
+        window.appearance = NSAppearance(named: .darkAqua)
+        window.backgroundColor = Theme.windowBg
         window.center()
 
         self.init(window: window)
@@ -62,7 +63,7 @@ class SyncChangeDetailWindow: NSWindowController {
         // 16 top padding + 18 info label + 8 gap + 16 registries label + sections + rows + 16 bottom + 44 close area
         let contentHeight: CGFloat = 16 + 18 + 8 + 16
             + CGFloat(sectionCount) * (16 + 16)  // section gap + section label height
-            + CGFloat(totalChanges) * (4 + 20)   // row gap + row height
+            + CGFloat(totalChanges) * (6 + 24)   // row gap + row height
             + 16 + 44
         let maxHeight: CGFloat = 500
         let windowHeight = min(max(contentHeight, 140), maxHeight)
@@ -127,7 +128,7 @@ class SyncChangeDetailWindow: NSWindowController {
                 NSLayoutConstraint.activate([
                     row.leadingAnchor.constraint(equalTo: documentView.leadingAnchor, constant: 24),
                     row.trailingAnchor.constraint(equalTo: documentView.trailingAnchor, constant: -16),
-                    row.topAnchor.constraint(equalTo: lastAnchor, constant: 4),
+                    row.topAnchor.constraint(equalTo: lastAnchor, constant: 6),
                 ])
                 lastAnchor = row.bottomAnchor
             }
@@ -204,7 +205,7 @@ class SyncChangeDetailWindow: NSWindowController {
 
         let detailLabel = NSTextField(labelWithString: "\(change.source) / \(change.stack)")
         detailLabel.font = NSFont.monospacedSystemFont(ofSize: 10, weight: .regular)
-        detailLabel.textColor = NSColor(white: 0.45, alpha: 1.0)
+        detailLabel.textColor = NSColor(white: 0.55, alpha: 1.0)
         detailLabel.translatesAutoresizingMaskIntoConstraints = false
         detailLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
         row.addSubview(detailLabel)
@@ -221,7 +222,7 @@ class SyncChangeDetailWindow: NSWindowController {
             detailLabel.trailingAnchor.constraint(equalTo: row.trailingAnchor),
             detailLabel.centerYAnchor.constraint(equalTo: row.centerYAnchor),
 
-            row.heightAnchor.constraint(equalToConstant: 20),
+            row.heightAnchor.constraint(equalToConstant: 24),
         ])
 
         return row
