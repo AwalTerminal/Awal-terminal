@@ -31,6 +31,8 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
         )
         panel.title = "Security Findings — \(findings.count) finding\(findings.count == 1 ? "" : "s")"
         panel.minSize = NSSize(width: 400, height: 250)
+        panel.appearance = NSAppearance(named: .darkAqua)
+        panel.backgroundColor = Theme.windowBg
         panel.center()
 
         let contentView = NSView(frame: panel.contentView!.bounds)
@@ -181,6 +183,8 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
         window.center()
         window.isReleasedWhenClosed = false
         window.minSize = NSSize(width: 600, height: 400)
+        window.appearance = NSAppearance(named: .darkAqua)
+        window.backgroundColor = Theme.windowBg
         if AppIcon.image != nil { window.representedURL = nil }
 
         super.init(window: window)
@@ -341,7 +345,7 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
         contentView.addSubview(divider)
 
         // -- Components section: segmented tabs + table --
-        segmentedControl.segmentStyle = .texturedRounded
+        segmentedControl.segmentStyle = .capsule
         segmentedControl.target = self
         segmentedControl.action = #selector(segmentChanged(_:))
         segmentedControl.translatesAutoresizingMaskIntoConstraints = false
@@ -1335,6 +1339,8 @@ extension AIComponentsManagerWindow: NSTableViewDataSource, NSTableViewDelegate 
         )
         panel.title = "Security Findings"
         panel.minSize = NSSize(width: 400, height: 250)
+        panel.appearance = NSAppearance(named: .darkAqua)
+        panel.backgroundColor = Theme.windowBg
 
         let contentView = NSView(frame: panel.contentView!.bounds)
         contentView.autoresizingMask = [.width, .height]

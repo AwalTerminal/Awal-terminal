@@ -148,6 +148,8 @@ class MappingEditorWindow: NSWindowController, NSWindowDelegate {
         window.title = "Mapping Editor — \(registryName)"
         window.center()
         window.minSize = NSSize(width: 720, height: 480)
+        window.appearance = NSAppearance(named: .darkAqua)
+        window.backgroundColor = Theme.windowBg
 
         super.init(window: window)
         window.delegate = self

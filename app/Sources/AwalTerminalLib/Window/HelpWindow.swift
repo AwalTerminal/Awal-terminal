@@ -27,6 +27,8 @@ class HelpWindow: NSWindowController {
         )
         window.title = "Awal Terminal Help"
         window.minSize = NSSize(width: 500, height: 400)
+        window.appearance = NSAppearance(named: .darkAqua)
+        window.backgroundColor = Theme.windowBg
         window.center()
 
         self.init(window: window)
