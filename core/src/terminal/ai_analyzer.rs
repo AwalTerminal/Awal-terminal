@@ -63,12 +63,6 @@ pub struct AiAnalyzer {
     current_region: Option<(RegionType, i64, String)>,
     /// Track if we're inside a code fence.
     in_code_fence: bool,
-    /// Latest detected plan title from "Here is Claude's plan:" pattern.
-    detected_plan_title: Option<String>,
-    /// Row where "Here is Claude's plan:" header was seen.
-    plan_header_row: Option<i64>,
-    /// Titles the user already dismissed (prevents re-showing).
-    dismissed_plan_titles: Vec<String>,
     /// Whether remote control mode has been detected.
     remote_control_active: bool,
     /// The remote control session URL, if detected.
@@ -90,9 +84,6 @@ impl AiAnalyzer {
             enabled: false,
             current_region: None,
             in_code_fence: false,
-            detected_plan_title: None,
-            plan_header_row: None,
-            dismissed_plan_titles: Vec::new(),
             remote_control_active: false,
             remote_control_url: None,
             tool_names,
@@ -128,11 +119,6 @@ impl AiAnalyzer {
         self.enabled
     }
 
-    /// Get the latest detected plan title, if any.
-    pub fn detected_plan_title(&self) -> Option<&str> {
-        self.detected_plan_title.as_deref()
-    }
-
     /// Check if remote control mode is active.
     pub fn is_remote_control_active(&self) -> bool {
         self.remote_control_active
@@ -147,13 +133,6 @@ impl AiAnalyzer {
     pub fn clear_remote_control(&mut self) {
         self.remote_control_active = false;
         self.remote_control_url = None;
-    }
-
-    /// Clear the detected plan title and mark it as dismissed.
-    pub fn clear_plan_title(&mut self) {
-        if let Some(title) = self.detected_plan_title.take() {
-            self.dismissed_plan_titles.push(title);
-        }
     }
 
     pub fn regions(&self) -> &[OutputRegion] {
@@ -206,7 +185,6 @@ impl AiAnalyzer {
         self.regions.clear();
         self.current_region = None;
         self.in_code_fence = false;
-        self.plan_header_row = None;
 
         // Scan scrollback
         for (idx, row_cells) in scrollback.iter().enumerate() {
@@ -253,26 +231,6 @@ impl AiAnalyzer {
         let trimmed = text.trim();
         if trimmed.is_empty() {
             return;
-        }
-
-        // Plan title detection: "Here is Claude's plan:" → separator → title
-        if self.plan_header_row.is_some() {
-            if self.is_separator_line(trimmed) {
-                // Skip separator between header and title
-                // (fall through to normal separator handling below)
-            } else {
-                // Non-empty, non-separator line after header → this is the plan title
-                let title = trimmed.to_string();
-                if !self.dismissed_plan_titles.contains(&title) {
-                    self.detected_plan_title = Some(title);
-                }
-                self.plan_header_row = None;
-            }
-        }
-        if trimmed.contains("Here is Claude's plan:")
-            || trimmed.contains("Here is Claude\u{2019}s plan:")
-        {
-            self.plan_header_row = Some(abs_row);
         }
 
         // Remote control detection
