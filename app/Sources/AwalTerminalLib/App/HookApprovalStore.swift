@@ -14,6 +14,7 @@ final class HookApprovalStore {
     static let unapprovedHooksDetectedNotification = Notification.Name("unapprovedHooksDetected")
 
     private let storePath: URL
+    private let auditLogPath: URL
     private var approvals: [String: String] // hookKey → sha256
 
     private init() {
@@ -21,6 +22,7 @@ final class HookApprovalStore {
             .appendingPathComponent(".config/awal")
         try? FileManager.default.createDirectory(at: configDir, withIntermediateDirectories: true)
         storePath = configDir.appendingPathComponent("approved-hooks.json")
+        auditLogPath = configDir.appendingPathComponent("hook-audit.log")
         approvals = [:]
         load()
     }
@@ -38,12 +40,14 @@ final class HookApprovalStore {
     func approve(key: String, fileURL: URL) {
         approvals[key] = fileHash(at: fileURL)
         save()
+        logAuditEvent("APPROVED", key: key)
     }
 
     /// Revoke approval for a hook.
     func revoke(key: String) {
         approvals.removeValue(forKey: key)
         save()
+        logAuditEvent("REVOKED", key: key)
     }
 
     /// Partition a list of keyed hooks into approved and unapproved.
@@ -77,6 +81,31 @@ final class HookApprovalStore {
             options: [.prettyPrinted, .sortedKeys]
         ) else { return }
         try? data.write(to: storePath, options: .atomic)
+    }
+
+    // MARK: - Audit Trail
+
+    private func logAuditEvent(_ action: String, key: String) {
+        let formatter = ISO8601DateFormatter()
+        let timestamp = formatter.string(from: Date())
+        let entry = "\(timestamp) \(action) \(key)\n"
+        if let data = entry.data(using: .utf8) {
+            if FileManager.default.fileExists(atPath: auditLogPath.path) {
+                if let handle = try? FileHandle(forWritingTo: auditLogPath) {
+                    handle.seekToEndOfFile()
+                    handle.write(data)
+                    handle.closeFile()
+                }
+            } else {
+                try? data.write(to: auditLogPath, options: .atomic)
+            }
+        }
+    }
+
+    /// Read the audit log entries (most recent last).
+    func readAuditLog() -> [String] {
+        guard let content = try? String(contentsOf: auditLogPath, encoding: .utf8) else { return [] }
+        return content.components(separatedBy: "\n").filter { !$0.isEmpty }
     }
 
     // MARK: - Hashing
