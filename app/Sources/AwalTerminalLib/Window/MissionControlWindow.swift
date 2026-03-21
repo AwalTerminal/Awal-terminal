@@ -64,7 +64,8 @@ class MissionControlWindow: NSWindowController, NSWindowDelegate, NSTableViewDat
         window.center()
         window.isReleasedWhenClosed = false
         window.minSize = NSSize(width: 600, height: 300)
-        window.backgroundColor = NSColor(white: 0.12, alpha: 1.0)
+        window.appearance = NSAppearance(named: .darkAqua)
+        window.backgroundColor = Theme.windowBg
 
         super.init(window: window)
         window.delegate = self
@@ -100,12 +101,12 @@ class MissionControlWindow: NSWindowController, NSWindowDelegate, NSTableViewDat
         let headerView = NSView()
         headerView.translatesAutoresizingMaskIntoConstraints = false
         headerView.wantsLayer = true
-        headerView.layer?.backgroundColor = NSColor(white: 0.08, alpha: 1.0).cgColor
+        headerView.layer?.backgroundColor = NSColor(white: 0.10, alpha: 1.0).cgColor
         contentView.addSubview(headerView)
 
         for label in [totalCostLabel, totalTokensLabel, activeAgentLabel] {
             label.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .medium)
-            label.textColor = NSColor(white: 0.7, alpha: 1.0)
+            label.textColor = NSColor(white: 0.80, alpha: 1.0)
             label.translatesAutoresizingMaskIntoConstraints = false
             headerView.addSubview(label)
         }
@@ -120,7 +121,7 @@ class MissionControlWindow: NSWindowController, NSWindowDelegate, NSTableViewDat
         tableView.headerView = NSTableHeader()
         tableView.backgroundColor = .clear
         tableView.usesAlternatingRowBackgroundColors = false
-        tableView.rowHeight = 32
+        tableView.rowHeight = 36
         tableView.style = .plain
         tableView.dataSource = self
         tableView.delegate = self
@@ -129,11 +130,11 @@ class MissionControlWindow: NSWindowController, NSWindowDelegate, NSTableViewDat
 
         let columns: [(String, String, CGFloat)] = [
             ("status", "", 24),
-            ("model", "Model", 90),
+            ("model", "Model", 110),
             ("dir", "Directory", 120),
             ("phase", "Phase", 130),
             ("tokens", "Tokens", 120),
-            ("cost", "Cost", 70),
+            ("cost", "Cost", 80),
             ("elapsed", "Elapsed", 70),
             ("kill", "", 50),
         ]
@@ -156,7 +157,7 @@ class MissionControlWindow: NSWindowController, NSWindowDelegate, NSTableViewDat
             headerView.topAnchor.constraint(equalTo: contentView.topAnchor),
             headerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             headerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            headerView.heightAnchor.constraint(equalToConstant: 36),
+            headerView.heightAnchor.constraint(equalToConstant: 40),
 
             totalCostLabel.leadingAnchor.constraint(equalTo: headerView.leadingAnchor, constant: 12),
             totalCostLabel.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
@@ -215,7 +216,7 @@ class MissionControlWindow: NSWindowController, NSWindowDelegate, NSTableViewDat
         if totalCost > 1.0 {
             totalCostLabel.textColor = NSColor(red: 1.0, green: 0.6, blue: 0.3, alpha: 1.0)
         } else {
-            totalCostLabel.textColor = NSColor(white: 0.7, alpha: 1.0)
+            totalCostLabel.textColor = NSColor(white: 0.80, alpha: 1.0)
         }
 
         tableView.reloadData()
@@ -272,6 +273,8 @@ class MissionControlWindow: NSWindowController, NSWindowDelegate, NSTableViewDat
         rowView.wantsLayer = true
         if row < rows.count && rows[row].isGenerating {
             rowView.backgroundColor = NSColor(red: 0.1, green: 0.15, blue: 0.1, alpha: 1.0)
+        } else if row % 2 == 0 {
+            rowView.backgroundColor = NSColor(white: 0.14, alpha: 1.0)
         } else {
             rowView.backgroundColor = .clear
         }
@@ -284,13 +287,13 @@ class MissionControlWindow: NSWindowController, NSWindowDelegate, NSTableViewDat
         let cell = NSView()
         let label = NSTextField(labelWithString: text)
         label.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
-        label.textColor = NSColor(white: 0.85, alpha: 1.0)
+        label.textColor = NSColor(white: 0.90, alpha: 1.0)
         label.lineBreakMode = .byTruncatingTail
         label.translatesAutoresizingMaskIntoConstraints = false
         cell.addSubview(label)
         NSLayoutConstraint.activate([
-            label.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
-            label.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -4),
+            label.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 8),
+            label.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -8),
             label.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
         ])
         return cell
@@ -325,7 +328,8 @@ class MissionControlWindow: NSWindowController, NSWindowDelegate, NSTableViewDat
         let cell = NSView()
         let btn = NSButton(title: "Kill", target: self, action: #selector(killAgent(_:)))
         btn.tag = row
-        btn.bezelStyle = .inline
+        btn.bezelStyle = .rounded
+        btn.contentTintColor = .systemRed
         btn.font = NSFont.monospacedSystemFont(ofSize: 10, weight: .medium)
         btn.translatesAutoresizingMaskIntoConstraints = false
         cell.addSubview(btn)
