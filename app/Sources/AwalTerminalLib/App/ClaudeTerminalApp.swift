@@ -556,25 +556,25 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
     private func setupMainMenu() {
         let mainMenu = NSMenu()
 
-        // App menu
+        // App menu (settings before hide)
         let appMenuItem = NSMenuItem()
         let appMenu = NSMenu(title: "Awal Terminal")
         appMenu.addItem(withTitle: "About Awal Terminal", action: #selector(showAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(NSMenuItem.separator())
+        appMenu.addItem(withTitle: "Preferences…", action: #selector(showPreferences(_:)), keyEquivalent: ",")
+        appMenu.addItem(withTitle: "Model Settings…", action: #selector(TerminalWindowController.openSettings(_:)), keyEquivalent: "")
+        appMenu.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdates(_:)), keyEquivalent: "")
         appMenu.addItem(NSMenuItem.separator())
         appMenu.addItem(withTitle: "Hide Awal Terminal", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         let hideOthers = appMenu.addItem(withTitle: "Hide Others", action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h")
         hideOthers.keyEquivalentModifierMask = [.command, .option]
         appMenu.addItem(withTitle: "Show All", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
         appMenu.addItem(NSMenuItem.separator())
-        appMenu.addItem(withTitle: "Preferences…", action: #selector(showPreferences(_:)), keyEquivalent: ",")
-        appMenu.addItem(withTitle: "Model Settings…", action: #selector(TerminalWindowController.openSettings(_:)), keyEquivalent: "")
-        appMenu.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdates(_:)), keyEquivalent: "")
-        appMenu.addItem(NSMenuItem.separator())
         appMenu.addItem(withTitle: "Quit Awal Terminal", action: #selector(confirmQuit(_:)), keyEquivalent: "q")
         appMenuItem.submenu = appMenu
         mainMenu.addItem(appMenuItem)
 
-        // Shell menu — creating and closing sessions
+        // Shell menu — sessions and tab navigation
         let shellMenuItem = NSMenuItem()
         let shellMenu = NSMenu(title: "Shell")
 
@@ -589,14 +589,30 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
         shellMenu.addItem(renameTabItem)
 
         shellMenu.addItem(NSMenuItem.separator())
+
+        let nextTabItem = NSMenuItem(title: "Next Tab", action: #selector(TerminalWindowController.selectNextTab(_:)), keyEquivalent: "]")
+        nextTabItem.keyEquivalentModifierMask = [.command, .shift]
+        shellMenu.addItem(nextTabItem)
+
+        let prevTabItem = NSMenuItem(title: "Previous Tab", action: #selector(TerminalWindowController.selectPreviousTab(_:)), keyEquivalent: "[")
+        prevTabItem.keyEquivalentModifierMask = [.command, .shift]
+        shellMenu.addItem(prevTabItem)
+
+        shellMenu.addItem(NSMenuItem.separator())
         shellMenu.addItem(withTitle: "Manage Worktrees…", action: #selector(showManageWorktrees(_:)), keyEquivalent: "")
 
         shellMenuItem.submenu = shellMenu
         mainMenu.addItem(shellMenuItem)
 
-        // Edit menu — text operations
+        // Edit menu — text operations with Undo/Redo
         let editMenuItem = NSMenuItem()
         let editMenu = NSMenu(title: "Edit")
+
+        editMenu.addItem(NSMenuItem(title: "Undo", action: Selector(("undo:")), keyEquivalent: "z"))
+        let redoItem = NSMenuItem(title: "Redo", action: Selector(("redo:")), keyEquivalent: "z")
+        redoItem.keyEquivalentModifierMask = [.command, .shift]
+        editMenu.addItem(redoItem)
+        editMenu.addItem(NSMenuItem.separator())
 
         editMenu.addItem(NSMenuItem(title: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x"))
         editMenu.addItem(NSMenuItem(title: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
@@ -610,15 +626,10 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
         let findItem = NSMenuItem(title: "Find…", action: #selector(TerminalWindowController.findInTerminal(_:)), keyEquivalent: "f")
         editMenu.addItem(findItem)
 
-        editMenu.addItem(NSMenuItem.separator())
-        let screenshotItem = NSMenuItem(title: "Screenshot to Session", action: #selector(TerminalWindowController.screenshotToSession(_:)), keyEquivalent: "s")
-        screenshotItem.keyEquivalentModifierMask = [.command, .shift]
-        editMenu.addItem(screenshotItem)
-
         editMenuItem.submenu = editMenu
         mainMenu.addItem(editMenuItem)
 
-        // View menu — UI panel toggles
+        // View menu — pure visibility (panels and display)
         let viewMenuItem = NSMenuItem()
         let viewMenu = NSMenu(title: "View")
 
@@ -634,31 +645,15 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
         quickTermItem.keyEquivalentModifierMask = [.control]
         viewMenu.addItem(quickTermItem)
 
-        viewMenu.addItem(NSMenuItem.separator())
-
-        let dangerItem = NSMenuItem(title: "Danger Mode", action: #selector(toggleDangerMode(_:)), keyEquivalent: "")
-        dangerItem.target = self
-        viewMenu.addItem(dangerItem)
-
-        let remoteItem = NSMenuItem(title: "Remote Control (Claude only)", action: #selector(toggleRemoteControl(_:)), keyEquivalent: "")
-        viewMenu.addItem(remoteItem)
-
-        let preventSleepItem = NSMenuItem(title: "Prevent Sleep", action: #selector(togglePreventSleep(_:)), keyEquivalent: "")
-        viewMenu.addItem(preventSleepItem)
-
-        let stealthItem = NSMenuItem(title: "Stealth Mode", action: #selector(toggleStealthMode(_:)), keyEquivalent: "s")
-        stealthItem.keyEquivalentModifierMask = [.command, .shift, .option]
-        stealthItem.target = self
-        viewMenu.addItem(stealthItem)
-
-        let notifItem = NSMenuItem(title: "Notifications", action: #selector(toggleNotifications(_:)), keyEquivalent: "")
-        viewMenu.addItem(notifItem)
+        let missionControlItem = NSMenuItem(title: "Mission Control", action: #selector(showMissionControl(_:)), keyEquivalent: "d")
+        missionControlItem.keyEquivalentModifierMask = [.command, .shift]
+        viewMenu.addItem(missionControlItem)
 
         viewMenu.addItem(NSMenuItem.separator())
 
-        let recordItem = NSMenuItem(title: "Start/Stop Recording", action: #selector(toggleRecording(_:)), keyEquivalent: "r")
-        recordItem.keyEquivalentModifierMask = [.command, .option, .shift]
-        viewMenu.addItem(recordItem)
+        let fullScreenItem = NSMenuItem(title: "Enter Full Screen", action: #selector(NSWindow.toggleFullScreen(_:)), keyEquivalent: "f")
+        fullScreenItem.keyEquivalentModifierMask = [.control, .command]
+        viewMenu.addItem(fullScreenItem)
 
         #if DEBUG
         viewMenu.addItem(NSMenuItem.separator())
@@ -670,7 +665,53 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
         viewMenuItem.submenu = viewMenu
         mainMenu.addItem(viewMenuItem)
 
-        // AI Components menu
+        // Tools menu — actions, modes, and utilities
+        let toolsMenuItem = NSMenuItem()
+        let toolsMenu = NSMenu(title: "Tools")
+
+        let screenshotItem = NSMenuItem(title: "Screenshot to Session", action: #selector(TerminalWindowController.screenshotToSession(_:)), keyEquivalent: "s")
+        screenshotItem.keyEquivalentModifierMask = [.command, .shift]
+        toolsMenu.addItem(screenshotItem)
+
+        let recordItem = NSMenuItem(title: "Start/Stop Recording", action: #selector(toggleRecording(_:)), keyEquivalent: "r")
+        recordItem.keyEquivalentModifierMask = [.command, .option, .shift]
+        toolsMenu.addItem(recordItem)
+
+        toolsMenu.addItem(NSMenuItem.separator())
+
+        let toggleVoiceItem = NSMenuItem(title: "Voice Input", action: #selector(toggleVoiceInput(_:)), keyEquivalent: "")
+        toolsMenu.addItem(toggleVoiceItem)
+
+        let pttItem = NSMenuItem(title: "Push-to-Talk Mode", action: #selector(setVoiceModePTT(_:)), keyEquivalent: "")
+        pttItem.target = self
+        toolsMenu.addItem(pttItem)
+
+        toolsMenu.addItem(NSMenuItem.separator())
+
+        let dangerItem = NSMenuItem(title: "Danger Mode", action: #selector(toggleDangerMode(_:)), keyEquivalent: "")
+        dangerItem.target = self
+        toolsMenu.addItem(dangerItem)
+
+        let remoteItem = NSMenuItem(title: "Remote Control (Claude only)", action: #selector(toggleRemoteControl(_:)), keyEquivalent: "")
+        toolsMenu.addItem(remoteItem)
+
+        let stealthItem = NSMenuItem(title: "Stealth Mode", action: #selector(toggleStealthMode(_:)), keyEquivalent: "s")
+        stealthItem.keyEquivalentModifierMask = [.command, .shift, .option]
+        stealthItem.target = self
+        toolsMenu.addItem(stealthItem)
+
+        toolsMenu.addItem(NSMenuItem.separator())
+
+        let preventSleepItem = NSMenuItem(title: "Prevent Sleep", action: #selector(togglePreventSleep(_:)), keyEquivalent: "")
+        toolsMenu.addItem(preventSleepItem)
+
+        let notifItem = NSMenuItem(title: "Notifications", action: #selector(toggleNotifications(_:)), keyEquivalent: "")
+        toolsMenu.addItem(notifItem)
+
+        toolsMenuItem.submenu = toolsMenu
+        mainMenu.addItem(toolsMenuItem)
+
+        // AI Components menu (top-level)
         let aiCompMenuItem = NSMenuItem()
         let aiCompMenu = NSMenu(title: "AI Components")
 
@@ -727,48 +768,15 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
         let importExportItem = NSMenuItem(title: "Import & Export...", action: #selector(showImportExport(_:)), keyEquivalent: "")
         aiCompMenu.addItem(importExportItem)
 
-        aiCompMenu.addItem(NSMenuItem.separator())
-
         aiCompMenuItem.submenu = aiCompMenu
         mainMenu.addItem(aiCompMenuItem)
 
-        // Voice menu
-        let voiceMenuItem = NSMenuItem()
-        let voiceMenu = NSMenu(title: "Voice")
-
-        let toggleVoiceItem = NSMenuItem(title: "Toggle Voice Input", action: #selector(toggleVoiceInput(_:)), keyEquivalent: "")
-        voiceMenu.addItem(toggleVoiceItem)
-
-        voiceMenu.addItem(NSMenuItem.separator())
-
-        let pttItem = NSMenuItem(title: "Push-to-Talk Mode", action: #selector(setVoiceModePTT(_:)), keyEquivalent: "")
-        pttItem.target = self
-        voiceMenu.addItem(pttItem)
-
-        voiceMenuItem.submenu = voiceMenu
-        mainMenu.addItem(voiceMenuItem)
-
-        // Window menu — window management and navigation
+        // Window menu — standard macOS window management
         let windowMenuItem = NSMenuItem()
         let windowMenu = NSMenu(title: "Window")
 
-        let missionControlItem = NSMenuItem(title: "Mission Control", action: #selector(showMissionControl(_:)), keyEquivalent: "d")
-        missionControlItem.keyEquivalentModifierMask = [.command, .shift]
-        windowMenu.addItem(missionControlItem)
-
-        windowMenu.addItem(NSMenuItem.separator())
         windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
         windowMenu.addItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
-
-        windowMenu.addItem(NSMenuItem.separator())
-
-        let nextTabItem = NSMenuItem(title: "Next Tab", action: #selector(TerminalWindowController.selectNextTab(_:)), keyEquivalent: "]")
-        nextTabItem.keyEquivalentModifierMask = [.command, .shift]
-        windowMenu.addItem(nextTabItem)
-
-        let prevTabItem = NSMenuItem(title: "Previous Tab", action: #selector(TerminalWindowController.selectPreviousTab(_:)), keyEquivalent: "[")
-        prevTabItem.keyEquivalentModifierMask = [.command, .shift]
-        windowMenu.addItem(prevTabItem)
 
         windowMenuItem.submenu = windowMenu
         mainMenu.addItem(windowMenuItem)
