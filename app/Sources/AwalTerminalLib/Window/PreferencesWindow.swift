@@ -22,7 +22,7 @@ class PreferencesWindow: NSWindowController, NSWindowDelegate {
 
     init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 560, height: 420),
+            contentRect: NSRect(x: 0, y: 0, width: 560, height: 480),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -30,6 +30,8 @@ class PreferencesWindow: NSWindowController, NSWindowDelegate {
         window.title = "Preferences"
         window.center()
         window.isReleasedWhenClosed = false
+        window.appearance = NSAppearance(named: .darkAqua)
+        window.backgroundColor = Theme.windowBg
         if AppIcon.image != nil { window.representedURL = nil }
 
         super.init(window: window)
@@ -114,8 +116,8 @@ class PreferencesWindow: NSWindowController, NSWindowDelegate {
         ])
 
         let note = NSTextField(labelWithString: "Changes are saved to ~/.config/awal/config.toml\nRestart the app for changes to take effect.")
-        note.font = .systemFont(ofSize: 11)
-        note.textColor = .secondaryLabelColor
+        note.font = Theme.captionFont
+        note.textColor = Theme.textTertiary
         note.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(note)
         NSLayoutConstraint.activate([
@@ -220,8 +222,8 @@ class PreferencesWindow: NSWindowController, NSWindowDelegate {
         ])
 
         let note = NSTextField(labelWithString: "Leave Custom Palette empty to use the default 8-color palette.\nChanges take effect for new tabs immediately.")
-        note.font = .systemFont(ofSize: 11)
-        note.textColor = .secondaryLabelColor
+        note.font = Theme.captionFont
+        note.textColor = Theme.textTertiary
         note.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(note)
         NSLayoutConstraint.activate([
@@ -336,8 +338,8 @@ class PreferencesWindow: NSWindowController, NSWindowDelegate {
         ])
 
         let note = NSTextField(labelWithString: "Recording will auto-stop when the max duration is reached.\nSet to \"No limit\" for unlimited recording.")
-        note.font = .systemFont(ofSize: 11)
-        note.textColor = .secondaryLabelColor
+        note.font = Theme.captionFont
+        note.textColor = Theme.textTertiary
         note.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(note)
         NSLayoutConstraint.activate([
@@ -433,8 +435,8 @@ class PreferencesWindow: NSWindowController, NSWindowDelegate {
         ])
 
         let note = NSTextField(labelWithString: "Changes are saved to ~/.config/awal/config.toml\nRestart the app for changes to take effect.")
-        note.font = .systemFont(ofSize: 11)
-        note.textColor = .secondaryLabelColor
+        note.font = Theme.captionFont
+        note.textColor = Theme.textTertiary
         note.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(note)
         NSLayoutConstraint.activate([
@@ -490,12 +492,12 @@ class PreferencesWindow: NSWindowController, NSWindowDelegate {
         let scrollView = NSScrollView()
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.hasVerticalScroller = true
-        scrollView.borderType = .bezelBorder
+        scrollView.borderType = .noBorder
 
         let grid = NSGridView(numberOfColumns: 3, rows: 0)
         grid.translatesAutoresizingMaskIntoConstraints = false
         grid.columnSpacing = 12
-        grid.rowSpacing = 6
+        grid.rowSpacing = 12
 
         // Header
         let hdrAction = NSTextField(labelWithString: "Action")
@@ -523,10 +525,10 @@ class PreferencesWindow: NSWindowController, NSWindowDelegate {
             customField.action = #selector(keybindingChanged(_:))
 
             let row = grid.addRow(with: [actionLabel, defaultLabel, customField])
-            row.height = 26
+            row.height = 30
         }
 
-        grid.column(at: 2).width = 140
+        grid.column(at: 2).width = 160
 
         scrollView.documentView = grid
         view.addSubview(scrollView)
@@ -631,8 +633,8 @@ class PreferencesWindow: NSWindowController, NSWindowDelegate {
         ])
 
         let note = NSTextField(labelWithString: "Changes are saved to ~/.config/awal/config.toml\nRestart the app for changes to take effect.")
-        note.font = .systemFont(ofSize: 11)
-        note.textColor = .secondaryLabelColor
+        note.font = Theme.captionFont
+        note.textColor = Theme.textTertiary
         note.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(note)
         NSLayoutConstraint.activate([
