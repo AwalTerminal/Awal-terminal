@@ -1155,7 +1155,7 @@ class AIComponentPopoverController: NSViewController, NSTableViewDataSource, NST
         let tableHeight = max(CGFloat(maxItems) * rowHeight + 4, 60) // min 60
         let popoverHeight = min(10 + 24 + 8 + tableHeight + 8 + 30 + 10, 400) // clamp
 
-        let container = NSView(frame: NSRect(x: 0, y: 0, width: 520, height: popoverHeight))
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 680, height: popoverHeight))
         container.wantsLayer = true
         container.layer?.backgroundColor = NSColor(white: 0.12, alpha: 1.0).cgColor
         self.view = container
@@ -1182,13 +1182,13 @@ class AIComponentPopoverController: NSViewController, NSTableViewDataSource, NST
 
         let nameCol = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
         nameCol.title = "Name"
-        nameCol.width = 300
+        nameCol.width = 400
         nameCol.resizingMask = .autoresizingMask
         tableView.addTableColumn(nameCol)
 
         let sourceCol = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("source"))
         sourceCol.title = "Source / Stack"
-        sourceCol.width = 180
+        sourceCol.width = 230
         sourceCol.resizingMask = .userResizingMask
         tableView.addTableColumn(sourceCol)
 
@@ -1240,6 +1240,7 @@ class AIComponentPopoverController: NSViewController, NSTableViewDataSource, NST
 
             segmentedControl.topAnchor.constraint(equalTo: container.topAnchor, constant: 10),
             segmentedControl.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            segmentedControl.trailingAnchor.constraint(lessThanOrEqualTo: closeButton.leadingAnchor, constant: -4),
 
             scrollView.topAnchor.constraint(equalTo: segmentedControl.bottomAnchor, constant: 8),
             scrollView.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 8),
