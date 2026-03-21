@@ -1,26 +1,5 @@
 import AppKit
 
-// MARK: - Theme
-
-enum Theme {
-    static let windowBg = NSColor(red: 22.0/255.0, green: 22.0/255.0, blue: 22.0/255.0, alpha: 1)
-    static let editorBg = NSColor(red: 30.0/255.0, green: 30.0/255.0, blue: 30.0/255.0, alpha: 1)
-    static let accent = NSColor(red: 45.0/255.0, green: 127.0/255.0, blue: 212.0/255.0, alpha: 1)
-    static let accentSelection = NSColor(red: 45.0/255.0, green: 127.0/255.0, blue: 212.0/255.0, alpha: 0.15)
-    static let barBorder = NSColor(white: 1, alpha: 0.06)
-    static let textSelection = NSColor(red: 45.0/255.0, green: 127.0/255.0, blue: 212.0/255.0, alpha: 0.4)
-
-    static let stringColor = NSColor(red: 143.0/255.0, green: 217.0/255.0, blue: 143.0/255.0, alpha: 1)
-    static let numberColor = NSColor(red: 217.0/255.0, green: 166.0/255.0, blue: 89.0/255.0, alpha: 1)
-    static let boolColor = NSColor(red: 140.0/255.0, green: 166.0/255.0, blue: 242.0/255.0, alpha: 1)
-    static let nullColor = NSColor(white: 0.35, alpha: 1)
-    static let containerColor = NSColor(white: 0.45, alpha: 1)
-    static let keyColor = NSColor.white
-
-    static let monoFont = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
-    static let barFont = NSFont.systemFont(ofSize: 11, weight: .medium)
-}
-
 // MARK: - Node-associated controls
 
 private class NodeTextField: NSTextField {
@@ -115,6 +94,7 @@ class ConfigEditorWindow: NSWindowController, NSWindowDelegate {
         window.title = "Settings"
         window.center()
         window.minSize = NSSize(width: 500, height: 400)
+        window.appearance = NSAppearance(named: .darkAqua)
         window.backgroundColor = Theme.windowBg
         window.isOpaque = true
 
@@ -170,8 +150,8 @@ class ConfigEditorWindow: NSWindowController, NSWindowDelegate {
         outlineView.style = .plain
         outlineView.selectionHighlightStyle = .regular
         outlineView.backgroundColor = Theme.editorBg
-        outlineView.rowHeight = 28
-        outlineView.intercellSpacing = NSSize(width: 4, height: 0)
+        outlineView.rowHeight = 32
+        outlineView.intercellSpacing = NSSize(width: 8, height: 0)
         outlineView.indentationPerLevel = 20
         outlineView.headerView = nil
         outlineView.floatsGroupRows = false
@@ -205,7 +185,7 @@ class ConfigEditorWindow: NSWindowController, NSWindowDelegate {
         // Empty label
         emptyLabel = NSTextField(labelWithString: "Empty config. Press + to add a key.")
         emptyLabel.font = Theme.monoFont
-        emptyLabel.textColor = NSColor(white: 0.4, alpha: 1)
+        emptyLabel.textColor = NSColor(white: 0.50, alpha: 1)
         emptyLabel.alignment = .center
         emptyLabel.translatesAutoresizingMaskIntoConstraints = false
         emptyLabel.isHidden = true
@@ -250,19 +230,19 @@ class ConfigEditorWindow: NSWindowController, NSWindowDelegate {
             tabBar.topAnchor.constraint(equalTo: contentView.topAnchor),
             tabBar.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             tabBar.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            tabBar.heightAnchor.constraint(equalToConstant: 36),
+            tabBar.heightAnchor.constraint(equalToConstant: 40),
 
             // Profile bar
             profileBar.topAnchor.constraint(equalTo: tabBar.bottomAnchor),
             profileBar.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             profileBar.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            profileBar.heightAnchor.constraint(equalToConstant: 32),
+            profileBar.heightAnchor.constraint(equalToConstant: 36),
 
             // Editor bar
             barView.topAnchor.constraint(equalTo: profileBar.bottomAnchor),
             barView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             barView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            barView.heightAnchor.constraint(equalToConstant: 32),
+            barView.heightAnchor.constraint(equalToConstant: 36),
 
             barSep.leadingAnchor.constraint(equalTo: barView.leadingAnchor),
             barSep.trailingAnchor.constraint(equalTo: barView.trailingAnchor),
@@ -299,7 +279,7 @@ class ConfigEditorWindow: NSWindowController, NSWindowDelegate {
         btn.bezelStyle = .recessed
         btn.isBordered = false
         btn.font = Theme.barFont
-        btn.contentTintColor = NSColor(white: 0.65, alpha: 1)
+        btn.contentTintColor = NSColor(white: 0.70, alpha: 1)
         if let img = NSImage(systemSymbolName: image, accessibilityDescription: title) {
             let config = NSImage.SymbolConfiguration(pointSize: 10, weight: .medium)
             btn.image = img.withSymbolConfiguration(config)
