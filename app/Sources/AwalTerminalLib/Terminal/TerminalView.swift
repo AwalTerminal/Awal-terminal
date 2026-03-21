@@ -3441,23 +3441,6 @@ class TerminalView: NSView {
     func captureScreenshotAndPastePath() {
         guard let _ = surface else { return }
 
-        if !CGPreflightScreenCaptureAccess() {
-            CGRequestScreenCaptureAccess()
-            let alert = NSAlert()
-            alert.messageText = "Screen Recording Permission Required"
-            alert.informativeText = "Awal Terminal needs Screen Recording permission to capture screenshots.\n\nPlease grant access in System Settings → Privacy & Security → Screen Recording, then restart the app."
-            alert.alertStyle = .warning
-            alert.addButton(withTitle: "Open System Settings")
-            alert.addButton(withTitle: "Cancel")
-            let response = alert.runModal()
-            if response == .alertFirstButtonReturn {
-                if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
-                    NSWorkspace.shared.open(url)
-                }
-            }
-            return
-        }
-
         let timestamp = Int(Date().timeIntervalSince1970 * 1000)
         let path = NSTemporaryDirectory() + "awal-screenshot-\(timestamp).png"
 
@@ -3472,13 +3455,30 @@ class TerminalView: NSView {
             }
             process.waitUntilExit()
 
-            // Exit code 1 means user cancelled
-            guard process.terminationStatus == 0,
-                  FileManager.default.fileExists(atPath: path) else { return }
+            let status = process.terminationStatus
 
-            let escaped = self?.shellEscape(path) ?? path
-            DispatchQueue.main.async {
-                self?.queuePtyWrite(Array(escaped.utf8))
+            // Exit code 0 = success, 1 = user cancelled
+            if status == 0, FileManager.default.fileExists(atPath: path) {
+                let escaped = self?.shellEscape(path) ?? path
+                DispatchQueue.main.async {
+                    self?.queuePtyWrite(Array(escaped.utf8))
+                }
+            } else if status != 0, status != 1 {
+                // Permission denied or other error — show alert on main thread
+                DispatchQueue.main.async {
+                    let alert = NSAlert()
+                    alert.messageText = "Screen Recording Permission Required"
+                    alert.informativeText = "Awal Terminal needs Screen Recording permission to capture screenshots.\n\nPlease grant access in System Settings → Privacy & Security → Screen Recording, then restart the app."
+                    alert.alertStyle = .warning
+                    alert.addButton(withTitle: "Open System Settings")
+                    alert.addButton(withTitle: "Cancel")
+                    let response = alert.runModal()
+                    if response == .alertFirstButtonReturn {
+                        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
+                            NSWorkspace.shared.open(url)
+                        }
+                    }
+                }
             }
         }
     }
