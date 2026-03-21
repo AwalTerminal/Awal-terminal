@@ -48,6 +48,7 @@ class RegistryManager {
         .appendingPathComponent(".config/awal")
     private var registriesDir: URL { configDir.appendingPathComponent("registries") }
     private var metaFile: URL { configDir.appendingPathComponent("ai-component-meta.json") }
+    private var scanResultsFile: URL { configDir.appendingPathComponent("scan-results.json") }
 
     private let syncLock = NSLock()
     private var _syncInProgress = false
@@ -124,6 +125,7 @@ class RegistryManager {
 
     func setScanResults(_ findings: [SecurityFinding], for name: String) {
         stateQueue.sync { _scanResults[name] = findings }
+        saveScanResults()
     }
 
     func setRegistryStatus(_ status: RegistryStatus, for name: String) {
@@ -174,6 +176,12 @@ class RegistryManager {
     /// that were synced before the mapping feature was added.
     func resolveMappingsIfNeeded(registries: [RegistryConfig]) {
         runMigrationsIfNeeded()
+
+        // Load cached scan results on first call
+        if stateQueue.sync(execute: { _scanResults.isEmpty }) {
+            loadScanResults()
+        }
+
         for reg in registries {
             // Skip if already resolved
             if mappingModes[reg.name] != nil { continue }
@@ -222,6 +230,19 @@ class RegistryManager {
                     let hash = loadMeta()[reg.name]?["commitHash"] as? String ?? ""
                     registryStatuses[reg.name] = .synced(lastSync: ts, commitHash: hash)
                 }
+            }
+
+            // Run security scan if no cached results exist for this registry
+            if AppConfig.shared.aiComponentsSecurityScan,
+               stateQueue.sync(execute: { _scanResults[reg.name] }) == nil {
+                let allStacks = Set(ProjectDetector.builtInRules.keys)
+                var findings = ComponentSecurityScanner.scan(registryPath: repoPath, stacks: allStacks)
+                if mode != .standard {
+                    findings.append(contentsOf: ComponentSecurityScanner.scanMappedComponents(
+                        registryName: reg.name, repoPath: repoPath, mode: mode
+                    ))
+                }
+                setScanResults(findings, for: reg.name)
             }
         }
     }
@@ -975,6 +996,24 @@ class RegistryManager {
         try? fm.createDirectory(at: configDir, withIntermediateDirectories: true)
         if let data = try? JSONSerialization.data(withJSONObject: meta, options: [.prettyPrinted, .sortedKeys]) {
             try? data.write(to: metaFile)
+        }
+    }
+
+    // MARK: - Scan Results Persistence
+
+    /// Load cached scan results from disk (called at startup).
+    func loadScanResults() {
+        guard let data = try? Data(contentsOf: scanResultsFile) else { return }
+        guard let decoded = try? JSONDecoder().decode([String: [SecurityFinding]].self, from: data) else { return }
+        stateQueue.sync { _scanResults = decoded }
+    }
+
+    /// Persist current scan results to disk.
+    private func saveScanResults() {
+        let snapshot = stateQueue.sync { _scanResults }
+        try? fm.createDirectory(at: configDir, withIntermediateDirectories: true)
+        if let data = try? JSONEncoder().encode(snapshot) {
+            try? data.write(to: scanResultsFile, options: .atomic)
         }
     }
 }
