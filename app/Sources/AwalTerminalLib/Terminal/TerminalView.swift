@@ -3238,6 +3238,10 @@ class TerminalView: NSView {
     }
 
     private func updateCompletions() {
+        guard activeModelName.isEmpty || activeModelName == "Shell" else {
+            hideCompletions()
+            return
+        }
         guard let s = surface else { return }
         guard let cStr = at_surface_get_input_line(s) else {
             hideCompletions()
