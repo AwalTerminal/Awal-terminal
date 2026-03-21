@@ -56,23 +56,116 @@ class RegistryManager {
         set { syncLock.lock(); _syncInProgress = newValue; syncLock.unlock() }
     }
 
+    /// Serial queue protecting all mutable shared state.
+    private let stateQueue = DispatchQueue(label: "com.awal.registrymanager.state")
+
     /// Per-registry status tracking.
-    private(set) var registryStatuses: [String: RegistryStatus] = [:]
+    private var _registryStatuses: [String: RegistryStatus] = [:]
+    private(set) var registryStatuses: [String: RegistryStatus] {
+        get { stateQueue.sync { _registryStatuses } }
+        set { stateQueue.sync { _registryStatuses = newValue } }
+    }
 
     /// Path overrides for local-type registries (read in-place, no copy).
-    private(set) var pathOverrides: [String: URL] = [:]
+    private var _pathOverrides: [String: URL] = [:]
+    private(set) var pathOverrides: [String: URL] {
+        get { stateQueue.sync { _pathOverrides } }
+        set { stateQueue.sync { _pathOverrides = newValue } }
+    }
 
     /// Security scan results per registry.
-    private(set) var scanResults: [String: [SecurityFinding]] = [:]
+    private var _scanResults: [String: [SecurityFinding]] = [:]
+    private(set) var scanResults: [String: [SecurityFinding]] {
+        get { stateQueue.sync { _scanResults } }
+        set { stateQueue.sync { _scanResults = newValue } }
+    }
 
     /// Resolved mapping mode per registry.
-    var mappingModes: [String: RegistryMappingMode] = [:]
+    private var _mappingModes: [String: RegistryMappingMode] = [:]
+    var mappingModes: [String: RegistryMappingMode] {
+        get { stateQueue.sync { _mappingModes } }
+        set { stateQueue.sync { _mappingModes = newValue } }
+    }
 
     /// Resolved components from mapped/claude-plugin registries.
-    var mappedComponents: [String: [ResolvedComponent]] = [:]
+    private var _mappedComponents: [String: [ResolvedComponent]] = [:]
+    var mappedComponents: [String: [ResolvedComponent]] {
+        get { stateQueue.sync { _mappedComponents } }
+        set { stateQueue.sync { _mappedComponents = newValue } }
+    }
+
+    /// Pending sync request queued while a sync is already in progress.
+    private var pendingSync: (registries: [RegistryConfig], force: Bool, completion: (([String: Result<Void, RegistrySyncError>]) -> Void)?)?
 
     /// Path for the local registry (used by imports).
     var localRegistryPath: URL { registriesDir.appendingPathComponent("local") }
+
+    // MARK: - Thread-Safe State Accessors
+
+    func setMappingMode(_ mode: RegistryMappingMode, for name: String) {
+        stateQueue.sync { _mappingModes[name] = mode }
+    }
+
+    func getMappingMode(for name: String) -> RegistryMappingMode? {
+        stateQueue.sync { _mappingModes[name] }
+    }
+
+    func setMappedComponents(_ components: [ResolvedComponent], for name: String) {
+        stateQueue.sync { _mappedComponents[name] = components }
+    }
+
+    func getMappedComponents(for name: String) -> [ResolvedComponent]? {
+        stateQueue.sync { _mappedComponents[name] }
+    }
+
+    func removeMappedComponents(for name: String) {
+        stateQueue.sync { _ = _mappedComponents.removeValue(forKey: name) }
+    }
+
+    func setScanResults(_ findings: [SecurityFinding], for name: String) {
+        stateQueue.sync { _scanResults[name] = findings }
+    }
+
+    func setRegistryStatus(_ status: RegistryStatus, for name: String) {
+        stateQueue.sync { _registryStatuses[name] = status }
+    }
+
+    func getRegistryStatus(for name: String) -> RegistryStatus? {
+        stateQueue.sync { _registryStatuses[name] }
+    }
+
+    func setPathOverride(_ url: URL, for name: String) {
+        stateQueue.sync { _pathOverrides[name] = url }
+    }
+
+    func removePathOverride(for name: String) {
+        stateQueue.sync { _ = _pathOverrides.removeValue(forKey: name) }
+    }
+
+    // MARK: - Migrations
+
+    /// Migrate old registry directory names to current defaults.
+    /// Called once before mapping resolution to handle renames across versions.
+    private static var migrationsRun = false
+    func runMigrationsIfNeeded() {
+        guard !Self.migrationsRun else { return }
+        Self.migrationsRun = true
+
+        // Rename awal-ai-components-registry → awal-components (default name changed)
+        let oldDir = registriesDir.appendingPathComponent("awal-ai-components-registry")
+        let newDir = registriesDir.appendingPathComponent("awal-components")
+        if fm.fileExists(atPath: oldDir.path), !fm.fileExists(atPath: newDir.path) {
+            try? fm.moveItem(at: oldDir, to: newDir)
+            // Migrate metadata key
+            var meta = loadMeta()
+            if let oldMeta = meta["awal-ai-components-registry"] {
+                meta["awal-components"] = oldMeta
+                meta.removeValue(forKey: "awal-ai-components-registry")
+                saveMeta(meta)
+            }
+            debugLog("RegistryManager: migrated awal-ai-components-registry → awal-components")
+        }
+    }
 
     // MARK: - Mapping Resolution
 
@@ -80,6 +173,7 @@ class RegistryManager {
     /// Called at startup or when the manager window opens to catch registries
     /// that were synced before the mapping feature was added.
     func resolveMappingsIfNeeded(registries: [RegistryConfig]) {
+        runMigrationsIfNeeded()
         for reg in registries {
             // Skip if already resolved
             if mappingModes[reg.name] != nil { continue }
@@ -134,6 +228,32 @@ class RegistryManager {
 
     // MARK: - Public API
 
+    /// Synchronously sync all configured registries. Blocks the calling thread.
+    /// Use from `AIComponentInjector.inject` to ensure components are available before assembly.
+    func syncAllBlocking(
+        registries: [RegistryConfig],
+        force: Bool = false
+    ) -> [String: Result<Void, RegistrySyncError>] {
+        guard !syncInProgress else { return [:] }
+        syncInProgress = true
+        defer { syncInProgress = false }
+
+        var results: [String: Result<Void, RegistrySyncError>] = [:]
+        for reg in registries {
+            let result: Result<Void, RegistrySyncError>
+            switch reg.type {
+            case .git:
+                result = self.syncOneInternal(name: reg.name, url: reg.url, branch: reg.branch, tag: reg.tag, force: force)
+            case .localskills:
+                result = self.syncLocalSkills(name: reg.name, slugs: reg.slugs, force: force)
+            case .local:
+                result = self.syncLocalDir(name: reg.name, path: reg.path)
+            }
+            results[reg.name] = result
+        }
+        return results
+    }
+
     /// Clone or pull all configured registries. Runs on a background queue.
     func syncAll(
         registries: [RegistryConfig],
@@ -141,7 +261,10 @@ class RegistryManager {
         completion: (([String: Result<Void, RegistrySyncError>]) -> Void)? = nil
     ) {
         guard !syncInProgress else {
-            completion?([:])
+            // Queue the request instead of dropping it silently
+            syncLock.lock()
+            pendingSync = (registries, force, completion)
+            syncLock.unlock()
             return
         }
         syncInProgress = true
@@ -180,6 +303,16 @@ class RegistryManager {
                     }
                     completion?(results)
                 }
+
+                // Execute pending sync if one was queued
+                self.syncLock.lock()
+                let pending = self.pendingSync
+                self.pendingSync = nil
+                self.syncLock.unlock()
+
+                if let pending {
+                    self.syncAll(registries: pending.registries, force: pending.force, completion: pending.completion)
+                }
             }
 
             for reg in registries {
@@ -212,17 +345,17 @@ class RegistryManager {
 
     /// Remove a cloned registry.
     func removeRegistry(name: String) {
-        pathOverrides.removeValue(forKey: name)
+        removePathOverride(for: name)
         let repoDir = registriesDir.appendingPathComponent(name)
         try? fm.removeItem(at: repoDir)
         removeMeta(name: name)
-        registryStatuses[name] = .notCloned
+        setRegistryStatus(.notCloned, for: name)
         postStatusChange()
     }
 
     /// Get the local path for a registry's clone (or override for local type).
     func registryPath(name: String) -> URL {
-        if let override = pathOverrides[name] { return override }
+        if let override = stateQueue.sync(execute: { _pathOverrides[name] }) { return override }
         return registriesDir.appendingPathComponent(name)
     }
 
@@ -391,9 +524,7 @@ class RegistryManager {
             let mode = RegistryMappingResolver.resolveMode(
                 registryName: name, repoPath: repoDir, configMapping: configMapping
             )
-            DispatchQueue.main.async { [weak self] in
-                self?.mappingModes[name] = mode
-            }
+            setMappingMode(mode, for: name)
 
             // Resolve mapped components for non-standard registries
             switch mode {
@@ -402,30 +533,22 @@ class RegistryManager {
                 let resolved = RegistryMappingResolver.applyLocalOverrides(
                     base: base, registryName: name, repoPath: repoDir
                 )
-                DispatchQueue.main.async { [weak self] in
-                    self?.mappedComponents[name] = resolved
-                }
+                setMappedComponents(resolved, for: name)
             case .inRepoMapping:
                 if let mapping = RegistryMappingResolver.loadInRepoMapping(repoPath: repoDir) {
                     let base = RegistryMappingResolver.resolveMapping(mapping, repoPath: repoDir)
                     let resolved = RegistryMappingResolver.applyLocalOverrides(
                         base: base, registryName: name, repoPath: repoDir
                     )
-                    DispatchQueue.main.async { [weak self] in
-                        self?.mappedComponents[name] = resolved
-                    }
+                    setMappedComponents(resolved, for: name)
                 }
             case .localMapping:
                 if let mapping = RegistryMappingResolver.loadMapping(registryName: name, repoPath: repoDir) {
                     let resolved = RegistryMappingResolver.resolveMapping(mapping, repoPath: repoDir)
-                    DispatchQueue.main.async { [weak self] in
-                        self?.mappedComponents[name] = resolved
-                    }
+                    setMappedComponents(resolved, for: name)
                 }
             default:
-                DispatchQueue.main.async { [weak self] in
-                    self?.mappedComponents.removeValue(forKey: name)
-                }
+                removeMappedComponents(for: name)
             }
 
             // Run security scan if enabled
@@ -439,9 +562,7 @@ class RegistryManager {
                     )
                     findings.append(contentsOf: mappedFindings)
                 }
-                DispatchQueue.main.async { [weak self] in
-                    self?.scanResults[name] = findings
-                }
+                setScanResults(findings, for: name)
             }
 
             // Validate and set status with warnings
@@ -666,7 +787,7 @@ class RegistryManager {
             return .failure(.invalidStructure(name: name, details: "Directory not found: \(path)"))
         }
 
-        pathOverrides[name] = dirURL
+        setPathOverride(dirURL, for: name)
         updateMeta(name: name, commitHash: "local")
         setStatus(name, .synced(lastSync: Date(), commitHash: "local"))
 
@@ -676,9 +797,7 @@ class RegistryManager {
         let mode = RegistryMappingResolver.resolveMode(
             registryName: name, repoPath: dirURL, configMapping: configMapping
         )
-        DispatchQueue.main.async { [weak self] in
-            self?.mappingModes[name] = mode
-        }
+        setMappingMode(mode, for: name)
 
         switch mode {
         case .claudePlugin:
@@ -686,30 +805,22 @@ class RegistryManager {
             let resolved = RegistryMappingResolver.applyLocalOverrides(
                 base: base, registryName: name, repoPath: dirURL
             )
-            DispatchQueue.main.async { [weak self] in
-                self?.mappedComponents[name] = resolved
-            }
+            setMappedComponents(resolved, for: name)
         case .inRepoMapping:
             if let mapping = RegistryMappingResolver.loadInRepoMapping(repoPath: dirURL) {
                 let base = RegistryMappingResolver.resolveMapping(mapping, repoPath: dirURL)
                 let resolved = RegistryMappingResolver.applyLocalOverrides(
                     base: base, registryName: name, repoPath: dirURL
                 )
-                DispatchQueue.main.async { [weak self] in
-                    self?.mappedComponents[name] = resolved
-                }
+                setMappedComponents(resolved, for: name)
             }
         case .localMapping:
             if let mapping = RegistryMappingResolver.loadMapping(registryName: name, repoPath: dirURL) {
                 let resolved = RegistryMappingResolver.resolveMapping(mapping, repoPath: dirURL)
-                DispatchQueue.main.async { [weak self] in
-                    self?.mappedComponents[name] = resolved
-                }
+                setMappedComponents(resolved, for: name)
             }
         default:
-            DispatchQueue.main.async { [weak self] in
-                self?.mappedComponents.removeValue(forKey: name)
-            }
+            removeMappedComponents(for: name)
         }
 
         return .success(())
@@ -813,8 +924,8 @@ class RegistryManager {
     // MARK: - Status Tracking
 
     private func setStatus(_ name: String, _ status: RegistryStatus) {
+        setRegistryStatus(status, for: name)
         DispatchQueue.main.async { [weak self] in
-            self?.registryStatuses[name] = status
             self?.postStatusChange()
         }
     }

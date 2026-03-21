@@ -57,6 +57,7 @@ class AIComponentRegistry {
         disabledComponents: Set<String> = [],
         blockedComponents: Set<String> = []
     ) -> AssemblyResult {
+        debugLog("AIComponentRegistry.assemble: stacks=\(stacks) registries=\(registries.map { $0.name }) skip=\(disabledComponents.count)+\(blockedComponents.count)")
         let skip = disabledComponents.union(blockedComponents)
         var allDirs: [URL] = []
         var totalSkills = 0
@@ -70,14 +71,17 @@ class AIComponentRegistry {
         for reg in registries {
             let regPath = RegistryManager.shared.registryPath(name: reg.name)
             guard fm.fileExists(atPath: regPath.path) else {
+                debugLog("AIComponentRegistry.assemble: \(reg.name) not cloned at \(regPath.path)")
                 warnings.append("\(reg.name): not cloned yet")
                 continue
             }
 
             let mode = RegistryManager.shared.mappingModes[reg.name] ?? .standard
+            debugLog("AIComponentRegistry.assemble: \(reg.name) mode=\(mode) path=\(regPath.path)")
 
             // For mapped registries, assemble from resolved components
             if mode != .standard, let resolved = RegistryManager.shared.mappedComponents[reg.name], !resolved.isEmpty {
+                debugLog("AIComponentRegistry.assemble: \(reg.name) mapped with \(resolved.count) components")
                 let pluginDir = pluginsDir.appendingPathComponent("\(reg.name)--mapped")
                 let counts = assembleMappedPlugin(
                     at: pluginDir,
@@ -118,6 +122,8 @@ class AIComponentRegistry {
                     stackName: stack,
                     skip: skip
                 )
+
+                debugLog("AIComponentRegistry.assemble: \(reg.name)/\(stack) skills=\(counts.skills) rules=\(counts.rules) prompts=\(counts.prompts) agents=\(counts.agents) total=\(counts.total)")
 
                 if counts.total > 0 {
                     allDirs.append(pluginDir)

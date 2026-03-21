@@ -173,6 +173,28 @@ final class ProjectDetectorTests: XCTestCase {
         }
     }
 
+    // MARK: - Subdirectory (monorepo) detection
+
+    func testDetectsSwiftInSubdirectory() {
+        let subdir = tmpDir.appendingPathComponent("app")
+        try! FileManager.default.createDirectory(at: subdir, withIntermediateDirectories: true)
+        FileManager.default.createFile(atPath: subdir.appendingPathComponent("Package.swift").path, contents: nil)
+        let result = ProjectDetector.detect(path: tmpDir.path)
+        XCTAssertTrue(result.contains("swift"))
+    }
+
+    func testDetectsMultipleStacksInSubdirectories() {
+        let appDir = tmpDir.appendingPathComponent("app")
+        let coreDir = tmpDir.appendingPathComponent("core")
+        try! FileManager.default.createDirectory(at: appDir, withIntermediateDirectories: true)
+        try! FileManager.default.createDirectory(at: coreDir, withIntermediateDirectories: true)
+        FileManager.default.createFile(atPath: appDir.appendingPathComponent("Package.swift").path, contents: nil)
+        FileManager.default.createFile(atPath: coreDir.appendingPathComponent("Cargo.toml").path, contents: nil)
+        let result = ProjectDetector.detect(path: tmpDir.path)
+        XCTAssertTrue(result.contains("swift"))
+        XCTAssertTrue(result.contains("rust"))
+    }
+
     // MARK: - Helpers
 
     private func touch(_ name: String, content: String = "") {

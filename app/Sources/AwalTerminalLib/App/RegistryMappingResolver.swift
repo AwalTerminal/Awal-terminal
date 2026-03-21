@@ -288,23 +288,88 @@ enum RegistryMappingResolver {
         var components: [ResolvedComponent] = []
         for plugin in plugins {
             let groupName = plugin["name"] as? String
-            guard let skillPaths = plugin["skills"] as? [String] else { continue }
-            for skillPath in skillPaths {
-                // Resolve relative path (strip leading ./)
-                let cleaned = skillPath.hasPrefix("./") ? String(skillPath.dropFirst(2)) : skillPath
-                let skillDir = repoPath.appendingPathComponent(cleaned)
-                // Look for SKILL.md inside
-                let skillMd = skillDir.appendingPathComponent("SKILL.md")
-                guard fm.fileExists(atPath: skillMd.path) else { continue }
-                let name = skillDir.lastPathComponent
-                components.append(ResolvedComponent(
-                    name: name,
-                    type: .skill,
-                    stack: "common",
-                    fileURL: skillDir,
-                    group: groupName,
-                    hookPhase: nil
-                ))
+
+            // If explicit skills array is provided, use it
+            if let skillPaths = plugin["skills"] as? [String] {
+                for skillPath in skillPaths {
+                    let cleaned = skillPath.hasPrefix("./") ? String(skillPath.dropFirst(2)) : skillPath
+                    let skillDir = repoPath.appendingPathComponent(cleaned)
+                    let skillMd = skillDir.appendingPathComponent("SKILL.md")
+                    guard fm.fileExists(atPath: skillMd.path) else { continue }
+                    let name = skillDir.lastPathComponent
+                    components.append(ResolvedComponent(
+                        name: name, type: .skill, stack: "common",
+                        fileURL: skillDir, group: groupName, hookPhase: nil
+                    ))
+                }
+                continue
+            }
+
+            // No explicit arrays — discover components from source directory (only when explicitly set)
+            guard let source = plugin["source"] as? String else { continue }
+            let cleaned = source.hasPrefix("./") ? String(source.dropFirst(2)) : source
+            let sourceDir = cleaned.isEmpty ? repoPath : repoPath.appendingPathComponent(cleaned)
+
+            // Discover skills (directories containing SKILL.md)
+            let skillsParent = sourceDir.appendingPathComponent("skills")
+            if let items = try? fm.contentsOfDirectory(at: skillsParent, includingPropertiesForKeys: nil) {
+                for item in items {
+                    let skillMd = item.appendingPathComponent("SKILL.md")
+                    guard fm.fileExists(atPath: skillMd.path) else { continue }
+                    components.append(ResolvedComponent(
+                        name: item.lastPathComponent, type: .skill, stack: "common",
+                        fileURL: item, group: groupName, hookPhase: nil
+                    ))
+                }
+            }
+
+            // Discover rules (.md files in rules/ and rules/<subdir>/)
+            let rulesParent = sourceDir.appendingPathComponent("rules")
+            if let items = try? fm.contentsOfDirectory(at: rulesParent, includingPropertiesForKeys: nil) {
+                for item in items {
+                    if item.pathExtension == "md", item.lastPathComponent != "README.md" {
+                        components.append(ResolvedComponent(
+                            name: item.deletingPathExtension().lastPathComponent, type: .rule,
+                            stack: "common", fileURL: item, group: groupName, hookPhase: nil
+                        ))
+                    } else {
+                        // Subdirectory of rules (e.g. rules/python/)
+                        var isDir: ObjCBool = false
+                        if fm.fileExists(atPath: item.path, isDirectory: &isDir), isDir.boolValue {
+                            if let subItems = try? fm.contentsOfDirectory(at: item, includingPropertiesForKeys: nil) {
+                                let stack = item.lastPathComponent
+                                for sub in subItems where sub.pathExtension == "md" && sub.lastPathComponent != "README.md" {
+                                    components.append(ResolvedComponent(
+                                        name: sub.deletingPathExtension().lastPathComponent, type: .rule,
+                                        stack: stack, fileURL: sub, group: groupName, hookPhase: nil
+                                    ))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Discover commands (.md files)
+            let commandsParent = sourceDir.appendingPathComponent("commands")
+            if let items = try? fm.contentsOfDirectory(at: commandsParent, includingPropertiesForKeys: nil) {
+                for item in items where item.pathExtension == "md" && item.lastPathComponent != "README.md" {
+                    components.append(ResolvedComponent(
+                        name: item.deletingPathExtension().lastPathComponent, type: .prompt,
+                        stack: "common", fileURL: item, group: groupName, hookPhase: nil
+                    ))
+                }
+            }
+
+            // Discover agents (.md files)
+            let agentsParent = sourceDir.appendingPathComponent("agents")
+            if let items = try? fm.contentsOfDirectory(at: agentsParent, includingPropertiesForKeys: nil) {
+                for item in items where item.pathExtension == "md" && item.lastPathComponent != "README.md" {
+                    components.append(ResolvedComponent(
+                        name: item.deletingPathExtension().lastPathComponent, type: .agent,
+                        stack: "common", fileURL: item, group: groupName, hookPhase: nil
+                    ))
+                }
             }
         }
         return components
@@ -517,13 +582,18 @@ enum RegistryMappingResolver {
             let ext = String(pattern.dropFirst(2))
             return name.hasSuffix(".\(ext)")
         }
+        // Check *contains* before suffix-only to avoid mismatching "*foo*" as prefix "foo*"
+        if pattern.hasPrefix("*") && pattern.hasSuffix("*") && pattern.count > 2 {
+            let middle = String(pattern.dropFirst().dropLast())
+            return name.contains(middle)
+        }
         if pattern.hasSuffix("*") {
             let prefix = String(pattern.dropLast())
             return name.hasPrefix(prefix)
         }
-        if pattern.hasPrefix("*") && pattern.hasSuffix("*") {
-            let middle = String(pattern.dropFirst().dropLast())
-            return name.contains(middle)
+        if pattern.hasPrefix("*") {
+            let suffix = String(pattern.dropFirst())
+            return name.hasSuffix(suffix)
         }
         return name == pattern
     }

@@ -50,21 +50,38 @@ struct ProjectDetector {
         let fm = FileManager.default
         var detected = Set<String>()
 
+        // Collect directories to scan: root + immediate subdirectories (for monorepos)
+        var dirsToScan = [path]
+        if let children = try? fm.contentsOfDirectory(atPath: path) {
+            for child in children where !child.hasPrefix(".") {
+                let childPath = (path as NSString).appendingPathComponent(child)
+                var isDir: ObjCBool = false
+                if fm.fileExists(atPath: childPath, isDirectory: &isDir), isDir.boolValue {
+                    dirsToScan.append(childPath)
+                }
+            }
+        }
+
         for (stack, markers) in rules {
             for marker in markers {
-                if marker.contains("*") {
-                    // Glob pattern — check directory contents
-                    if matchesGlob(marker, inDirectory: path, fileManager: fm) {
-                        detected.insert(stack)
-                        break
+                var found = false
+                for dir in dirsToScan {
+                    if marker.contains("*") {
+                        if matchesGlob(marker, inDirectory: dir, fileManager: fm) {
+                            found = true
+                            break
+                        }
+                    } else {
+                        let filePath = (dir as NSString).appendingPathComponent(marker)
+                        if fm.fileExists(atPath: filePath) {
+                            found = true
+                            break
+                        }
                     }
-                } else {
-                    // Exact file match
-                    let filePath = (path as NSString).appendingPathComponent(marker)
-                    if fm.fileExists(atPath: filePath) {
-                        detected.insert(stack)
-                        break
-                    }
+                }
+                if found {
+                    detected.insert(stack)
+                    break
                 }
             }
         }

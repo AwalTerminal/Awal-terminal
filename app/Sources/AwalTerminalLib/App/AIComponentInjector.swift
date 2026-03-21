@@ -28,10 +28,21 @@ enum AIComponentInjector {
         debugLog("AIComponentInjector.inject: model=\(modelName) path=\(projectPath)")
 
         let config = AppConfig.shared
-        guard config.aiComponentsEnabled else { return nil }
+        guard config.aiComponentsEnabled else {
+            debugLog("AIComponentInjector: disabled in config")
+            return nil
+        }
 
         let registries = config.aiComponentRegistries
-        guard !registries.isEmpty else { return nil }
+        guard !registries.isEmpty else {
+            debugLog("AIComponentInjector: no registries configured")
+            return nil
+        }
+
+        debugLog("AIComponentInjector: registries=\(registries.map { $0.name })")
+
+        // Run migrations before any sync or mapping resolution
+        RegistryManager.shared.runMigrationsIfNeeded()
 
         // Detect project stacks
         let overrides = config.aiComponentOverride(for: projectPath)
@@ -50,18 +61,27 @@ enum AIComponentInjector {
             registryRules: registryRules,
             overrideStacks: overrides
         )
+        debugLog("AIComponentInjector: detected stacks=\(stacks)")
         guard !stacks.isEmpty else {
+            debugLog("AIComponentInjector: no stacks detected, cleaning up")
             cleanup(modelName: modelName)
             return nil
         }
 
-        // Auto-sync registries if enabled
+        // Sync registries (blocking to ensure components are available before assembly)
         if config.aiComponentsAutoSync {
-            RegistryManager.shared.syncAll(registries: registries)
+            _ = RegistryManager.shared.syncAllBlocking(registries: registries)
         }
 
-        // Ensure mapping modes are resolved before assembly (syncAll sets them async)
+        // Resolve mapping modes for any registries not yet resolved by sync
         RegistryManager.shared.resolveMappingsIfNeeded(registries: registries)
+
+        // Log mapping modes for debugging
+        for reg in registries {
+            let mode = RegistryManager.shared.mappingModes[reg.name]
+            let compCount = RegistryManager.shared.mappedComponents[reg.name]?.count ?? 0
+            debugLog("AIComponentInjector: registry=\(reg.name) mode=\(String(describing: mode)) mappedComponents=\(compCount)")
+        }
 
         debugLog("AIComponentInjector: stacks=\(stacks), registries=\(registries.map { $0.name })")
 
@@ -125,6 +145,12 @@ enum AIComponentInjector {
                 blockedComponents: blockedComponents,
                 hooks: hooks
             )
+        }
+
+        if let ctx = result {
+            debugLog("AIComponentInjector: result skills=\(ctx.skillCount) rules=\(ctx.ruleCount) prompts=\(ctx.promptCount) agents=\(ctx.agentCount) mcp=\(ctx.mcpServerCount) total=\(ctx.totalCount)")
+        } else {
+            debugLog("AIComponentInjector: result is nil")
         }
 
         // Export to external tool formats if enabled
