@@ -20,7 +20,11 @@ class ImportExportWindow: NSWindowController, NSWindowDelegate {
 
     // MARK: - Shared state
 
-    private let tabControl = NSSegmentedControl(labels: ["Import", "Export"], trackingMode: .selectOne, target: nil, action: nil)
+    private let tabControl: NSSegmentedControl = {
+        let ctrl = NSSegmentedControl(labels: ["Import", "Export"], trackingMode: .selectOne, target: nil, action: nil)
+        ctrl.segmentStyle = .capsule
+        return ctrl
+    }()
     private let importContainer = NSView()
     private let exportContainer = NSView()
 
@@ -54,6 +58,8 @@ class ImportExportWindow: NSWindowController, NSWindowDelegate {
         window.title = "Import & Export Components"
         window.center()
         window.isReleasedWhenClosed = false
+        window.appearance = NSAppearance(named: .darkAqua)
+        window.backgroundColor = Theme.windowBg
 
         super.init(window: window)
         window.delegate = self
@@ -147,15 +153,23 @@ class ImportExportWindow: NSWindowController, NSWindowDelegate {
         importButton.translatesAutoresizingMaskIntoConstraints = false
         importButton.bezelStyle = .rounded
         importButton.isEnabled = false
+        importButton.contentTintColor = .white
+        importButton.wantsLayer = true
+        importButton.layer?.backgroundColor = Theme.accent.cgColor
+        importButton.layer?.cornerRadius = 6
         importContainer.addSubview(importButton)
 
         let resultsScroll = NSScrollView()
         resultsScroll.translatesAutoresizingMaskIntoConstraints = false
         resultsScroll.hasVerticalScroller = true
-        resultsScroll.borderType = .bezelBorder
+        resultsScroll.borderType = .noBorder
+        resultsScroll.drawsBackground = true
+        resultsScroll.backgroundColor = Theme.editorBg
+        resultsScroll.wantsLayer = true
+        resultsScroll.layer?.cornerRadius = 6
         importResultsView.isEditable = false
         importResultsView.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
-        importResultsView.textContainerInset = NSSize(width: 4, height: 4)
+        importResultsView.textContainerInset = NSSize(width: 8, height: 8)
         importResultsView.isVerticallyResizable = true
         importResultsView.autoresizingMask = [.width]
         resultsScroll.documentView = importResultsView
@@ -169,10 +183,10 @@ class ImportExportWindow: NSWindowController, NSWindowDelegate {
             importCursorCheck.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 12),
             importCursorCheck.leadingAnchor.constraint(equalTo: importContainer.leadingAnchor, constant: 20),
 
-            importAgentsCheck.topAnchor.constraint(equalTo: importCursorCheck.bottomAnchor, constant: 6),
+            importAgentsCheck.topAnchor.constraint(equalTo: importCursorCheck.bottomAnchor, constant: 10),
             importAgentsCheck.leadingAnchor.constraint(equalTo: importCursorCheck.leadingAnchor),
 
-            importCodexCheck.topAnchor.constraint(equalTo: importAgentsCheck.bottomAnchor, constant: 6),
+            importCodexCheck.topAnchor.constraint(equalTo: importAgentsCheck.bottomAnchor, constant: 10),
             importCodexCheck.leadingAnchor.constraint(equalTo: importCursorCheck.leadingAnchor),
 
             selectFolderButton.topAnchor.constraint(equalTo: importCodexCheck.bottomAnchor, constant: 12),
@@ -222,15 +236,23 @@ class ImportExportWindow: NSWindowController, NSWindowDelegate {
 
         exportButton.translatesAutoresizingMaskIntoConstraints = false
         exportButton.bezelStyle = .rounded
+        exportButton.contentTintColor = .white
+        exportButton.wantsLayer = true
+        exportButton.layer?.backgroundColor = Theme.accent.cgColor
+        exportButton.layer?.cornerRadius = 6
         exportContainer.addSubview(exportButton)
 
         let resultsScroll = NSScrollView()
         resultsScroll.translatesAutoresizingMaskIntoConstraints = false
         resultsScroll.hasVerticalScroller = true
-        resultsScroll.borderType = .bezelBorder
+        resultsScroll.borderType = .noBorder
+        resultsScroll.drawsBackground = true
+        resultsScroll.backgroundColor = Theme.editorBg
+        resultsScroll.wantsLayer = true
+        resultsScroll.layer?.cornerRadius = 6
         exportResultsView.isEditable = false
         exportResultsView.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
-        exportResultsView.textContainerInset = NSSize(width: 4, height: 4)
+        exportResultsView.textContainerInset = NSSize(width: 8, height: 8)
         exportResultsView.isVerticallyResizable = true
         exportResultsView.autoresizingMask = [.width]
         resultsScroll.documentView = exportResultsView
@@ -244,13 +266,13 @@ class ImportExportWindow: NSWindowController, NSWindowDelegate {
             exportCursorCheck.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 12),
             exportCursorCheck.leadingAnchor.constraint(equalTo: exportContainer.leadingAnchor, constant: 20),
 
-            exportAgentsCheck.topAnchor.constraint(equalTo: exportCursorCheck.bottomAnchor, constant: 6),
+            exportAgentsCheck.topAnchor.constraint(equalTo: exportCursorCheck.bottomAnchor, constant: 10),
             exportAgentsCheck.leadingAnchor.constraint(equalTo: exportCursorCheck.leadingAnchor),
 
-            exportCopilotCheck.topAnchor.constraint(equalTo: exportAgentsCheck.bottomAnchor, constant: 6),
+            exportCopilotCheck.topAnchor.constraint(equalTo: exportAgentsCheck.bottomAnchor, constant: 10),
             exportCopilotCheck.leadingAnchor.constraint(equalTo: exportCursorCheck.leadingAnchor),
 
-            exportContinueCheck.topAnchor.constraint(equalTo: exportCopilotCheck.bottomAnchor, constant: 6),
+            exportContinueCheck.topAnchor.constraint(equalTo: exportCopilotCheck.bottomAnchor, constant: 10),
             exportContinueCheck.leadingAnchor.constraint(equalTo: exportCursorCheck.leadingAnchor),
 
             targetLabel.topAnchor.constraint(equalTo: exportContinueCheck.bottomAnchor, constant: 12),
