@@ -25,13 +25,14 @@ The release script `scripts/release.sh <tag>` handles build, bundle, zip, tag, a
 1. Run tests: `just test` (runs both Rust and Swift tests — must pass before proceeding)
 2. Build: `cd app && swift build -c release --arch arm64 --arch x86_64`
 3. Bundle: `scripts/bundle.sh universal`
-4. Zip: `rm -f docs/AwalTerminal.zip && cd build && zip -r ../docs/AwalTerminal.zip AwalTerminal.app`
-5. Commit the updated `docs/AwalTerminal.zip`
-6. Tag: `git tag <tag>`
-7. Push: `git push origin main && git push origin <tag>`
-8. Generate changelog: review all commits since the previous tag (`git log <prev-tag>..HEAD --oneline`) and write a human-readable changelog grouped by category (Features, Fixes, Improvements). Include it in the release notes.
-9. Release: `gh release create <tag> docs/AwalTerminal.zip --title "<tag>" --notes-file <changelog>`
-10. Update Homebrew cask: in `homebrew-cask/awal-terminal.rb`, set `version` to the new tag (without `v` prefix) and update `sha256` (`shasum -a 256 docs/AwalTerminal.zip`). Commit and push.
+4. **Verify version:** `plutil -p build/AwalTerminal.app/Contents/Info.plist | grep CFBundleShortVersionString` — must show the expected version. If it shows an old version, the build step (2) was skipped or stale. Rebuild before continuing.
+5. Zip: `rm -f docs/AwalTerminal.zip && cd build && zip -r ../docs/AwalTerminal.zip AwalTerminal.app`
+6. Commit the updated `docs/AwalTerminal.zip`
+7. Tag: `git tag <tag>`
+8. Push: `git push origin main && git push origin <tag>`
+9. Generate changelog: review all commits since the previous tag (`git log <prev-tag>..HEAD --oneline`) and write a human-readable changelog grouped by category (Features, Fixes, Improvements). Include it in the release notes.
+10. Release: `gh release create <tag> docs/AwalTerminal.zip --title "<tag>" --notes-file <changelog>`
+11. Update Homebrew cask: in `homebrew-cask/awal-terminal.rb`, set `version` to the new tag (without `v` prefix) and update `sha256` (`shasum -a 256 docs/AwalTerminal.zip`). Commit and push.
 
 - Website download link (`docs/index.html`) uses `/releases/latest/download/AwalTerminal.zip` — auto-resolves to newest release
 - Check download counts: `gh api repos/AwalTerminal/Awal-terminal/releases -q '.[].assets[] | "\(.name): \(.download_count) downloads"'`
