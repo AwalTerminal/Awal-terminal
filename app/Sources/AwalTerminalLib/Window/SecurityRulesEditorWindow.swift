@@ -80,6 +80,8 @@ class SecurityRulesEditorWindow: NSWindowController, NSWindowDelegate {
         window.title = "Security Rules"
         window.center()
         window.minSize = NSSize(width: 600, height: 300)
+        window.appearance = NSAppearance(named: .darkAqua)
+        window.backgroundColor = Theme.windowBg
 
         super.init(window: window)
         window.delegate = self
@@ -132,7 +134,9 @@ class SecurityRulesEditorWindow: NSWindowController, NSWindowDelegate {
         let scrollView = NSScrollView()
         scrollView.hasVerticalScroller = true
         scrollView.translatesAutoresizingMaskIntoConstraints = false
-        scrollView.borderType = .bezelBorder
+        scrollView.borderType = .noBorder
+        scrollView.wantsLayer = true
+        scrollView.layer?.cornerRadius = 6
 
         let enabledCol = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("rule_enabled"))
         enabledCol.title = ""
@@ -143,7 +147,7 @@ class SecurityRulesEditorWindow: NSWindowController, NSWindowDelegate {
 
         let nameCol = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("rule_name"))
         nameCol.title = "Name"
-        nameCol.width = 100
+        nameCol.width = 140
         nameCol.minWidth = 60
         tableView.addTableColumn(nameCol)
 
@@ -167,11 +171,11 @@ class SecurityRulesEditorWindow: NSWindowController, NSWindowDelegate {
 
         let descCol = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("rule_desc"))
         descCol.title = "Description"
-        descCol.width = 200
+        descCol.width = 250
         descCol.minWidth = 80
         tableView.addTableColumn(descCol)
 
-        tableView.rowHeight = 24
+        tableView.rowHeight = 30
         tableView.dataSource = self
         tableView.delegate = self
         scrollView.documentView = tableView
@@ -190,6 +194,10 @@ class SecurityRulesEditorWindow: NSWindowController, NSWindowDelegate {
         let saveBtn = NSButton(title: "Save", target: self, action: #selector(saveClicked))
         saveBtn.bezelStyle = .rounded
         saveBtn.keyEquivalent = "\r"
+        saveBtn.contentTintColor = .white
+        saveBtn.wantsLayer = true
+        saveBtn.layer?.backgroundColor = Theme.accent.cgColor
+        saveBtn.layer?.cornerRadius = 6
         saveBtn.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(saveBtn)
 
@@ -204,7 +212,7 @@ class SecurityRulesEditorWindow: NSWindowController, NSWindowDelegate {
             scrollView.bottomAnchor.constraint(equalTo: addBtn.topAnchor, constant: -10),
 
             addBtn.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            addBtn.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -12),
+            addBtn.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -16),
 
             removeBtn.leadingAnchor.constraint(equalTo: addBtn.trailingAnchor, constant: 8),
             removeBtn.bottomAnchor.constraint(equalTo: addBtn.bottomAnchor),
