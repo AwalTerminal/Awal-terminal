@@ -511,12 +511,35 @@ impl AiAnalyzer {
     }
 
     fn is_separator_line(&self, text: &str) -> bool {
-        if text.len() < 3 {
-            return false;
-        }
-        // All dashes, all box-drawing horizontal, or all equals
-        text.chars()
-            .all(|c| c == '─' || c == '━' || c == '═' || c == '-' || c == '=' || c == '—')
+        // Ignore whitespace; require ≥3 non-space separator chars
+        let sep_count = text
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .filter(|c| {
+                matches!(
+                    c,
+                    '─' | '━'
+                        | '═'
+                        | '-'
+                        | '='
+                        | '—'
+                        | '–'
+                        | '.'
+                        | '·'
+                        | '*'
+                        | '~'
+                        | '_'
+                        | '#'
+                        | '▀'
+                        | '▄'
+                        | '█'
+                        | '▌'
+                        | '▐'
+                )
+            })
+            .count();
+        let non_space: Vec<char> = text.chars().filter(|c| !c.is_whitespace()).collect();
+        sep_count >= 3 && sep_count == non_space.len()
     }
 
     /// Extract text content from a row of cells.
@@ -631,11 +654,19 @@ mod tests {
         assert!(analyzer.is_separator_line("==============="));
         assert!(analyzer.is_separator_line("———————————————")); // em-dashes
 
+        // Expanded: dots, stars, tildes, spaces between segments
+        assert!(analyzer.is_separator_line("-----.....")); // dots mixed
+        assert!(analyzer.is_separator_line("── ── ──")); // spaces between
+        assert!(analyzer.is_separator_line("***********"));
+        assert!(analyzer.is_separator_line("~~~~~~~~~~~"));
+        assert!(analyzer.is_separator_line("___________"));
+        assert!(analyzer.is_separator_line("###########"));
+
         // Too short
         assert!(!analyzer.is_separator_line("--"));
-        assert!(analyzer.is_separator_line("——")); // two em-dashes
+        assert!(!analyzer.is_separator_line(".."));
 
-        // Mixed or non-separator content
+        // Mixed with non-separator chars
         assert!(!analyzer.is_separator_line("--- title ---"));
         assert!(!analyzer.is_separator_line("hello world"));
     }
