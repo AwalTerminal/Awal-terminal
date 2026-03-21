@@ -783,7 +783,8 @@ path = "/path/to/local/registry"</code></pre>
 
         <h3>Security Scanning</h3>
         <p>Awal scans registry contents for potentially dangerous patterns like shell commands, environment variable access, and network requests. Critical findings are blocked by default. Configure with <code>security_scan = true</code> and <code>block_critical = true</code> in your config.</p>
-        <p>Open the <strong>Security Rules Editor</strong> from the AI Components Manager to view all built-in detection rules, their severity levels, and pattern descriptions. This helps you understand exactly what Awal flags and why.</p>
+        <p>Open the <strong>Security Rules Editor</strong> from the AI Components Manager to view all built-in detection rules, their severity levels, and pattern descriptions. Each rule has a checkbox to toggle it on or off &mdash; disabled rules are skipped during scans. You can also disable rules via the <code>disabled_rules</code> config key (comma-separated rule names).</p>
+        <p>Scan results are now persisted across sessions and automatically re-triggered when a registry mapping is resolved, so you always see up-to-date findings without manually re-scanning.</p>
 
         <h3>Per-Component Toggles</h3>
         <p>Disable individual components without removing their registry. Use the checkboxes in the AI Components Manager, or add component keys to the <code>disabled</code> list in your config:</p>
@@ -805,7 +806,7 @@ target = "clipboard"     # Export target: "clipboard" or "file"</code></pre>
           <li><strong>Before-commit</strong> (<code>hooks/before-commit/</code>) &mdash; Runs before Bash tool calls (Claude only, via PreToolUse). Example: format staged files before they're committed.</li>
         </ul>
         <p>Hooks are injected into Claude's settings automatically. For other models, pre-session and post-session hooks are executed directly by Awal Terminal.</p>
-        <p><strong>Hook Approval Gate:</strong> Hooks from registries require explicit user approval before first execution. This prevents untrusted registries from running arbitrary scripts. Disable this with <code>require_hook_approval = false</code> in your <code>[ai_components]</code> config (default: <code>true</code>).</p>
+        <p><strong>Hook Approval Gate:</strong> Hooks from registries require explicit user approval before first execution. This prevents untrusted registries from running arbitrary scripts. Disable this with <code>require_hook_approval = false</code> in your <code>[ai_components]</code> config (default: <code>true</code>). All approval and revocation events are logged in an audit trail, accessible from the AI Components Manager.</p>
 
         <h3>AI Components Manager</h3>
         <p>Open the dedicated manager window from <strong>AI Components &gt; Manage Components</strong> in the menu bar. The manager lets you browse all loaded components across registries, view component details, and manage sync settings. You can also trigger a manual sync with <code>Cmd+Shift+Y</code>.</p>
@@ -1059,6 +1060,8 @@ security_scan = true
 block_critical = true
 require_hook_approval = true
 remote_control = false
+disabled_rules = "rule-name-1, rule-name-2"
+tool_names = "Bash, Read, Write"
 
 [recording]
 max_duration = 300
