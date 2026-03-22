@@ -206,7 +206,14 @@ class ContextPopoverController: NSViewController {
 
         let container = NSView(frame: .zero)
         container.wantsLayer = true
-        container.layer?.backgroundColor = NSColor(white: 0.12, alpha: 1.0).cgColor
+
+        // Frosted glass background
+        let vibrancy = NSVisualEffectView(frame: container.bounds)
+        vibrancy.material = .popover
+        vibrancy.blendingMode = .withinWindow
+        vibrancy.state = .active
+        vibrancy.autoresizingMask = [.width, .height]
+        container.addSubview(vibrancy, positioned: .below, relativeTo: nil)
 
         var yOffset: CGFloat = 0
         let margin: CGFloat = 14
