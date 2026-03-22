@@ -678,6 +678,7 @@ fn read_cell(data: &[u8], pos: &mut usize) -> Option<CCell> {
 
 /// Create a new recording.
 #[no_mangle]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn at_recording_new(
     cols: u32,
     rows: u32,
@@ -699,6 +700,7 @@ pub extern "C" fn at_recording_new(
 
 /// Add a frame to the recording.
 #[no_mangle]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn at_recording_add_frame(
     recording: *mut Recording,
     cells: *const CCell,
@@ -752,6 +754,7 @@ pub extern "C" fn at_recording_add_frame(
 
 /// Get the number of frames in the recording.
 #[no_mangle]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn at_recording_frame_count(recording: *const Recording) -> u32 {
     if recording.is_null() {
         return 0;
@@ -764,6 +767,7 @@ pub extern "C" fn at_recording_frame_count(recording: *const Recording) -> u32 {
 /// and metadata into `out_snapshot`.
 /// Returns true on success.
 #[no_mangle]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn at_recording_get_frame(
     recording: *const Recording,
     index: u32,
@@ -797,30 +801,24 @@ pub extern "C" fn at_recording_get_frame(
 
 /// Save the recording to a file. Returns 0 on success, -1 on failure.
 #[no_mangle]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn at_recording_save(recording: *const Recording, path: *const c_char) -> i32 {
     if recording.is_null() || path.is_null() {
         return -1;
     }
     let rec = unsafe { &*recording };
-    let path_str = unsafe {
-        std::ffi::CStr::from_ptr(path)
-            .to_str()
-            .unwrap_or_else(|_| return "")
-    };
+    let path_str = unsafe { std::ffi::CStr::from_ptr(path).to_str().unwrap_or("") };
     rec.save(path_str)
 }
 
 /// Load a recording from a file. Returns null on failure.
 #[no_mangle]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn at_recording_load(path: *const c_char) -> *mut Recording {
     if path.is_null() {
         return std::ptr::null_mut();
     }
-    let path_str = unsafe {
-        std::ffi::CStr::from_ptr(path)
-            .to_str()
-            .unwrap_or_else(|_| return "")
-    };
+    let path_str = unsafe { std::ffi::CStr::from_ptr(path).to_str().unwrap_or("") };
     match Recording::load(path_str) {
         Some(rec) => Box::into_raw(Box::new(rec)),
         None => std::ptr::null_mut(),
@@ -829,6 +827,7 @@ pub extern "C" fn at_recording_load(path: *const c_char) -> *mut Recording {
 
 /// Destroy a recording.
 #[no_mangle]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn at_recording_destroy(recording: *mut Recording) {
     if !recording.is_null() {
         unsafe {
@@ -839,6 +838,7 @@ pub extern "C" fn at_recording_destroy(recording: *mut Recording) {
 
 /// Get the grid dimensions of a recording.
 #[no_mangle]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn at_recording_get_size(
     recording: *const Recording,
     cols: *mut u32,

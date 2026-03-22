@@ -7,6 +7,12 @@ pub struct WriteQueue {
     offset: usize,
 }
 
+impl Default for WriteQueue {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WriteQueue {
     pub fn new() -> Self {
         WriteQueue {

@@ -6,6 +6,12 @@ pub struct Parser {
     vt: vte::Parser,
 }
 
+impl Default for Parser {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Parser {
     pub fn new() -> Self {
         Self {
@@ -37,11 +43,11 @@ impl<'a> vte::Perform for ScreenPerformer<'a> {
 
     fn execute(&mut self, byte: u8) {
         match byte {
-            0x08 => self.screen.backspace(),             // BS
-            0x09 => self.screen.tab(),                   // HT
-            0x0A | 0x0B | 0x0C => self.screen.newline(), // LF, VT, FF
-            0x0D => self.screen.carriage_return(),       // CR
-            0x07 => {}                                   // BEL — ignore for now
+            0x08 => self.screen.backspace(),       // BS
+            0x09 => self.screen.tab(),             // HT
+            0x0A..=0x0C => self.screen.newline(),  // LF, VT, FF
+            0x0D => self.screen.carriage_return(), // CR
+            0x07 => {}                             // BEL — ignore for now
             _ => {}
         }
     }

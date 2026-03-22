@@ -73,6 +73,12 @@ pub struct AiAnalyzer {
     tool_patterns: Vec<(String, String)>,
 }
 
+impl Default for AiAnalyzer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AiAnalyzer {
     pub fn new() -> Self {
         let tool_names: Vec<String> = DEFAULT_TOOL_NAMES.iter().map(|s| s.to_string()).collect();
@@ -377,7 +383,6 @@ impl AiAnalyzer {
             match rt {
                 RegionType::Thinking => {
                     // Thinking continues until a non-thinking marker
-                    return;
                 }
                 RegionType::Diff => {
                     // Diff ends when we see a non-diff line
@@ -552,8 +557,8 @@ impl AiAnalyzer {
     /// Simple hash for change detection on the active screen grid.
     fn compute_screen_hash(&self, grid_cells: &[Vec<Cell>], grid_rows: usize) -> u64 {
         let mut hash: u64 = 0;
-        for row in 0..grid_rows.min(grid_cells.len()) {
-            for cell in &grid_cells[row] {
+        for grid_row in grid_cells.iter().take(grid_rows.min(grid_cells.len())) {
+            for cell in grid_row {
                 hash = hash.wrapping_mul(31).wrapping_add(cell.ch as u64);
             }
         }
@@ -609,9 +614,7 @@ impl AiAnalyzer {
         // Look for patterns like: Read(file_path) or Edit(file_path, ...)
         if let Some(paren_start) = label.find('(') {
             let inner = &label[paren_start + 1..];
-            let end = inner
-                .find(|c: char| c == ')' || c == ',')
-                .unwrap_or(inner.len());
+            let end = inner.find([')', ',']).unwrap_or(inner.len());
             let mut path = inner[..end].trim().trim_matches('"').trim_matches('\'');
             // Strip parameter name prefix like "file_path: " or "path: "
             if let Some(colon_pos) = path.find(':') {

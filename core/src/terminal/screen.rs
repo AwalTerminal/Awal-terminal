@@ -211,6 +211,12 @@ pub struct Selection {
     pub rectangular: bool, // block/column selection mode
 }
 
+impl Default for Selection {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Selection {
     pub fn new() -> Self {
         Self {
@@ -656,7 +662,7 @@ impl Screen {
         for (i, row) in old_sb.into_iter().enumerate() {
             // Trim trailing spaces from this row before appending
             let mut trimmed = row;
-            while trimmed.last().map_or(false, |c| {
+            while trimmed.last().is_some_and(|c| {
                 c.ch == ' '
                     && c.fg == Color::Default
                     && c.bg == Color::Default
@@ -687,7 +693,7 @@ impl Screen {
             }
 
             let chunks = line.chunks(new_cols);
-            let num_chunks = (line.len() + new_cols - 1) / new_cols;
+            let num_chunks = line.len().div_ceil(new_cols);
             for (chunk_idx, chunk) in chunks.enumerate() {
                 let mut new_row = chunk.to_vec();
                 // Pad to new_cols
@@ -715,7 +721,7 @@ impl Screen {
 
     pub fn resize(&mut self, cols: usize, rows: usize) {
         let old_cols = self.cols;
-        let old_rows = self.rows;
+        let _old_rows = self.rows;
 
         // Invalidate selection — coordinates become meaningless after resize
         self.selection.active = false;
@@ -1042,7 +1048,7 @@ impl Screen {
                 let lc = line_chars[col + i];
                 // Fast path: ASCII lowercase comparison
                 let matches = if lc.is_ascii() && qc.is_ascii() {
-                    lc.to_ascii_lowercase() == qc.to_ascii_lowercase()
+                    lc.eq_ignore_ascii_case(&qc)
                 } else {
                     lc.to_lowercase().eq(qc.to_lowercase())
                 };

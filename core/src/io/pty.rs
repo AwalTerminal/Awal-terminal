@@ -187,19 +187,17 @@ impl Drop for Pty {
         // Reap in background thread to avoid blocking the main thread
         std::thread::spawn(move || {
             // Try non-blocking reap
-            match waitpid(pid, Some(WaitPidFlag::WNOHANG)) {
-                Ok(nix::sys::wait::WaitStatus::StillAlive) => {
-                    // Give it a brief moment, then force-kill
-                    std::thread::sleep(std::time::Duration::from_millis(50));
-                    match waitpid(pid, Some(WaitPidFlag::WNOHANG)) {
-                        Ok(nix::sys::wait::WaitStatus::StillAlive) => {
-                            let _ = kill(pid, Signal::SIGKILL);
-                            let _ = waitpid(pid, None); // blocking reap
-                        }
-                        _ => {} // already reaped
-                    }
+            if let Ok(nix::sys::wait::WaitStatus::StillAlive) =
+                waitpid(pid, Some(WaitPidFlag::WNOHANG))
+            {
+                // Give it a brief moment, then force-kill
+                std::thread::sleep(std::time::Duration::from_millis(50));
+                if let Ok(nix::sys::wait::WaitStatus::StillAlive) =
+                    waitpid(pid, Some(WaitPidFlag::WNOHANG))
+                {
+                    let _ = kill(pid, Signal::SIGKILL);
+                    let _ = waitpid(pid, None); // blocking reap
                 }
-                _ => {} // already reaped or error
             }
         });
     }
