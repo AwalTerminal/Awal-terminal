@@ -68,9 +68,9 @@ enum AIComponentInjector {
             return nil
         }
 
-        // Sync registries (blocking to ensure components are available before assembly)
+        // Sync registries in background (non-blocking — use cached state for this session)
         if config.aiComponentsAutoSync {
-            _ = RegistryManager.shared.syncAllBlocking(registries: registries)
+            RegistryManager.shared.syncAll(registries: registries)
         }
 
         // Resolve mapping modes for any registries not yet resolved by sync

@@ -140,6 +140,9 @@ class TerminalView: NSView {
     private var isLoadingResumeSessions: Bool = false
     private var loadingPhase: Float = 0
     private var lastLoadingRenderTime: CFTimeInterval = 0
+    private var loadingSpinnerRow: Int = 0
+    private var loadingSpinnerCol: Int = 0
+    private var loadingMessageText: String = ""
 
     // MARK: - Metal Properties
 
@@ -1189,31 +1192,36 @@ class TerminalView: NSView {
         loadingPhase = 0
 
         recalculateGridSize()
+        showLoadingMessage(model: model.name)
 
         // Save workspace (skip worktree paths to avoid polluting recent list)
         if let dir = workingDir, !dir.contains("/.git/awal-worktrees/") {
             WorkspaceStore.shared.save(path: dir, model: model.name)
         }
 
-        // Inject AI components based on model and project type
+        // Inject AI components in background (non-blocking — process launches immediately)
         lastAIComponentContext = nil
         postSessionHooks = []
         beforeCommitHooks = []
         lastWorkingDir = workingDir
-        var aiComponentContext: AIComponentContext? = nil
         if let dir = workingDir, AppConfig.shared.aiComponentsEnabled {
-            aiComponentContext = AIComponentInjector.inject(
-                modelName: model.name,
-                projectPath: dir
-            )
-        }
-
-        // Execute pre-session hooks
-        if let ctx = aiComponentContext {
-            postSessionHooks = ctx.postSessionHooks
-            beforeCommitHooks = ctx.beforeCommitHooks
-            for hookURL in ctx.preSessionHooks {
-                executeHookScript(hookURL, workingDir: workingDir)
+            let modelName = model.name
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                let aiComponentContext = AIComponentInjector.inject(
+                    modelName: modelName,
+                    projectPath: dir
+                )
+                DispatchQueue.main.async {
+                    guard let self = self else { return }
+                    self.lastAIComponentContext = aiComponentContext
+                    if let ctx = aiComponentContext {
+                        self.postSessionHooks = ctx.postSessionHooks
+                        self.beforeCommitHooks = ctx.beforeCommitHooks
+                        for hookURL in ctx.preSessionHooks {
+                            self.executeHookScript(hookURL, workingDir: dir)
+                        }
+                    }
+                }
             }
         }
 
@@ -1222,12 +1230,6 @@ class TerminalView: NSView {
         if commandOverride == nil, !modelCmd.isEmpty, let bin = model.binaryName, let install = model.installCommand {
             modelCmd = "command -v \(bin) >/dev/null 2>&1 || { echo \"Installing \(model.name)...\"; \(install); } && \(model.command)"
         }
-
-        // For non-Claude models, modify the command with AI component flags (skip for resume commands)
-        if commandOverride == nil, let ctx = aiComponentContext, let cmdModifier = ctx.commandModifier {
-            modelCmd = cmdModifier(modelCmd)
-        }
-        lastAIComponentContext = aiComponentContext
 
         // Danger mode: append skip-permissions flag if supported
         isDangerMode = dangerMode
@@ -1279,6 +1281,68 @@ class TerminalView: NSView {
 
         setupPtyReader()
         onSessionChanged?(model.name, model.provider, Int(termCols), Int(termRows))
+    }
+
+    private func showLoadingMessage(model: String) {
+        guard let s = surface else { return }
+        let rows = Int(termRows)
+        let cols = Int(termCols)
+        guard rows > 2, cols > 10 else { return }
+
+        let spinnerChars: [Character] = ["◐", "◓", "◑", "◒"]
+        let modelLower = model.lowercased()
+
+        let modelMessages: [((String) -> Bool, [String])] = [
+            ({ $0.contains("gemini") }, [
+                "Waking up Gemini...",
+                "Consulting the oracle...",
+                "Polishing the crystal ball...",
+            ]),
+            ({ $0.contains("claude") }, [
+                "Summoning Claude...",
+                "Brewing some intelligence...",
+                "Stretching neurons...",
+            ]),
+            ({ $0.contains("codex") || $0.contains("openai") }, [
+                "Booting Codex...",
+                "Calibrating synapses...",
+                "Warming up the engines...",
+            ]),
+        ]
+
+        let genericMessages = [
+            "Brewing some intelligence...",
+            "Stretching neurons...",
+            "Consulting the oracle...",
+            "Calibrating synapses...",
+        ]
+
+        var message = genericMessages.randomElement()!
+        for (matches, messages) in modelMessages {
+            if matches(modelLower) {
+                message = messages.randomElement()!
+                break
+            }
+        }
+
+        loadingMessageText = message
+        let spinner = spinnerChars[0]
+        let fullText = "\(spinner)  \(message)"
+        let textLen = fullText.count
+
+        let row = rows / 2
+        let col = max(1, (cols - textLen) / 2)
+        loadingSpinnerRow = row
+        loadingSpinnerCol = col
+
+        // Position cursor and write dim text: \e[{row};{col}H\e[2m{text}\e[0m
+        let ansi = "\u{1b}[\(row);\(col)H\u{1b}[2m\(fullText)\u{1b}[0m"
+        let bytes = Array(ansi.utf8)
+        bytes.withUnsafeBufferPointer { ptr in
+            at_surface_feed_bytes(s, ptr.baseAddress!, UInt32(ptr.count))
+        }
+        updateCellBuffer()
+        needsRender = true
     }
 
     private func showFolderPicker() {
@@ -1525,6 +1589,17 @@ class TerminalView: NSView {
         }
 
         if totalRead > 0 {
+            // Clear loading message on first output so it doesn't linger
+            if isWaitingForOutput, !loadingMessageText.isEmpty {
+                let row = loadingSpinnerRow
+                let clear = "\u{1b}[\(row);1H\u{1b}[2K\u{1b}[H"
+                let clearBytes = Array(clear.utf8)
+                clearBytes.withUnsafeBufferPointer { ptr in
+                    at_surface_feed_bytes(s, ptr.baseAddress!, UInt32(ptr.count))
+                }
+                loadingMessageText = ""
+            }
+
             // Run AI analyzer once per batch (not per iteration)
             at_surface_analyze(s)
 
@@ -1584,6 +1659,7 @@ class TerminalView: NSView {
 
             hadRecentOutput = true
             isWaitingForOutput = false
+            loadingMessageText = ""
             // Acquire sleep assertion if configured
             if AppConfig.shared.preventSleep {
                 acquireSleepAssertion()
@@ -2026,6 +2102,22 @@ class TerminalView: NSView {
                 loadingPhase += 0.024
                 if loadingPhase > 2.0 { loadingPhase -= 2.0 }
                 lastLoadingRenderTime = now
+
+                // Update spinner character for loading message
+                if isWaitingForOutput, !loadingMessageText.isEmpty,
+                   loadingSpinnerRow > 0, loadingSpinnerCol > 0,
+                   let s = surface {
+                    let spinnerChars: [Character] = ["◐", "◓", "◑", "◒"]
+                    let idx = Int(loadingPhase * 2) % spinnerChars.count
+                    let ch = spinnerChars[idx]
+                    let ansi = "\u{1b}[s\u{1b}[\(loadingSpinnerRow);\(loadingSpinnerCol)H\u{1b}[2m\(ch)\u{1b}[0m\u{1b}[u"
+                    let bytes = Array(ansi.utf8)
+                    bytes.withUnsafeBufferPointer { ptr in
+                        at_surface_feed_bytes(s, ptr.baseAddress!, UInt32(ptr.count))
+                    }
+                    updateCellBuffer()
+                }
+
                 // Schedule next loading frame after interval instead of continuous rendering
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.033) { [weak self] in
                     guard let self, self.isWaitingForOutput || self.isGenerating || self.isLoadingResumeSessions else { return }
