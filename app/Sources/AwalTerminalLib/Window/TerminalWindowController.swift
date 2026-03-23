@@ -544,13 +544,13 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
     // MARK: - Session State Capture / Restore
 
     func captureWindowState() -> SavedWindowState? {
-        // Only save if at least one tab has a session
-        guard tabs.contains(where: { $0.hasSession }) else { return nil }
+        let activeTabs = tabs.filter { $0.hasSession }
+        guard !activeTabs.isEmpty else { return nil }
 
         // Track used session IDs to avoid duplicates (two tabs watching same JSONL)
         var usedSessionIds = Set<String>()
 
-        let savedTabs = tabs.map { tab -> SavedTabState in
+        let savedTabs = activeTabs.map { tab -> SavedTabState in
             let splitTree = captureSplitNode(tab.splitContainer.rootNode, tab: tab, usedSessionIds: &usedSessionIds)
             return SavedTabState(
                 splitTree: splitTree,
@@ -561,9 +561,16 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
             )
         }
 
+        let filteredActiveIndex: Int
+        if activeTabIndex < tabs.count && tabs[activeTabIndex].hasSession {
+            filteredActiveIndex = activeTabs.firstIndex(where: { $0 === tabs[activeTabIndex] }) ?? 0
+        } else {
+            filteredActiveIndex = 0
+        }
+
         return SavedWindowState(
             tabs: savedTabs,
-            activeTabIndex: activeTabIndex,
+            activeTabIndex: filteredActiveIndex,
             savedAt: Date(),
             version: 1
         )
