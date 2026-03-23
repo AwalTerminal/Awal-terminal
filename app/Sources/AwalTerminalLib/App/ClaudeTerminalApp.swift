@@ -89,6 +89,14 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
     }
 
     public func applicationWillTerminate(_ notification: Notification) {
+        // Save window state for session restore
+        for controller in TerminalWindowTracker.shared.allControllers {
+            if let state = controller.captureWindowState() {
+                WindowStateStore.save(state)
+                break // Save only the first (main) window
+            }
+        }
+
         QuickTerminalController.shared.unregisterHotKey()
         unregisterVoiceHotKey()
         VoiceInputController.shared.stop()

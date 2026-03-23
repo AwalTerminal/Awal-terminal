@@ -23,6 +23,7 @@ class TerminalView: NSView {
     private enum MenuEntry {
         case sectionHeader(String)
         case separator
+        case restoreSession(tabCount: Int, timeAgo: String, models: String)
         case recentWorkspace(Workspace)
         case modelItem(MenuItem)
         case recentFolder(String)
@@ -52,7 +53,7 @@ class TerminalView: NSView {
     private(set) var lastAIComponentContext: AIComponentContext?
     private var postSessionHooks: [URL] = []
     private var beforeCommitHooks: [URL] = []
-    private var lastWorkingDir: String?
+    private(set) var lastWorkingDir: String?
     private(set) var activeProvider: String = ""
     private(set) var isGenerating: Bool = false
 
@@ -87,6 +88,7 @@ class TerminalView: NSView {
     var onWorkspacePicked: ((_ dir: String, _ completion: @escaping (String) -> Void) -> Void)?
     var onRemoteControlChanged: ((_ active: Bool, _ url: String?) -> Void)?
     var onSleepPreventionChanged: ((_ active: Bool) -> Void)?
+    var onRestoreSession: (() -> Void)?
 
     private(set) var isRemoteControlActive = false
     private(set) var remoteControlURL: String?
@@ -98,6 +100,10 @@ class TerminalView: NSView {
     var pendingLaunchModel: MenuItem?
     var pendingLaunchDir: String?
     var pendingDangerMode: Bool = false
+    /// Override the command used for deferred launch (e.g. resume command for session restore).
+    var pendingCommandOverride: String?
+    /// Skip workspace resolution (worktree prompt) for restored sessions.
+    var skipWorkspaceResolution: Bool = false
 
     var modelItems: [LLMModel] { ModelCatalog.all }
 
@@ -530,7 +536,9 @@ class TerminalView: NSView {
                 self.recalculateGridSize()
                 let danger = self.pendingDangerMode
                 self.pendingDangerMode = false
-                self.launchSession(model: model, workingDir: dir, dangerMode: danger)
+                let cmdOverride = self.pendingCommandOverride
+                self.pendingCommandOverride = nil
+                self.launchSession(model: model, workingDir: dir, commandOverride: cmdOverride, dangerMode: danger)
             }
         }
     }
@@ -591,6 +599,15 @@ class TerminalView: NSView {
 
         switch menuPhase {
         case .main:
+            // Restore previous session entry
+            if let saved = WindowStateStore.load() {
+                let count = saved.tabs.count
+                let ago = Self.timeAgoString(from: saved.savedAt)
+                let models = Self.restoreSummary(from: saved)
+                menuEntries.append(.restoreSession(tabCount: count, timeAgo: ago, models: models))
+                menuEntries.append(.separator)
+            }
+
             let recents = WorkspaceStore.shared.recents().filter { !$0.path.contains("/.git/awal-worktrees/") }
             if !recents.isEmpty {
                 menuEntries.append(.sectionHeader("Recent Workspaces"))
@@ -643,6 +660,8 @@ class TerminalView: NSView {
         switch entry {
         case .sectionHeader, .separator, .loadingIndicator:
             return false
+        case .restoreSession:
+            return true
         default:
             return true
         }
@@ -773,6 +792,37 @@ class TerminalView: NSView {
                 out += "\u{1b}[90m"
                 out += itemPadStr + sep
                 out += "\u{1b}[0m"
+
+            case .restoreSession(let tabCount, let timeAgo, let models):
+                let isSelected = i == menuSelection
+                let arrow = isSelected ? "▸" : " "
+                let tabLabel = tabCount == 1 ? "1 tab" : "\(tabCount) tabs"
+                let title = "Restore \(tabLabel)"
+                let detail = "\(models) · \(timeAgo)"
+
+                if isSelected {
+                    let dismissHint = "d"
+                    let pad = itemWidth - 4 - title.count - detail.count - dismissHint.count - 1
+                    out += itemPadStr
+                    out += "\u{1b}[48;2;39;174;96m"
+                    out += "\u{1b}[1;37m"
+                    out += " \(arrow) \(title)"
+                    out += "\u{1b}[0;37m\u{1b}[48;2;39;174;96m"
+                    out += String(repeating: " ", count: max(1, pad))
+                    out += detail
+                    out += "\u{1b}[90m\u{1b}[48;2;39;174;96m"
+                    out += " \(dismissHint) "
+                    out += "\u{1b}[0m"
+                } else {
+                    let pad = itemWidth - 4 - title.count - detail.count
+                    out += itemPadStr
+                    out += "\u{1b}[32m"
+                    out += " \(arrow) \(title)"
+                    out += "\u{1b}[90m"
+                    out += String(repeating: " ", count: max(1, pad))
+                    out += detail + " "
+                    out += "\u{1b}[0m"
+                }
 
             case .recentWorkspace(let ws):
                 let isSelected = i == menuSelection
@@ -990,6 +1040,10 @@ class TerminalView: NSView {
 
         let entry = menuEntries[menuSelection]
         switch entry {
+        case .restoreSession:
+            onRestoreSession?()
+            return
+
         case .recentWorkspace(let ws):
             let model = modelItems.first { $0.name == ws.lastModel } ?? modelItems[0]
             launchSession(model: model, workingDir: ws.path, dangerMode: AppConfig.shared.dangerModeEnabled)
@@ -1092,6 +1146,12 @@ class TerminalView: NSView {
     private(set) var isDangerMode: Bool = false
 
     private func launchSession(model: MenuItem, workingDir: String?, commandOverride: String? = nil, dangerMode: Bool = false) {
+        // Skip workspace resolution for restored sessions (avoid worktree prompts)
+        if skipWorkspaceResolution {
+            skipWorkspaceResolution = false
+            launchSessionDirect(model: model, workingDir: workingDir, commandOverride: commandOverride, dangerMode: dangerMode)
+            return
+        }
         // If a workspace resolution callback is set and we have a working dir, let the controller
         // resolve the directory first (e.g., to create a git worktree for isolation).
         if let dir = workingDir, let callback = onWorkspacePicked {
@@ -1263,6 +1323,31 @@ class TerminalView: NSView {
 
     /// Compact path: abbreviates intermediate directories to fit within `maxLen`.
     /// Example: ~/Projects/Workspace/Code/awal-terminal → ~/P…/W…/Code/awal-terminal
+    private static func timeAgoString(from date: Date) -> String {
+        let seconds = Int(-date.timeIntervalSinceNow)
+        if seconds < 60 { return "just now" }
+        let minutes = seconds / 60
+        if minutes < 60 { return "\(minutes)m ago" }
+        let hours = minutes / 60
+        if hours < 24 { return "\(hours)h ago" }
+        let days = hours / 24
+        if days == 1 { return "yesterday" }
+        return "\(days)d ago"
+    }
+
+    private static func restoreSummary(from state: SavedWindowState) -> String {
+        // Collect unique model names preserving order
+        var seen = Set<String>()
+        var models: [String] = []
+        for tab in state.tabs {
+            if case .leaf(let pane) = tab.splitTree {
+                let name = pane.modelName.isEmpty ? "Shell" : pane.modelName
+                if seen.insert(name).inserted { models.append(name) }
+            }
+        }
+        return models.joined(separator: ", ")
+    }
+
     private func compactPath(_ path: String, maxLen: Int) -> String {
         let shortened = shortenPath(path)
         if shortened.count <= maxLen { return shortened }
@@ -2118,6 +2203,20 @@ class TerminalView: NSView {
                 case "k":
                     moveSelection(by: -1)
                     renderMenu()
+                case "d":
+                    if case .main = menuPhase,
+                       menuSelection < menuEntries.count,
+                       case .restoreSession = menuEntries[menuSelection] {
+                        WindowStateStore.deleteSavedState()
+                        buildMenuEntries()
+                        if menuSelection >= menuEntries.count {
+                            menuSelection = max(0, menuEntries.count - 1)
+                        }
+                        if !menuEntries.isEmpty && !isSelectable(menuEntries[menuSelection]) {
+                            moveToFirstSelectable()
+                        }
+                        renderMenu()
+                    }
                 case "o":
                     switch menuPhase {
                     case .main, .pickFolder:

@@ -541,6 +541,142 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         }
     }
 
+    // MARK: - Session State Capture / Restore
+
+    func captureWindowState() -> SavedWindowState? {
+        // Only save if at least one tab has a session
+        guard tabs.contains(where: { $0.hasSession }) else { return nil }
+
+        // Track used session IDs to avoid duplicates (two tabs watching same JSONL)
+        var usedSessionIds = Set<String>()
+
+        let savedTabs = tabs.map { tab -> SavedTabState in
+            let splitTree = captureSplitNode(tab.splitContainer.rootNode, tab: tab, usedSessionIds: &usedSessionIds)
+            return SavedTabState(
+                splitTree: splitTree,
+                customTitle: tab.customTitle,
+                tabColorHex: tab.tabColor.map { $0.hexString },
+                isDangerMode: tab.isDangerMode,
+                userClosedAIPanel: tab.userClosedAIPanel
+            )
+        }
+
+        return SavedWindowState(
+            tabs: savedTabs,
+            activeTabIndex: activeTabIndex,
+            savedAt: Date(),
+            version: 1
+        )
+    }
+
+    private func captureSplitNode(_ node: SplitNode, tab: TabState, usedSessionIds: inout Set<String>) -> SavedSplitNode {
+        switch node {
+        case .leaf(let tv):
+            let modelName = tv.activeModelName
+            let workingDir = tv.lastWorkingDir ?? nil
+            let isDanger = tv.isDangerMode
+            // Only the primary terminal (first leaf) gets the session ID from the tab's token tracker
+            let isFirst = tab.splitContainer.rootNode.allLeaves().first === tv
+            var sessionId: String? = isFirst ? tab.tokenTracker.sessionId : nil
+            if let sid = sessionId, sid.isEmpty { sessionId = nil }
+            // Deduplicate: if another tab already claimed this session ID, skip it
+            if let sid = sessionId {
+                if usedSessionIds.contains(sid) {
+                    sessionId = nil
+                } else {
+                    usedSessionIds.insert(sid)
+                }
+            }
+            return .leaf(SavedPaneState(
+                modelName: modelName,
+                workingDir: workingDir,
+                isDangerMode: isDanger,
+                sessionId: sessionId
+            ))
+        case .split(let dir, let first, let second):
+            let savedDir: SavedSplitDirection = dir == .horizontal ? .horizontal : .vertical
+            return .split(savedDir, captureSplitNode(first, tab: tab, usedSessionIds: &usedSessionIds), captureSplitNode(second, tab: tab, usedSessionIds: &usedSessionIds))
+        }
+    }
+
+    func restoreFromSavedState(_ state: SavedWindowState) {
+        // Remove the initial menu tab
+        let initialTab = tabs[activeTabIndex]
+        uninstallTab(initialTab, cleanup: true)
+        tabs.removeAll()
+
+        // Recreate each saved tab
+        for savedTab in state.tabs {
+            let rootNode = buildSplitNode(from: savedTab.splitTree)
+            let splitContainer = SplitContainerView(rootNode: rootNode)
+            let statusBar = StatusBarView()
+            let aiSidePanel = AISidePanelView()
+            aiSidePanel.hide()
+            let tab = TabState(splitContainer: splitContainer, statusBar: statusBar, aiSidePanel: aiSidePanel)
+
+            // Restore tab properties
+            tab.customTitle = savedTab.customTitle
+            tab.isDangerMode = savedTab.isDangerMode
+            tab.userClosedAIPanel = savedTab.userClosedAIPanel
+            if let hex = savedTab.tabColorHex {
+                tab.tabColor = NSColor.fromHex(hex)
+            }
+
+            // Wire per-tab token tracker
+            statusBar.tokenTracker = tab.tokenTracker
+            aiSidePanel.tokenTracker = tab.tokenTracker
+
+            // Wire callbacks for all terminal leaves
+            for terminal in rootNode.allLeaves() {
+                wireTerminalCallbacks(terminal, tab: tab)
+            }
+            wireSplitContainer(splitContainer, tab: tab)
+            wireStatusBar(statusBar, tab: tab)
+
+            tabs.append(tab)
+        }
+
+        // Set active tab
+        activeTabIndex = min(state.activeTabIndex, tabs.count - 1)
+        if !tabs.isEmpty {
+            installTab(activeTab)
+        }
+        reloadTabBar()
+
+        // Delete saved state file
+        WindowStateStore.deleteSavedState()
+    }
+
+    private func buildSplitNode(from saved: SavedSplitNode) -> SplitNode {
+        switch saved {
+        case .leaf(let pane):
+            let model = ModelCatalog.find(pane.modelName) ?? ModelCatalog.find("Shell")!
+            let workingDir = pane.workingDir.flatMap { dir -> String? in
+                FileManager.default.fileExists(atPath: dir) ? dir : nil
+            } ?? FileManager.default.homeDirectoryForCurrentUser.path
+
+            let terminal = TerminalView.createTerminalPane(
+                model: model,
+                workingDir: workingDir,
+                dangerMode: pane.isDangerMode
+            )
+
+            // Skip worktree prompts for restored sessions
+            terminal.skipWorkspaceResolution = true
+
+            // Build resume command if we have a session ID
+            if let sessionId = pane.sessionId, let resumeCmd = model.resumeCommand {
+                terminal.pendingCommandOverride = "\(resumeCmd) \(sessionId)"
+            }
+
+            return .leaf(terminal)
+
+        case .split(let dir, let first, let second):
+            let splitDir: SplitDirection = dir == .horizontal ? .horizontal : .vertical
+            return .split(splitDir, buildSplitNode(from: first), buildSplitNode(from: second))
+        }
+    }
+
     // MARK: - Terminal Callback Wiring
 
     private func wireTerminalCallbacks(_ terminal: TerminalView, tab: TabState) {
@@ -555,6 +691,11 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         terminal.onWorkspacePicked = { [weak self, weak tab] dir, completion in
             guard let self, let tab else { completion(dir); return }
             self.resolveWorktreeForTab(tab, dir: dir, completion: completion)
+        }
+
+        terminal.onRestoreSession = { [weak self] in
+            guard let self, let state = WindowStateStore.load() else { return }
+            self.restoreFromSavedState(state)
         }
 
         terminal.onSessionChanged = { [weak self, weak terminal, weak tab] model, provider, cols, rows in
@@ -1225,6 +1366,11 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
     }
 
     func windowWillClose(_ notification: Notification) {
+        // Save window state before cleanup (for session restore)
+        if let state = captureWindowState() {
+            WindowStateStore.save(state)
+        }
+
         // Cleanup all tabs before window closes
         for tab in tabs {
             tab.splitContainer.cleanupAllTerminals()

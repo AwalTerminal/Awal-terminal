@@ -15,6 +15,15 @@ class SplitContainerView: NSView, NSSplitViewDelegate {
         rebuild()
     }
 
+    /// Initialize with a pre-built split tree (used for session restore).
+    init(rootNode: SplitNode) {
+        self.rootNode = rootNode
+        self.focusedTerminal = rootNode.allLeaves().first!
+        super.init(frame: .zero)
+        wantsLayer = true
+        rebuild()
+    }
+
     required init?(coder: NSCoder) {
         fatalError("init(coder:) not implemented")
     }
