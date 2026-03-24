@@ -63,10 +63,31 @@ struct SavedTabState: Codable {
     let userClosedAIPanel: Bool
 }
 
+struct SavedRect: Codable {
+    let x: Double
+    let y: Double
+    let width: Double
+    let height: Double
+}
+
 struct SavedWindowState: Codable {
     let tabs: [SavedTabState]
     let activeTabIndex: Int
     let savedAt: Date
+    let version: Int
+    let windowFrame: SavedRect?
+
+    init(tabs: [SavedTabState], activeTabIndex: Int, savedAt: Date, version: Int, windowFrame: SavedRect? = nil) {
+        self.tabs = tabs
+        self.activeTabIndex = activeTabIndex
+        self.savedAt = savedAt
+        self.version = version
+        self.windowFrame = windowFrame
+    }
+}
+
+struct SavedAppState: Codable {
+    let windows: [SavedWindowState]
     let version: Int
 }
 
@@ -123,6 +144,52 @@ enum WindowStateStore {
 
     static func hasSavedState() -> Bool {
         FileManager.default.fileExists(atPath: storeURL.path)
+    }
+
+    // MARK: - Multi-Window Persistence
+
+    private static var appStateURL: URL {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let dir = appSupport.appendingPathComponent("Awal Terminal")
+        return dir.appendingPathComponent("app_state.json")
+    }
+
+    static func saveAll(_ states: [SavedWindowState]) {
+        let url = appStateURL
+        do {
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            let appState = SavedAppState(windows: states, version: 1)
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(appState)
+            try data.write(to: url, options: .atomic)
+        } catch {
+            // Silently fail — not critical
+        }
+    }
+
+    static func loadAll() -> [SavedWindowState]? {
+        let url = appStateURL
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        guard let appState = try? decoder.decode(SavedAppState.self, from: data) else {
+            try? FileManager.default.removeItem(at: url)
+            return nil
+        }
+        if appState.version > 1 {
+            try? FileManager.default.removeItem(at: url)
+            return nil
+        }
+        let validWindows = appState.windows.filter { !$0.tabs.isEmpty }
+        if validWindows.isEmpty {
+            try? FileManager.default.removeItem(at: url)
+            return nil
+        }
+        // Clean up app_state file after loading
+        try? FileManager.default.removeItem(at: url)
+        return validWindows
     }
 }
 

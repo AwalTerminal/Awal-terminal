@@ -98,6 +98,79 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         }
     }
 
+    /// Create a new window adopting an existing tab (for tab tearoff / "Move Tab to New Window").
+    init(adoptingTab tab: TabState, screenPoint: NSPoint? = nil) {
+        let screenFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let width = max(1024, screenFrame.width * 0.8)
+        let height = max(700, screenFrame.height * 0.8)
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: width, height: height),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "Awal Terminal"
+        window.backgroundColor = AppConfig.shared.themeTabBarBg
+        window.isOpaque = true
+        window.minSize = NSSize(width: 800, height: 500)
+        window.tabbingMode = .disallowed
+
+        if let pt = screenPoint {
+            // Position the window so the title bar is near the cursor
+            let origin = NSPoint(x: pt.x - width / 2, y: pt.y - height + 30)
+            window.setFrameOrigin(origin)
+        } else {
+            window.center()
+        }
+
+        super.init(window: window)
+        window.delegate = self
+
+        // Layout: tabBar at top, contentArea fills the rest
+        let container = NSView()
+        container.wantsLayer = true
+
+        tabBar.translatesAutoresizingMaskIntoConstraints = false
+        tabBar.delegate = self
+        contentArea.translatesAutoresizingMaskIntoConstraints = false
+        contentArea.wantsLayer = true
+
+        container.addSubview(tabBar)
+        container.addSubview(contentArea)
+
+        NSLayoutConstraint.activate([
+            tabBar.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            tabBar.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            tabBar.topAnchor.constraint(equalTo: container.topAnchor),
+            tabBar.heightAnchor.constraint(equalToConstant: CustomTabBarView.barHeight),
+
+            contentArea.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            contentArea.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            contentArea.topAnchor.constraint(equalTo: tabBar.bottomAnchor),
+            contentArea.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+        ])
+
+        window.contentView = container
+
+        // Adopt the tab
+        tabs.append(tab)
+        activeTabIndex = 0
+        rewireTabCallbacks(tab)
+        installTab(tab)
+        reloadTabBar()
+
+        wireVoiceCallbacks()
+
+        componentObserver = NotificationCenter.default.addObserver(
+            forName: RegistryManager.componentsDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            self?.handleComponentsDidChange(notification)
+        }
+    }
+
     deinit {
         if let observer = componentObserver {
             NotificationCenter.default.removeObserver(observer)
@@ -409,6 +482,11 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
             closeOthersItem.target = self
             closeOthersItem.tag = index
             menu.addItem(closeOthersItem)
+
+            let moveItem = NSMenuItem(title: "Move Tab to New Window", action: #selector(contextMoveToNewWindow(_:)), keyEquivalent: "")
+            moveItem.target = self
+            moveItem.tag = index
+            menu.addItem(moveItem)
         }
 
         menu.popUp(positioning: nil, at: location, in: tabBar)
@@ -503,6 +581,54 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         reloadTabBar()
     }
 
+    // MARK: - Move Tab to New Window
+
+    @objc private func contextMoveToNewWindow(_ sender: NSMenuItem) {
+        moveTabToNewWindow(at: sender.tag)
+    }
+
+    func moveTabToNewWindow(at index: Int, screenPoint: NSPoint? = nil) {
+        guard tabs.count > 1, index >= 0, index < tabs.count else { return }
+
+        let tab = tabs[index]
+
+        if index == activeTabIndex {
+            // Moving the active tab — uninstall without cleanup, switch to neighbor
+            uninstallTab(tab)
+            tabs.remove(at: index)
+            activeTabIndex = min(index, tabs.count - 1)
+            installTab(activeTab)
+        } else {
+            // Moving a background tab
+            tabs.remove(at: index)
+            if index < activeTabIndex {
+                activeTabIndex -= 1
+            }
+        }
+        reloadTabBar()
+
+        // Create a new window adopting the tab
+        let newController = TerminalWindowController(adoptingTab: tab, screenPoint: screenPoint)
+        TerminalWindowTracker.shared.register(newController)
+        newController.showWindow(nil)
+        newController.window?.makeKeyAndOrderFront(nil)
+    }
+
+    /// Re-wire all callbacks on a tab so `[weak self]` closures point to this controller.
+    private func rewireTabCallbacks(_ tab: TabState) {
+        for terminal in tab.splitContainer.rootNode.allLeaves() {
+            wireTerminalCallbacks(terminal, tab: tab)
+        }
+        wireSplitContainer(tab.splitContainer, tab: tab)
+        wireStatusBar(tab.statusBar, tab: tab)
+    }
+
+    // MARK: - Tab Tearoff
+
+    func tabBar(_ tabBar: CustomTabBarView, didTearOffTabAt index: Int, screenPoint: NSPoint) {
+        moveTabToNewWindow(at: index, screenPoint: screenPoint)
+    }
+
     // MARK: - Rename Tab
 
     @objc func renameTab(_ sender: Any?) {
@@ -568,11 +694,20 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
             filteredActiveIndex = 0
         }
 
+        let frame: SavedRect?
+        if let wf = window?.frame {
+            frame = SavedRect(x: Double(wf.origin.x), y: Double(wf.origin.y),
+                              width: Double(wf.width), height: Double(wf.height))
+        } else {
+            frame = nil
+        }
+
         return SavedWindowState(
             tabs: savedTabs,
             activeTabIndex: filteredActiveIndex,
             savedAt: Date(),
-            version: 1
+            version: 1,
+            windowFrame: frame
         )
     }
 
@@ -1381,13 +1516,24 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
     // MARK: - NSWindowDelegate
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        // If this is the last window, show quit confirmation
-        if TerminalWindowTracker.shared.count == 1 && AppConfig.shared.quitConfirmClose {
+        if TerminalWindowTracker.shared.count == 1 {
+            // Last window — show quit confirmation
+            if AppConfig.shared.quitConfirmClose {
+                let alert = NSAlert.branded()
+                alert.messageText = "Quit Awal Terminal?"
+                alert.informativeText = "All terminal sessions will be terminated."
+                alert.alertStyle = .warning
+                alert.addButton(withTitle: "Quit")
+                alert.addButton(withTitle: "Cancel")
+                guard alert.runModal() == .alertFirstButtonReturn else { return false }
+            }
+        } else if tabs.count > 0 && AppConfig.shared.quitConfirmClose {
+            // Not the last window — show close window confirmation
             let alert = NSAlert.branded()
-            alert.messageText = "Quit Awal Terminal?"
-            alert.informativeText = "All terminal sessions will be terminated."
+            alert.messageText = "Close Window?"
+            alert.informativeText = "All \(tabs.count) tab(s) in this window will be closed."
             alert.alertStyle = .warning
-            alert.addButton(withTitle: "Quit")
+            alert.addButton(withTitle: "Close Window")
             alert.addButton(withTitle: "Cancel")
             guard alert.runModal() == .alertFirstButtonReturn else { return false }
         }
@@ -1395,20 +1541,13 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
     }
 
     func windowWillClose(_ notification: Notification) {
-        // Save window state before cleanup (for session restore)
-        if let state = captureWindowState() {
-            WindowStateStore.save(state)
-        }
-
         // Cleanup all tabs before window closes
         for tab in tabs {
             tab.splitContainer.cleanupAllTerminals()
             cleanupWorktree(for: tab, force: false)
         }
         TerminalWindowTracker.shared.remove(self)
-        if TerminalWindowTracker.shared.count == 0 {
-            NSApp.terminate(nil)
-        }
+        // App termination is handled by applicationShouldTerminateAfterLastWindowClosed
     }
 
     func window(_ window: NSWindow, shouldPopUpDocumentPathMenu menu: NSMenu) -> Bool {

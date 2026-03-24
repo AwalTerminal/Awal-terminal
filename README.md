@@ -39,7 +39,7 @@ A native macOS terminal built from scratch with Swift and Rust, designed specifi
 | Resume Sessions | Browse and resume past AI sessions from the startup menu. Claude sessions show turn count and time ago; Codex and Gemini launch their built-in session pickers |
 | Plan-Aware Tab Naming | Automatically detects AI plan headers and offers to rename the tab to match the plan title |
 | Smart Notifications | Desktop alerts when long-running AI tasks complete |
-| Tabs | Native tabs with drag-to-reorder, custom tab colors, and per-tab titles |
+| Tabs & Windows | Multiple windows (`Cmd+N`), native tabs with drag-to-reorder, tab tearoff to new window, custom tab colors, and per-tab titles |
 | Quick Terminal | Quake-style dropdown terminal with a global hotkey (`Ctrl+``) |
 | Find in Terminal | Search through scrollback with match highlighting and keyboard navigation. OSC 8 hyperlinks and drag-and-drop file pasting |
 | Syntax Highlighting | Language-aware coloring for code blocks and diffs inside AI output |
@@ -187,6 +187,7 @@ docs/       Promotional website (GitHub Pages)
 
 | Action | Shortcut |
 |---|---|
+| New window | `Cmd+N` |
 | New tab | `Cmd+T` |
 | Close tab | `Cmd+W` |
 | Rename tab | `Cmd+Shift+R` |

@@ -82,6 +82,39 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
         // Start automatic update checker
         UpdateChecker.shared.start()
 
+        // Try restoring multi-window state first
+        if let appState = WindowStateStore.loadAll(), !appState.isEmpty {
+            for (i, savedState) in appState.enumerated() {
+                let controller = TerminalWindowController(isInitialTab: true)
+                TerminalWindowTracker.shared.register(controller)
+                controller.showWindow(nil)
+                if let frame = savedState.windowFrame {
+                    controller.window?.setFrame(
+                        NSRect(x: frame.x, y: frame.y, width: frame.width, height: frame.height),
+                        display: true
+                    )
+                }
+                controller.restoreFromSavedState(savedState)
+                if i == 0 {
+                    controller.window?.makeKeyAndOrderFront(nil)
+                }
+            }
+        } else if let singleState = WindowStateStore.load() {
+            // Legacy single-window restore
+            let controller = TerminalWindowController(isInitialTab: true)
+            TerminalWindowTracker.shared.register(controller)
+            controller.showWindow(nil)
+            controller.window?.makeKeyAndOrderFront(nil)
+            controller.restoreFromSavedState(singleState)
+        } else {
+            let controller = TerminalWindowController(isInitialTab: true)
+            TerminalWindowTracker.shared.register(controller)
+            controller.showWindow(nil)
+            controller.window?.makeKeyAndOrderFront(nil)
+        }
+    }
+
+    @objc func newWindow(_ sender: Any?) {
         let controller = TerminalWindowController(isInitialTab: true)
         TerminalWindowTracker.shared.register(controller)
         controller.showWindow(nil)
@@ -89,12 +122,10 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
     }
 
     public func applicationWillTerminate(_ notification: Notification) {
-        // Save window state for session restore
-        for controller in TerminalWindowTracker.shared.allControllers {
-            if let state = controller.captureWindowState() {
-                WindowStateStore.save(state)
-                break // Save only the first (main) window
-            }
+        // Save all windows for session restore
+        let states = TerminalWindowTracker.shared.allControllers.compactMap { $0.captureWindowState() }
+        if !states.isEmpty {
+            WindowStateStore.saveAll(states)
         }
 
         QuickTerminalController.shared.unregisterHotKey()
@@ -585,6 +616,9 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
         // Shell menu — sessions and tab navigation
         let shellMenuItem = NSMenuItem()
         let shellMenu = NSMenu(title: "Shell")
+
+        let newWindowItem = NSMenuItem(title: "New Window", action: #selector(newWindow(_:)), keyEquivalent: "n")
+        shellMenu.addItem(newWindowItem)
 
         let newTabItem = NSMenuItem(title: "New Tab", action: #selector(TerminalWindowController.newTab(_:)), keyEquivalent: "t")
         shellMenu.addItem(newTabItem)

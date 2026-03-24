@@ -7,6 +7,7 @@ protocol CustomTabBarDelegate: AnyObject {
     func tabBar(_ tabBar: CustomTabBarView, didDoubleClickTabAt index: Int)
     func tabBar(_ tabBar: CustomTabBarView, didRightClickTabAt index: Int, location: NSPoint)
     func tabBar(_ tabBar: CustomTabBarView, didReorderTabFrom fromIndex: Int, to toIndex: Int)
+    func tabBar(_ tabBar: CustomTabBarView, didTearOffTabAt index: Int, screenPoint: NSPoint)
 }
 
 final class CustomTabBarView: NSView {
@@ -37,6 +38,12 @@ final class CustomTabBarView: NSView {
     private var dragOrigin: NSPoint = .zero
     private let dragThreshold: CGFloat = 5.0
 
+    // Drag ghost state
+    private var dragGhostWindow: NSPanel?
+    private var dragGhostTabSize: NSSize = .zero
+    private var dragSourceView: TabItemView?
+    private var mouseUpMonitor: Any?
+
     override init(frame: NSRect) {
         super.init(frame: frame)
         setup()
@@ -44,6 +51,13 @@ final class CustomTabBarView: NSView {
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) not implemented")
+    }
+
+    deinit {
+        if let monitor = mouseUpMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+        dragGhostWindow?.orderOut(nil)
     }
 
     private func setup() {
@@ -162,6 +176,19 @@ final class CustomTabBarView: NSView {
             tabItem.onDragEnded = { [weak self] in
                 self?.endDrag()
             }
+            tabItem.onDragTornOff = { [weak self] idx, screenPoint in
+                guard let self else { return }
+                // Dismiss ghost immediately — a real window replaces it
+                self.dismissDragGhost(animated: false)
+                self.endDrag()
+                self.delegate?.tabBar(self, didTearOffTabAt: idx, screenPoint: screenPoint)
+            }
+            tabItem.onDragSnapshot = { [weak self] image, screenPoint in
+                self?.showDragGhost(image: image, screenPoint: screenPoint, tabSize: tabItem.bounds.size)
+            }
+            tabItem.onDragMovedScreen = { [weak self] screenPoint in
+                self?.moveDragGhost(to: screenPoint)
+            }
             stackView.addArrangedSubview(tabItem)
             tabViews.append(tabItem)
         }
@@ -211,6 +238,17 @@ final class CustomTabBarView: NSView {
     private func beginDrag(fromIndex: Int, point: NSPoint) {
         draggedTabIndex = fromIndex
         dragOrigin = point
+        // Fade the source tab to indicate it's being moved
+        if fromIndex >= 0 && fromIndex < tabViews.count {
+            dragSourceView = tabViews[fromIndex]
+            dragSourceView?.alphaValue = 0.3
+        }
+        // Monitor for mouseUp to ensure cleanup even if the tab view is
+        // replaced during reorder (removed views don't receive mouseUp)
+        mouseUpMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseUp) { [weak self] event in
+            self?.endDrag()
+            return event
+        }
     }
 
     private func updateDrag(point: NSPoint) {
@@ -223,6 +261,9 @@ final class CustomTabBarView: NSView {
             if tvFrame.contains(localPoint) && i != fromIndex {
                 delegate?.tabBar(self, didReorderTabFrom: fromIndex, to: i)
                 draggedTabIndex = i
+                // Update source view reference after reorder
+                dragSourceView = tabViews[i]
+                dragSourceView?.alphaValue = 0.3
                 break
             }
         }
@@ -230,6 +271,74 @@ final class CustomTabBarView: NSView {
 
     private func endDrag() {
         draggedTabIndex = nil
+        // Restore source tab opacity
+        dragSourceView?.alphaValue = 1.0
+        dragSourceView = nil
+        // Fade out and dismiss ghost window
+        dismissDragGhost()
+        // Remove mouseUp monitor
+        if let monitor = mouseUpMonitor {
+            NSEvent.removeMonitor(monitor)
+            mouseUpMonitor = nil
+        }
+    }
+
+    // MARK: - Drag Ghost
+
+    private func showDragGhost(image: NSImage, screenPoint: NSPoint, tabSize: NSSize) {
+        // Clean up any leftover ghost from a previous drag
+        dismissDragGhost(animated: false)
+        dragGhostTabSize = tabSize
+        let ghostFrame = NSRect(
+            x: screenPoint.x - tabSize.width / 2,
+            y: screenPoint.y - tabSize.height / 2,
+            width: tabSize.width,
+            height: tabSize.height
+        )
+        let panel = NSPanel(
+            contentRect: ghostFrame,
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.level = .floating
+        panel.hasShadow = true
+        panel.alphaValue = 0.85
+        panel.ignoresMouseEvents = true
+
+        let imageView = NSImageView(frame: NSRect(origin: .zero, size: tabSize))
+        imageView.image = image
+        imageView.imageScaling = .scaleNone
+        panel.contentView = imageView
+
+        panel.orderFront(nil)
+        dragGhostWindow = panel
+    }
+
+    private func moveDragGhost(to screenPoint: NSPoint) {
+        guard let ghost = dragGhostWindow else { return }
+        let origin = NSPoint(
+            x: screenPoint.x - dragGhostTabSize.width / 2,
+            y: screenPoint.y - dragGhostTabSize.height / 2
+        )
+        ghost.setFrameOrigin(origin)
+    }
+
+    private func dismissDragGhost(animated: Bool = true) {
+        guard let ghost = dragGhostWindow else { return }
+        dragGhostWindow = nil
+        if animated {
+            NSAnimationContext.runAnimationGroup({ context in
+                context.duration = 0.15
+                ghost.animator().alphaValue = 0
+            }, completionHandler: {
+                ghost.orderOut(nil)
+            })
+        } else {
+            ghost.orderOut(nil)
+        }
     }
 }
 
@@ -245,6 +354,9 @@ private class TabItemView: NSView {
     var onDragBegan: ((Int, NSPoint) -> Void)?
     var onDragMoved: ((NSPoint) -> Void)?
     var onDragEnded: (() -> Void)?
+    var onDragTornOff: ((Int, NSPoint) -> Void)?
+    var onDragSnapshot: ((NSImage, NSPoint) -> Void)?
+    var onDragMovedScreen: ((NSPoint) -> Void)?
 
     private let titleLabel = NSTextField(labelWithString: "")
     private let closeButton: NSButton = {
@@ -264,6 +376,7 @@ private class TabItemView: NSView {
     private let effectiveBgColor: NSColor
 
     private var isDragging = false
+    private var tornOff = false
     private var dragStartPoint: NSPoint = .zero
     private let dragThreshold: CGFloat = 5.0
 
@@ -372,6 +485,7 @@ private class TabItemView: NSView {
     override func mouseDown(with event: NSEvent) {
         dragStartPoint = event.locationInWindow
         isDragging = false
+        tornOff = false
         if event.clickCount == 2 {
             onDoubleClick?(index)
         } else {
@@ -382,10 +496,38 @@ private class TabItemView: NSView {
     override func mouseDragged(with event: NSEvent) {
         let current = event.locationInWindow
         let dx = abs(current.x - dragStartPoint.x)
-        if !isDragging && dx > dragThreshold {
+        let dy = abs(current.y - dragStartPoint.y)
+
+        if !isDragging && !tornOff && dx > dragThreshold {
             isDragging = true
+            // Capture snapshot of this tab for ghost preview
+            if let bitmapRep = bitmapImageRepForCachingDisplay(in: bounds) {
+                cacheDisplay(in: bounds, to: bitmapRep)
+                let image = NSImage(size: bounds.size)
+                image.addRepresentation(bitmapRep)
+                let screenOrigin = window?.convertPoint(toScreen: current) ?? .zero
+                onDragSnapshot?(image, screenOrigin)
+            }
             onDragBegan?(index, event.locationInWindow)
         }
+
+        // Send screen coordinates on every drag event
+        if isDragging || tornOff {
+            if let screenPoint = window?.convertPoint(toScreen: current) {
+                onDragMovedScreen?(screenPoint)
+            }
+        }
+
+        // Vertical tearoff: if dragged far enough vertically, tear off the tab
+        if dy > 30 && !tornOff {
+            tornOff = true
+            isDragging = false
+            if let screenPoint = window?.convertPoint(toScreen: current) {
+                onDragTornOff?(index, screenPoint)
+            }
+            return
+        }
+
         if isDragging {
             onDragMoved?(event.locationInWindow)
         }
