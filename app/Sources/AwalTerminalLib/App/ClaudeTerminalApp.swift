@@ -659,6 +659,20 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
 
         viewMenu.addItem(NSMenuItem.separator())
 
+        let zoomInItem = NSMenuItem(title: "Zoom In", action: #selector(TerminalWindowController.zoomIn(_:)), keyEquivalent: "=")
+        zoomInItem.keyEquivalentModifierMask = [.command]
+        viewMenu.addItem(zoomInItem)
+
+        let zoomOutItem = NSMenuItem(title: "Zoom Out", action: #selector(TerminalWindowController.zoomOut(_:)), keyEquivalent: "-")
+        zoomOutItem.keyEquivalentModifierMask = [.command]
+        viewMenu.addItem(zoomOutItem)
+
+        let actualSizeItem = NSMenuItem(title: "Actual Size", action: #selector(TerminalWindowController.resetZoom(_:)), keyEquivalent: "0")
+        actualSizeItem.keyEquivalentModifierMask = [.command]
+        viewMenu.addItem(actualSizeItem)
+
+        viewMenu.addItem(NSMenuItem.separator())
+
         let fullScreenItem = NSMenuItem(title: "Enter Full Screen", action: #selector(NSWindow.toggleFullScreen(_:)), keyEquivalent: "f")
         fullScreenItem.keyEquivalentModifierMask = [.control, .command]
         viewMenu.addItem(fullScreenItem)

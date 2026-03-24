@@ -203,6 +203,9 @@ docs/       Promotional website (GitHub Pages)
 | Voice input (PTT) | `Ctrl+Shift+Space` |
 | Preferences | `Cmd+,` |
 | Session recording | `Cmd+Option+Shift+R` |
+| Zoom in | `Cmd+=` |
+| Zoom out | `Cmd+-` |
+| Actual size (reset zoom) | `Cmd+0` |
 
 ## License
 

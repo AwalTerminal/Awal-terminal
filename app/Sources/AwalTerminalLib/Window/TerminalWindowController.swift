@@ -1112,6 +1112,26 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         activeTab.splitContainer.focusPrevious()
     }
 
+    // MARK: - Zoom
+
+    @objc func zoomIn(_ sender: Any?) {
+        for terminal in activeTab.splitContainer.rootNode.allLeaves() {
+            terminal.zoomIn()
+        }
+    }
+
+    @objc func zoomOut(_ sender: Any?) {
+        for terminal in activeTab.splitContainer.rootNode.allLeaves() {
+            terminal.zoomOut()
+        }
+    }
+
+    @objc func resetZoom(_ sender: Any?) {
+        for terminal in activeTab.splitContainer.rootNode.allLeaves() {
+            terminal.resetZoom()
+        }
+    }
+
     // MARK: - Search
 
     @objc func findInTerminal(_ sender: Any?) {

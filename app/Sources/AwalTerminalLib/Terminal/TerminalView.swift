@@ -115,11 +115,16 @@ class TerminalView: NSView {
     private var processSource: DispatchSourceProcess?
     private var displayLink: CVDisplayLink?
 
-    private let cellWidth: CGFloat
-    private let cellHeight: CGFloat
-    private let font: NSFont
-    private let boldFont: NSFont
-    private let baselineOffset: CGFloat
+    private var cellWidth: CGFloat
+    private var cellHeight: CGFloat
+    private var font: NSFont
+    private var boldFont: NSFont
+    private var baselineOffset: CGFloat
+
+    private let baseFontSize: CGFloat
+    private let minFontSize: CGFloat = 8.0
+    private let maxFontSize: CGFloat = 36.0
+    private let zoomStep: CGFloat = 1.0
 
     private var termCols: UInt32 = 80
     private var termRows: UInt32 = 24
@@ -166,6 +171,7 @@ class TerminalView: NSView {
     private var syncOutputTimer: Timer?
     private var scrollToBottomButton: ScrollToBottomButton?
     private var recordingIndicator: RecordingIndicatorView?
+    private var zoomHUD: ZoomHUDView?
 
     // MARK: - Search State
 
@@ -226,6 +232,7 @@ class TerminalView: NSView {
         self.cellWidth = ceil(advance.width)
         self.cellHeight = ceil(ascent + descent + leading)
         self.baselineOffset = descent
+        self.baseFontSize = config.fontSize
 
         super.init(frame: frame)
 
@@ -1714,6 +1721,90 @@ class TerminalView: NSView {
         onSleepPreventionChanged?(false)
     }
 
+    // MARK: - Zoom
+
+    var currentFontSize: CGFloat { font.pointSize }
+
+    func zoomIn() {
+        applyFontSize(font.pointSize + zoomStep)
+    }
+
+    func zoomOut() {
+        applyFontSize(font.pointSize - zoomStep)
+    }
+
+    func resetZoom() {
+        applyFontSize(baseFontSize)
+    }
+
+    private func applyFontSize(_ size: CGFloat) {
+        let clamped = min(max(size, minFontSize), maxFontSize)
+        guard clamped != font.pointSize else { return }
+
+        // Resolve fonts at the new size
+        let config = AppConfig.shared
+        let family = config.fontFamily.isEmpty ? BundledFont.defaultFontFamily : config.fontFamily
+        let newFont: NSFont
+        if let f = NSFont(name: family, size: clamped) {
+            newFont = f
+        } else if let f = NSFont(descriptor: NSFontDescriptor(fontAttributes: [.family: family]), size: clamped) {
+            newFont = f
+        } else {
+            newFont = NSFont.monospacedSystemFont(ofSize: clamped, weight: .regular)
+        }
+
+        let newBoldFont: NSFont
+        if let f = NSFont(name: "\(family)-Bold", size: clamped) {
+            newBoldFont = f
+        } else {
+            let boldDesc = newFont.fontDescriptor.withSymbolicTraits(.bold)
+            newBoldFont = NSFont(descriptor: boldDesc, size: clamped) ?? NSFont.monospacedSystemFont(ofSize: clamped, weight: .bold)
+        }
+
+        self.font = newFont
+        self.boldFont = newBoldFont
+
+        // Recalculate cell metrics
+        let ctFont = newFont as CTFont
+        let ascent = CTFontGetAscent(ctFont)
+        let descent = CTFontGetDescent(ctFont)
+        let leading = CTFontGetLeading(ctFont)
+        var glyph: CGGlyph = 0
+        var advance = CGSize.zero
+        let mChar: UniChar = 0x4D
+        CTFontGetGlyphsForCharacters(ctFont, [mChar], &glyph, 1)
+        CTFontGetAdvancesForGlyphs(ctFont, .horizontal, [glyph], &advance, 1)
+        self.cellWidth = ceil(advance.width)
+        self.cellHeight = ceil(ascent + descent + leading)
+        self.baselineOffset = descent
+
+        // Recreate renderer with new font metrics (same pattern as updateBackingScale)
+        if let device = metalLayer?.device {
+            stopDisplayLink()
+            do {
+                renderer = try MetalRenderer(
+                    device: device,
+                    font: font,
+                    boldFont: boldFont,
+                    cellWidth: cellWidth,
+                    cellHeight: cellHeight,
+                    scale: currentScale
+                )
+            } catch {
+                debugLog("MetalRenderer reinit for zoom failed: \(error.localizedDescription)")
+            }
+            startDisplayLink()
+        }
+
+        recalculateGridSize()
+        showZoomHUD()
+    }
+
+    override func magnify(with event: NSEvent) {
+        let delta = event.magnification * 4.0
+        applyFontSize(font.pointSize + delta)
+    }
+
     // MARK: - Grid Size
 
     private func recalculateGridSize() {
@@ -2975,6 +3066,21 @@ class TerminalView: NSView {
                 })
             }
         }
+    }
+
+    private func showZoomHUD() {
+        if zoomHUD == nil {
+            let hud = ZoomHUDView()
+            addSubview(hud)
+            hud.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                hud.centerXAnchor.constraint(equalTo: centerXAnchor),
+                hud.centerYAnchor.constraint(equalTo: centerYAnchor),
+            ])
+            zoomHUD = hud
+        }
+        let percent = Int(round((font.pointSize / baseFontSize) * 100))
+        zoomHUD?.show(zoomPercent: percent)
     }
 
     func setRecordingIndicatorVisible(_ visible: Bool) {
