@@ -1577,6 +1577,17 @@ class TerminalView: NSView {
         guard !isCleanedUp else { return }
         guard let s = surface else { return }
 
+        // Clear loading message BEFORE processing PTY data so the cursor
+        // is at home position when the shell's first output is rendered.
+        if isWaitingForOutput, !loadingMessageText.isEmpty {
+            let clear = "\u{1b}[2J\u{1b}[H"
+            let clearBytes = Array(clear.utf8)
+            clearBytes.withUnsafeBufferPointer { ptr in
+                at_surface_feed_bytes(s, ptr.baseAddress!, UInt32(ptr.count))
+            }
+            loadingMessageText = ""
+        }
+
         var totalRead: Int32 = 0
         var iterations = 0
         let deadline = CACurrentMediaTime() + 0.008 // 8ms cap
@@ -1589,16 +1600,6 @@ class TerminalView: NSView {
         }
 
         if totalRead > 0 {
-            // Clear loading message on first output so it doesn't linger
-            if isWaitingForOutput, !loadingMessageText.isEmpty {
-                let row = loadingSpinnerRow
-                let clear = "\u{1b}[\(row);1H\u{1b}[2K\u{1b}[H"
-                let clearBytes = Array(clear.utf8)
-                clearBytes.withUnsafeBufferPointer { ptr in
-                    at_surface_feed_bytes(s, ptr.baseAddress!, UInt32(ptr.count))
-                }
-                loadingMessageText = ""
-            }
 
             // Run AI analyzer once per batch (not per iteration)
             at_surface_analyze(s)

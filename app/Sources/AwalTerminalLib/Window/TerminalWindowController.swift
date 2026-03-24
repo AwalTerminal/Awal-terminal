@@ -545,7 +545,7 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
 
     func captureWindowState() -> SavedWindowState? {
         let activeTabs = tabs.filter { $0.hasSession }
-        guard !activeTabs.isEmpty else { return nil }
+        guard activeTabs.count > 1 else { return nil }
 
         // Track used session IDs to avoid duplicates (two tabs watching same JSONL)
         var usedSessionIds = Set<String>()
@@ -707,6 +707,8 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
 
         terminal.onSessionChanged = { [weak self, weak terminal, weak tab] model, provider, cols, rows in
             guard let self, let terminal, let tab else { return }
+            // Clear saved state so "Restore" option disappears from other tabs' menus
+            WindowStateStore.deleteSavedState()
             tab.hasSession = true
             tab.isDangerMode = terminal.isDangerMode
             tab.tokenTracker.reset()
