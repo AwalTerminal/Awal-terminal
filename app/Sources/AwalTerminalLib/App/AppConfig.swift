@@ -17,6 +17,7 @@ struct RegistryConfig {
     var slugs: [String] = []
     var path: String? = nil
     var mapping: String = "auto"  // "auto" | "standard" | "custom"
+    var enabled: Bool = true
 }
 
 /// A user-defined security scanning rule from config.toml.
@@ -84,7 +85,7 @@ struct AppConfig {
     var aiComponentsAutoSync: Bool = true
     var aiComponentsSyncInterval: Int = 3600
     var aiComponentRegistries: [RegistryConfig] = [
-        RegistryConfig(name: "awal-components", url: "https://github.com/AwalTerminal/awal-ai-components-registry.git", branch: "main"),
+        RegistryConfig(name: "awal-components", url: "https://github.com/AwalTerminal/awal-ai-components-registry.git", branch: "main", enabled: false),
     ]
     var aiComponentsDisabled: Set<String> = []
     var aiComponentsSecurityScan: Bool = true
@@ -275,6 +276,8 @@ struct AppConfig {
             let slugs = slugsStr.isEmpty ? [] : slugsStr.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
             let path = parsed["ai_components.registry.\(name).path"]
             let mapping = parsed["ai_components.registry.\(name).mapping"] ?? "auto"
+            let enabledStr = parsed["ai_components.registry.\(name).enabled"]
+            let enabled = enabledStr.map { $0.lowercased() != "false" } ?? true
 
             let isValid: Bool
             switch regType {
@@ -284,7 +287,7 @@ struct AppConfig {
             }
 
             if isValid {
-                let regConfig = RegistryConfig(name: name, url: url, branch: branch, tag: tag, type: regType, slugs: slugs, path: path, mapping: mapping)
+                let regConfig = RegistryConfig(name: name, url: url, branch: branch, tag: tag, type: regType, slugs: slugs, path: path, mapping: mapping, enabled: enabled)
                 // Update existing default or append new
                 if let idx = config.aiComponentRegistries.firstIndex(where: { $0.name == name }) {
                     config.aiComponentRegistries[idx] = regConfig

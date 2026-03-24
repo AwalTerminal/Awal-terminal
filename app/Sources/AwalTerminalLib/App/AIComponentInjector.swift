@@ -33,7 +33,7 @@ enum AIComponentInjector {
             return nil
         }
 
-        let registries = config.aiComponentRegistries
+        let registries = config.aiComponentRegistries.filter { $0.enabled }
         guard !registries.isEmpty else {
             debugLog("AIComponentInjector: no registries configured")
             return nil

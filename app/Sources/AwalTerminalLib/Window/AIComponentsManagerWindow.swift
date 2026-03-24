@@ -251,6 +251,13 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
         registryTableView.usesAlternatingRowBackgroundColors = true
         registryTableView.allowsMultipleSelection = false
 
+        let enabledCol = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("reg_enabled"))
+        enabledCol.title = ""
+        enabledCol.width = 24
+        enabledCol.minWidth = 24
+        enabledCol.maxWidth = 24
+        registryTableView.addTableColumn(enabledCol)
+
         let statusCol = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("status"))
         statusCol.title = ""
         statusCol.width = 24
@@ -642,6 +649,19 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
 
     // MARK: - Actions
 
+    @objc private func registryEnabledToggled(_ sender: NSButton) {
+        let registries = AppConfig.shared.aiComponentRegistries
+        guard sender.tag < registries.count else { return }
+        let reg = registries[sender.tag]
+        let newEnabled = sender.state == .on
+        ConfigWriter.updateValue(
+            key: "ai_components.registry.\(reg.name).enabled",
+            value: newEnabled ? "true" : "false"
+        )
+        AppConfig.reload()
+        registryTableView.reloadData()
+    }
+
     @objc private func syncAllClicked(_ sender: NSButton) {
         let config = AppConfig.shared
         syncAllButton.isEnabled = false
@@ -651,7 +671,8 @@ class AIComponentsManagerWindow: NSWindowController, NSWindowDelegate {
         let terminalController = NSApp.windows.compactMap { $0.windowController as? TerminalWindowController }.first
         terminalController?.snapshotComponentsForSync()
 
-        RegistryManager.shared.syncAll(registries: config.aiComponentRegistries, force: true) { [weak self] results in
+        let enabledRegistries = config.aiComponentRegistries.filter { $0.enabled }
+        RegistryManager.shared.syncAll(registries: enabledRegistries, force: true) { [weak self] results in
             self?.syncAllButton.isEnabled = true
             self?.syncAllButton.title = "Sync All"
             self?.refreshAll()
@@ -1074,7 +1095,15 @@ extension AIComponentsManagerWindow: NSTableViewDataSource, NSTableViewDelegate 
         guard row < registries.count else { return nil }
         let reg = registries[row]
 
+        let isDisabled = !reg.enabled
+
         switch tableColumn?.identifier.rawValue {
+        case "reg_enabled":
+            let checkbox = NSButton(checkboxWithTitle: "", target: self, action: #selector(registryEnabledToggled(_:)))
+            checkbox.tag = row
+            checkbox.state = reg.enabled ? .on : .off
+            return checkbox
+
         case "status":
             let label = NSTextField(labelWithString: "")
             label.font = .systemFont(ofSize: 12)
@@ -1128,12 +1157,14 @@ extension AIComponentsManagerWindow: NSTableViewDataSource, NSTableViewDelegate 
                     label.toolTip = "Not cloned"
                 }
             }
+            if isDisabled { label.alphaValue = 0.35 }
             return label
 
         case "name":
             let cell = NSTextField(labelWithString: reg.name)
             cell.font = .systemFont(ofSize: 12)
             cell.lineBreakMode = .byTruncatingTail
+            if isDisabled { cell.textColor = .tertiaryLabelColor }
             return cell
 
         case "url":
@@ -1150,7 +1181,7 @@ extension AIComponentsManagerWindow: NSTableViewDataSource, NSTableViewDelegate 
             }
             let cell = NSTextField(labelWithString: displayText)
             cell.font = .systemFont(ofSize: 12)
-            cell.textColor = .secondaryLabelColor
+            cell.textColor = isDisabled ? .tertiaryLabelColor : .secondaryLabelColor
             cell.lineBreakMode = .byTruncatingTail
             return cell
 
@@ -1164,13 +1195,13 @@ extension AIComponentsManagerWindow: NSTableViewDataSource, NSTableViewDelegate 
             }
             let cell = NSTextField(labelWithString: displayValue)
             cell.font = .systemFont(ofSize: 12)
-            cell.textColor = .secondaryLabelColor
+            cell.textColor = isDisabled ? .tertiaryLabelColor : .secondaryLabelColor
             return cell
 
         case "synced":
             let cell = NSTextField(labelWithString: "")
             cell.font = .systemFont(ofSize: 11)
-            cell.textColor = .secondaryLabelColor
+            cell.textColor = isDisabled ? .tertiaryLabelColor : .secondaryLabelColor
             if let date = RegistryManager.shared.lastSyncTime(name: reg.name) {
                 cell.stringValue = formatRelativeTime(date)
             } else {

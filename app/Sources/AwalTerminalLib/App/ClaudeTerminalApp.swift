@@ -345,7 +345,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
             changesDetected = true
         }
 
-        RegistryManager.shared.syncAll(registries: config.aiComponentRegistries, force: true) { results in
+        RegistryManager.shared.syncAll(registries: config.aiComponentRegistries.filter { $0.enabled }, force: true) { results in
             NotificationCenter.default.removeObserver(observer)
 
             let errors = results.compactMap { (name, result) -> String? in
