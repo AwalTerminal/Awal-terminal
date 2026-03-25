@@ -19,6 +19,14 @@ class DiffPopoverViewController: NSViewController {
         let container = NSView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
         container.wantsLayer = true
 
+        // Frosted glass background
+        let vibrancy = NSVisualEffectView()
+        vibrancy.material = .hudWindow
+        vibrancy.blendingMode = .behindWindow
+        vibrancy.state = .active
+        vibrancy.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(vibrancy, positioned: .below, relativeTo: nil)
+
         headerLabel.isEditable = false
         headerLabel.isBordered = false
         headerLabel.drawsBackground = false
@@ -41,7 +49,7 @@ class DiffPopoverViewController: NSViewController {
 
         textView.isEditable = false
         textView.isSelectable = true
-        textView.backgroundColor = NSColor(red: 30.0/255.0, green: 30.0/255.0, blue: 30.0/255.0, alpha: 1.0)
+        textView.backgroundColor = .clear
         textView.textContainerInset = NSSize(width: 6, height: 4)
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
@@ -58,6 +66,11 @@ class DiffPopoverViewController: NSViewController {
         container.addSubview(scrollView)
 
         NSLayoutConstraint.activate([
+            vibrancy.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            vibrancy.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            vibrancy.topAnchor.constraint(equalTo: container.topAnchor),
+            vibrancy.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+
             closeButton.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -4),
             closeButton.topAnchor.constraint(equalTo: container.topAnchor, constant: 4),
             closeButton.widthAnchor.constraint(equalToConstant: 20),

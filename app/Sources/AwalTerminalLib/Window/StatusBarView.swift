@@ -216,7 +216,20 @@ class StatusBarView: NSView, NSMenuDelegate {
 
     private func setup() {
         wantsLayer = true
-        layer?.backgroundColor = AppConfig.shared.themeStatusBarBg.cgColor
+
+        // Frosted glass background
+        let vibrancy = NSVisualEffectView()
+        vibrancy.material = .hudWindow
+        vibrancy.blendingMode = .behindWindow
+        vibrancy.state = .active
+        vibrancy.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(vibrancy, positioned: .below, relativeTo: nil)
+        NSLayoutConstraint.activate([
+            vibrancy.leadingAnchor.constraint(equalTo: leadingAnchor),
+            vibrancy.trailingAnchor.constraint(equalTo: trailingAnchor),
+            vibrancy.topAnchor.constraint(equalTo: topAnchor),
+            vibrancy.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
 
         let monoFont = NSFont.monospacedSystemFont(ofSize: 11.0, weight: .regular)
         let dimColor = NSColor(white: 0.60, alpha: 1.0)
@@ -1157,7 +1170,14 @@ class AIComponentPopoverController: NSViewController, NSTableViewDataSource, NST
 
         let container = NSView(frame: NSRect(x: 0, y: 0, width: 680, height: popoverHeight))
         container.wantsLayer = true
-        container.layer?.backgroundColor = NSColor(white: 0.12, alpha: 1.0).cgColor
+
+        // Frosted glass background
+        let vibrancy = NSVisualEffectView(frame: container.bounds)
+        vibrancy.material = .hudWindow
+        vibrancy.blendingMode = .behindWindow
+        vibrancy.state = .active
+        vibrancy.autoresizingMask = [.width, .height]
+        container.addSubview(vibrancy, positioned: .below, relativeTo: nil)
         self.view = container
 
         // Segmented control
