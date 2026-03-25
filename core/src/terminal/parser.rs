@@ -134,7 +134,7 @@ impl<'a> vte::Perform for ScreenPerformer<'a> {
     ) {
         // For SGR, pass raw params to preserve sub-parameters (colon-separated values).
         // For everything else, flatten to first sub-param per group (legacy behavior).
-        if action == 'm' {
+        if action == 'm' && intermediates.is_empty() {
             self.handle_sgr_raw(params);
             return;
         }
@@ -605,5 +605,13 @@ mod tests {
         // ESC[58:2:255:0:0m — underline color, should be silently ignored
         let screen = feed(b"\x1b[58:2:255:0:0m");
         assert_eq!(screen.cursor.attrs, CellAttrs::empty());
+    }
+
+    #[test]
+    fn test_xtmodkeys_not_treated_as_sgr() {
+        // CSI > 4 ; 2 m is XTMODKEYS, not SGR — must not set underline or dim
+        let screen = feed(b"\x1b[>4;2m");
+        assert!(!screen.cursor.attrs.contains(CellAttrs::UNDERLINE));
+        assert!(!screen.cursor.attrs.contains(CellAttrs::DIM));
     }
 }
