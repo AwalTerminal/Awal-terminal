@@ -132,6 +132,13 @@ impl<'a> vte::Perform for ScreenPerformer<'a> {
         _ignore: bool,
         action: char,
     ) {
+        // For SGR, pass raw params to preserve sub-parameters (colon-separated values).
+        // For everything else, flatten to first sub-param per group (legacy behavior).
+        if action == 'm' {
+            self.handle_sgr_raw(params);
+            return;
+        }
+
         let params: Vec<u16> = params.iter().map(|p| p[0]).collect();
         let private = intermediates.contains(&b'?');
 
@@ -254,9 +261,6 @@ impl<'a> vte::Perform for ScreenPerformer<'a> {
                     self.screen.restore_cursor();
                 }
             }
-            'm' => {
-                self.handle_sgr(&params);
-            }
             'h' => {
                 if private {
                     self.handle_dec_set(&params);
@@ -323,8 +327,13 @@ impl<'a> vte::Perform for ScreenPerformer<'a> {
 }
 
 impl<'a> ScreenPerformer<'a> {
-    fn handle_sgr(&mut self, params: &[u16]) {
-        if params.is_empty() {
+    /// Handle SGR (Select Graphic Rendition) with full sub-parameter support.
+    /// vte::Params yields one `&[u16]` slice per semicolon-separated group.
+    /// Within each slice, colon-separated sub-parameters are individual elements.
+    /// E.g. `\e[4:3m` → one group `[4, 3]`, `\e[38;2;255;0;0m` → groups `[38]`, `[2]`, `[255]`, `[0]`, `[0]`.
+    fn handle_sgr_raw(&mut self, params: &vte::Params) {
+        let groups: Vec<&[u16]> = params.iter().collect();
+        if groups.is_empty() {
             self.screen.cursor.attrs = CellAttrs::empty();
             self.screen.cursor.fg = Color::Default;
             self.screen.cursor.bg = Color::Default;
@@ -332,8 +341,9 @@ impl<'a> ScreenPerformer<'a> {
         }
 
         let mut i = 0;
-        while i < params.len() {
-            match params[i] {
+        while i < groups.len() {
+            let sub = groups[i];
+            match sub[0] {
                 0 => {
                     self.screen.cursor.attrs = CellAttrs::empty();
                     self.screen.cursor.fg = Color::Default;
@@ -342,7 +352,18 @@ impl<'a> ScreenPerformer<'a> {
                 1 => self.screen.cursor.attrs |= CellAttrs::BOLD,
                 2 => self.screen.cursor.attrs |= CellAttrs::DIM,
                 3 => self.screen.cursor.attrs |= CellAttrs::ITALIC,
-                4 => self.screen.cursor.attrs |= CellAttrs::UNDERLINE,
+                4 => {
+                    // 4 = underline, 4:0 = clear, 4:1-5 = set underline style
+                    if sub.len() > 1 {
+                        if sub[1] == 0 {
+                            self.screen.cursor.attrs &= !CellAttrs::UNDERLINE;
+                        } else {
+                            self.screen.cursor.attrs |= CellAttrs::UNDERLINE;
+                        }
+                    } else {
+                        self.screen.cursor.attrs |= CellAttrs::UNDERLINE;
+                    }
+                }
                 5 => self.screen.cursor.attrs |= CellAttrs::BLINK,
                 7 => self.screen.cursor.attrs |= CellAttrs::INVERSE,
                 8 => self.screen.cursor.attrs |= CellAttrs::HIDDEN,
@@ -355,23 +376,36 @@ impl<'a> ScreenPerformer<'a> {
                 28 => self.screen.cursor.attrs &= !CellAttrs::HIDDEN,
                 29 => self.screen.cursor.attrs &= !CellAttrs::STRIKETHROUGH,
                 30..=37 => {
-                    self.screen.cursor.fg = Color::Indexed((params[i] - 30) as u8);
+                    self.screen.cursor.fg = Color::Indexed((sub[0] - 30) as u8);
                 }
                 38 => {
-                    if i + 1 < params.len() {
-                        match params[i + 1] {
+                    if sub.len() >= 5 && sub[1] == 2 {
+                        // Colon form: 38:2:R:G:B or 38:2::R:G:B
+                        // With optional color-space id: sub may be [38,2,cs,R,G,B] or [38,2,R,G,B]
+                        let (r, g, b) = if sub.len() >= 6 {
+                            (sub[3] as u8, sub[4] as u8, sub[5] as u8)
+                        } else {
+                            (sub[2] as u8, sub[3] as u8, sub[4] as u8)
+                        };
+                        self.screen.cursor.fg = Color::Rgb(r, g, b);
+                    } else if sub.len() >= 3 && sub[1] == 5 {
+                        // Colon form: 38:5:N
+                        self.screen.cursor.fg = Color::Indexed(sub[2] as u8);
+                    } else if i + 1 < groups.len() {
+                        // Semicolon form: 38;2;R;G;B or 38;5;N
+                        match groups[i + 1][0] {
                             5 => {
-                                if i + 2 < params.len() {
-                                    self.screen.cursor.fg = Color::Indexed(params[i + 2] as u8);
+                                if i + 2 < groups.len() {
+                                    self.screen.cursor.fg = Color::Indexed(groups[i + 2][0] as u8);
                                     i += 2;
                                 }
                             }
                             2 => {
-                                if i + 4 < params.len() {
+                                if i + 4 < groups.len() {
                                     self.screen.cursor.fg = Color::Rgb(
-                                        params[i + 2] as u8,
-                                        params[i + 3] as u8,
-                                        params[i + 4] as u8,
+                                        groups[i + 2][0] as u8,
+                                        groups[i + 3][0] as u8,
+                                        groups[i + 4][0] as u8,
                                     );
                                     i += 4;
                                 }
@@ -382,23 +416,35 @@ impl<'a> ScreenPerformer<'a> {
                 }
                 39 => self.screen.cursor.fg = Color::Default,
                 40..=47 => {
-                    self.screen.cursor.bg = Color::Indexed((params[i] - 40) as u8);
+                    self.screen.cursor.bg = Color::Indexed((sub[0] - 40) as u8);
                 }
                 48 => {
-                    if i + 1 < params.len() {
-                        match params[i + 1] {
+                    if sub.len() >= 5 && sub[1] == 2 {
+                        // Colon form: 48:2:R:G:B or 48:2::R:G:B
+                        let (r, g, b) = if sub.len() >= 6 {
+                            (sub[3] as u8, sub[4] as u8, sub[5] as u8)
+                        } else {
+                            (sub[2] as u8, sub[3] as u8, sub[4] as u8)
+                        };
+                        self.screen.cursor.bg = Color::Rgb(r, g, b);
+                    } else if sub.len() >= 3 && sub[1] == 5 {
+                        // Colon form: 48:5:N
+                        self.screen.cursor.bg = Color::Indexed(sub[2] as u8);
+                    } else if i + 1 < groups.len() {
+                        // Semicolon form: 48;2;R;G;B or 48;5;N
+                        match groups[i + 1][0] {
                             5 => {
-                                if i + 2 < params.len() {
-                                    self.screen.cursor.bg = Color::Indexed(params[i + 2] as u8);
+                                if i + 2 < groups.len() {
+                                    self.screen.cursor.bg = Color::Indexed(groups[i + 2][0] as u8);
                                     i += 2;
                                 }
                             }
                             2 => {
-                                if i + 4 < params.len() {
+                                if i + 4 < groups.len() {
                                     self.screen.cursor.bg = Color::Rgb(
-                                        params[i + 2] as u8,
-                                        params[i + 3] as u8,
-                                        params[i + 4] as u8,
+                                        groups[i + 2][0] as u8,
+                                        groups[i + 3][0] as u8,
+                                        groups[i + 4][0] as u8,
                                     );
                                     i += 4;
                                 }
@@ -408,11 +454,17 @@ impl<'a> ScreenPerformer<'a> {
                     }
                 }
                 49 => self.screen.cursor.bg = Color::Default,
+                58 => {
+                    // Underline color — skip sub-parameters, don't break
+                }
+                59 => {
+                    // Reset underline color — ignore
+                }
                 90..=97 => {
-                    self.screen.cursor.fg = Color::Indexed((params[i] - 90 + 8) as u8);
+                    self.screen.cursor.fg = Color::Indexed((sub[0] - 90 + 8) as u8);
                 }
                 100..=107 => {
-                    self.screen.cursor.bg = Color::Indexed((params[i] - 100 + 8) as u8);
+                    self.screen.cursor.bg = Color::Indexed((sub[0] - 100 + 8) as u8);
                 }
                 _ => {}
             }
@@ -468,5 +520,90 @@ impl<'a> ScreenPerformer<'a> {
                 _ => {}
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::terminal::cell::CellAttrs;
+    use crate::terminal::screen::Screen;
+
+    /// Helper: feed an escape sequence into a fresh parser+screen and return the screen.
+    fn feed(seq: &[u8]) -> Screen {
+        let mut parser = Parser::new();
+        let mut screen = Screen::new(80, 24);
+        parser.process(seq, &mut screen);
+        screen
+    }
+
+    #[test]
+    fn test_plain_underline_on_off() {
+        // ESC[4m sets underline, ESC[24m clears it
+        let screen = feed(b"\x1b[4m");
+        assert!(screen.cursor.attrs.contains(CellAttrs::UNDERLINE));
+
+        let screen = feed(b"\x1b[4m\x1b[24m");
+        assert!(!screen.cursor.attrs.contains(CellAttrs::UNDERLINE));
+    }
+
+    #[test]
+    fn test_underline_subparam_clear() {
+        // ESC[4:0m should clear underline (the bug this fix addresses)
+        let screen = feed(b"\x1b[4m\x1b[4:0m");
+        assert!(
+            !screen.cursor.attrs.contains(CellAttrs::UNDERLINE),
+            "4:0 must clear underline"
+        );
+    }
+
+    #[test]
+    fn test_underline_subparam_styles() {
+        // 4:1 through 4:5 should all set underline
+        for style in 1..=5 {
+            let seq = format!("\x1b[4:{}m", style);
+            let screen = feed(seq.as_bytes());
+            assert!(
+                screen.cursor.attrs.contains(CellAttrs::UNDERLINE),
+                "4:{} must set underline",
+                style
+            );
+        }
+    }
+
+    #[test]
+    fn test_sgr_reset_clears_all() {
+        let screen = feed(b"\x1b[1;3;4m\x1b[0m");
+        assert_eq!(screen.cursor.attrs, CellAttrs::empty());
+        assert!(matches!(screen.cursor.fg, Color::Default));
+        assert!(matches!(screen.cursor.bg, Color::Default));
+    }
+
+    #[test]
+    fn test_semicolon_fg_rgb() {
+        // ESC[38;2;100;150;200m — semicolon-separated RGB foreground
+        let screen = feed(b"\x1b[38;2;100;150;200m");
+        assert_eq!(screen.cursor.fg, Color::Rgb(100, 150, 200));
+    }
+
+    #[test]
+    fn test_colon_fg_rgb() {
+        // ESC[38:2:100:150:200m — colon-separated RGB foreground
+        let screen = feed(b"\x1b[38:2:100:150:200m");
+        assert_eq!(screen.cursor.fg, Color::Rgb(100, 150, 200));
+    }
+
+    #[test]
+    fn test_colon_bg_rgb() {
+        // ESC[48:2:50:60:70m — colon-separated RGB background
+        let screen = feed(b"\x1b[48:2:50:60:70m");
+        assert_eq!(screen.cursor.bg, Color::Rgb(50, 60, 70));
+    }
+
+    #[test]
+    fn test_underline_color_does_not_crash() {
+        // ESC[58:2:255:0:0m — underline color, should be silently ignored
+        let screen = feed(b"\x1b[58:2:255:0:0m");
+        assert_eq!(screen.cursor.attrs, CellAttrs::empty());
     }
 }
