@@ -1,5 +1,9 @@
 import AppKit
 
+extension Notification.Name {
+    static let tabBarOrientationDidChange = Notification.Name("tabBarOrientationDidChange")
+}
+
 protocol CustomTabBarDelegate: AnyObject {
     func tabBar(_ tabBar: CustomTabBarView, didSelectTabAt index: Int)
     func tabBar(_ tabBar: CustomTabBarView, didCloseTabAt index: Int)
@@ -8,18 +12,47 @@ protocol CustomTabBarDelegate: AnyObject {
     func tabBar(_ tabBar: CustomTabBarView, didRightClickTabAt index: Int, location: NSPoint)
     func tabBar(_ tabBar: CustomTabBarView, didReorderTabFrom fromIndex: Int, to toIndex: Int)
     func tabBar(_ tabBar: CustomTabBarView, didTearOffTabAt index: Int, screenPoint: NSPoint)
+    func tabBar(_ tabBar: CustomTabBarView, didToggleGroupCollapse groupID: UUID)
+    func tabBar(_ tabBar: CustomTabBarView, didDragTab fromIndex: Int, intoGroup groupID: UUID)
+    func tabBar(_ tabBar: CustomTabBarView, didDragTabOutOfGroup fromIndex: Int)
+}
+
+/// Display metadata for a single tab, computed by the controller.
+struct TabDisplayInfo {
+    let title: String
+    let tabColor: NSColor?
+    let isDangerMode: Bool
+    let groupID: UUID?
+    let groupColor: NSColor?
+    let isFirstInGroup: Bool
+    let isLastInGroup: Bool
+}
+
+/// Display metadata for a tab group.
+struct TabGroupDisplayInfo {
+    let id: UUID
+    let name: String
+    let color: NSColor?
+    let isCollapsed: Bool
+    let tabCount: Int
 }
 
 final class CustomTabBarView: NSView {
 
     static let barHeight: CGFloat = 30.0
+    static let sidebarWidth: CGFloat = 200.0
 
     weak var delegate: CustomTabBarDelegate?
 
     private(set) var selectedIndex: Int = 0
+    private(set) var orientation: TabBarOrientation = .horizontal
+
     private var tabViews: [TabItemView] = []
+    private var groupHeaderViews: [UUID: TabGroupHeaderView] = [:]
     private let stackView = NSStackView()
     private let scrollView = NSScrollView()
+    /// Flipped container so vertical stack grows top-to-bottom.
+    private let flippedDocumentView = FlippedView()
     private let addButton: NSButton = {
         let btn = NSButton(title: "+", target: nil, action: nil)
         btn.isBordered = false
@@ -44,6 +77,12 @@ final class CustomTabBarView: NSView {
     private var dragSourceView: TabItemView?
     private var mouseUpMonitor: Any?
 
+    // Layout constraints for orientation switching
+    private var borderView: NSView?
+    private var stackClipConstraints: [NSLayoutConstraint] = []
+    private var scrollConstraints: [NSLayoutConstraint] = []
+    private var borderConstraints: [NSLayoutConstraint] = []
+
     override init(frame: NSRect) {
         super.init(frame: frame)
         setup()
@@ -64,55 +103,123 @@ final class CustomTabBarView: NSView {
         wantsLayer = true
         layer?.backgroundColor = bgColor.cgColor
 
-        stackView.orientation = .horizontal
         stackView.spacing = 1
-        stackView.alignment = .centerY
         stackView.translatesAutoresizingMaskIntoConstraints = false
 
-        // Wrap stackView in a scroll view for horizontal scrolling
+        flippedDocumentView.translatesAutoresizingMaskIntoConstraints = false
+
         scrollView.drawsBackground = false
         scrollView.hasHorizontalScroller = false
         scrollView.hasVerticalScroller = false
-        scrollView.horizontalScrollElasticity = .allowed
-        scrollView.verticalScrollElasticity = .none
         scrollView.translatesAutoresizingMaskIntoConstraints = false
-        scrollView.documentView = stackView
+        // documentView is set in applyOrientation
         addSubview(scrollView)
-
-        // Pin stack view edges inside the scroll view's clip view
-        let clipView = scrollView.contentView
-        NSLayoutConstraint.activate([
-            stackView.topAnchor.constraint(equalTo: clipView.topAnchor),
-            stackView.bottomAnchor.constraint(equalTo: clipView.bottomAnchor),
-            stackView.leadingAnchor.constraint(equalTo: clipView.leadingAnchor),
-        ])
 
         addButton.target = self
         addButton.action = #selector(addClicked)
         addButton.wantsLayer = true
         addButton.layer?.backgroundColor = bgColor.cgColor
         addButton.layer?.cornerRadius = 14
-        // Position managed manually in layout()
         addSubview(addButton)
 
-        // Bottom border
         let border = NSView()
         border.wantsLayer = true
         border.layer?.backgroundColor = NSColor(white: 1.0, alpha: 0.06).cgColor
         border.translatesAutoresizingMaskIntoConstraints = false
         addSubview(border)
+        borderView = border
 
-        NSLayoutConstraint.activate([
-            scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            scrollView.topAnchor.constraint(equalTo: topAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
+        applyOrientation(.horizontal)
+    }
 
-            border.leadingAnchor.constraint(equalTo: leadingAnchor),
-            border.trailingAnchor.constraint(equalTo: trailingAnchor),
-            border.bottomAnchor.constraint(equalTo: bottomAnchor),
-            border.heightAnchor.constraint(equalToConstant: 1),
-        ])
+    func setOrientation(_ newOrientation: TabBarOrientation) {
+        guard newOrientation != orientation else { return }
+        applyOrientation(newOrientation)
+    }
+
+    private func applyOrientation(_ newOrientation: TabBarOrientation) {
+        orientation = newOrientation
+
+        // Deactivate old constraints
+        NSLayoutConstraint.deactivate(stackClipConstraints)
+        NSLayoutConstraint.deactivate(scrollConstraints)
+        NSLayoutConstraint.deactivate(borderConstraints)
+
+        guard let border = borderView else { return }
+
+        switch newOrientation {
+        case .horizontal:
+            stackView.orientation = .horizontal
+            stackView.alignment = .centerY
+            scrollView.horizontalScrollElasticity = .allowed
+            scrollView.verticalScrollElasticity = .none
+
+            // In horizontal mode, use stackView directly as document view (no flip needed)
+            stackView.removeFromSuperview()
+            flippedDocumentView.removeFromSuperview()
+            scrollView.documentView = stackView
+
+            let clipView = scrollView.contentView
+            stackClipConstraints = [
+                stackView.topAnchor.constraint(equalTo: clipView.topAnchor),
+                stackView.bottomAnchor.constraint(equalTo: clipView.bottomAnchor),
+                stackView.leadingAnchor.constraint(equalTo: clipView.leadingAnchor),
+            ]
+
+            scrollConstraints = [
+                scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
+                scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
+                scrollView.topAnchor.constraint(equalTo: topAnchor),
+                scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            ]
+
+            borderConstraints = [
+                border.leadingAnchor.constraint(equalTo: leadingAnchor),
+                border.trailingAnchor.constraint(equalTo: trailingAnchor),
+                border.bottomAnchor.constraint(equalTo: bottomAnchor),
+                border.heightAnchor.constraint(equalToConstant: 1),
+            ]
+
+        case .vertical:
+            stackView.orientation = .vertical
+            stackView.alignment = .leading
+            scrollView.horizontalScrollElasticity = .none
+            scrollView.verticalScrollElasticity = .allowed
+
+            // In vertical mode, wrap stack in flipped view so it grows top-to-bottom
+            stackView.removeFromSuperview()
+            flippedDocumentView.addSubview(stackView)
+            scrollView.documentView = flippedDocumentView
+
+            let docView = flippedDocumentView
+            stackClipConstraints = [
+                stackView.topAnchor.constraint(equalTo: docView.topAnchor),
+                stackView.leadingAnchor.constraint(equalTo: docView.leadingAnchor),
+                stackView.trailingAnchor.constraint(equalTo: docView.trailingAnchor),
+                docView.bottomAnchor.constraint(greaterThanOrEqualTo: stackView.bottomAnchor),
+                docView.widthAnchor.constraint(equalToConstant: CustomTabBarView.sidebarWidth),
+            ]
+
+            scrollConstraints = [
+                scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
+                scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
+                scrollView.topAnchor.constraint(equalTo: topAnchor),
+                scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            ]
+
+            borderConstraints = [
+                border.topAnchor.constraint(equalTo: topAnchor),
+                border.bottomAnchor.constraint(equalTo: bottomAnchor),
+                border.trailingAnchor.constraint(equalTo: trailingAnchor),
+                border.widthAnchor.constraint(equalToConstant: 1),
+            ]
+        }
+
+        NSLayoutConstraint.activate(stackClipConstraints)
+        NSLayoutConstraint.activate(scrollConstraints)
+        NSLayoutConstraint.activate(borderConstraints)
+
+        needsLayout = true
     }
 
     override func layout() {
@@ -126,85 +233,123 @@ final class CustomTabBarView: NSView {
 
     // MARK: - Public API
 
-    func reloadTabs(titles: [String], selectedIndex: Int, tabColors: [NSColor?] = [], dangerFlags: [Bool] = []) {
+    func reloadTabs(tabs: [TabDisplayInfo], selectedIndex: Int, groups: [TabGroupDisplayInfo] = []) {
         self.selectedIndex = selectedIndex
 
-        // Remove old tab views
+        // Remove old views
         for tv in tabViews {
             stackView.removeArrangedSubview(tv)
             tv.removeFromSuperview()
         }
         tabViews.removeAll()
+        for (_, hv) in groupHeaderViews {
+            stackView.removeArrangedSubview(hv)
+            hv.removeFromSuperview()
+        }
+        groupHeaderViews.removeAll()
 
-        // Create new tab views
-        for (i, title) in titles.enumerated() {
-            let tabColor = i < tabColors.count ? tabColors[i] : nil
-            let isDanger = i < dangerFlags.count ? dangerFlags[i] : false
-            let tabItem = TabItemView(
-                title: title,
-                isSelected: i == selectedIndex,
-                selectedBgColor: selectedBgColor,
-                accentColor: accentColor,
-                bgColor: bgColor,
-                tabColor: tabColor,
-                isDangerMode: isDanger
-            )
-            tabItem.index = i
-            tabItem.onSelect = { [weak self] idx in
-                guard let self else { return }
-                self.delegate?.tabBar(self, didSelectTabAt: idx)
+        // Build a set of collapsed group IDs
+        let collapsedGroupIDs = Set(groups.filter { $0.isCollapsed }.map { $0.id })
+
+        // Track which groups we've already inserted headers for
+        var insertedGroups = Set<UUID>()
+
+        for (i, info) in tabs.enumerated() {
+            // Insert group header before the first tab of each group
+            if let gid = info.groupID, info.isFirstInGroup {
+                if let groupInfo = groups.first(where: { $0.id == gid }) {
+                    let header = TabGroupHeaderView(
+                        group: groupInfo,
+                        orientation: orientation,
+                        bgColor: bgColor
+                    )
+                    header.onToggleCollapse = { [weak self] groupID in
+                        guard let self else { return }
+                        self.delegate?.tabBar(self, didToggleGroupCollapse: groupID)
+                    }
+                    stackView.addArrangedSubview(header)
+                    groupHeaderViews[gid] = header
+                    insertedGroups.insert(gid)
+                }
             }
-            tabItem.onClose = { [weak self] idx in
-                guard let self else { return }
-                self.delegate?.tabBar(self, didCloseTabAt: idx)
+
+            // Skip all tabs in collapsed groups
+            if let gid = info.groupID, collapsedGroupIDs.contains(gid) {
+                let tabItem = createTabItemView(info: info, index: i)
+                tabItem.isHidden = true
+                stackView.addArrangedSubview(tabItem)
+                tabViews.append(tabItem)
+                continue
             }
-            tabItem.onDoubleClick = { [weak self] idx in
-                guard let self else { return }
-                self.delegate?.tabBar(self, didDoubleClickTabAt: idx)
-            }
-            tabItem.onRightClick = { [weak self] idx, location in
-                guard let self else { return }
-                let windowLocation = tabItem.convert(location, to: self)
-                self.delegate?.tabBar(self, didRightClickTabAt: idx, location: windowLocation)
-            }
-            tabItem.onDragBegan = { [weak self] idx, point in
-                self?.beginDrag(fromIndex: idx, point: point)
-            }
-            tabItem.onDragMoved = { [weak self] point in
-                self?.updateDrag(point: point)
-            }
-            tabItem.onDragEnded = { [weak self] in
-                self?.endDrag()
-            }
-            tabItem.onDragTornOff = { [weak self] idx, screenPoint in
-                guard let self else { return }
-                // Dismiss ghost immediately — a real window replaces it
-                self.dismissDragGhost(animated: false)
-                self.endDrag()
-                self.delegate?.tabBar(self, didTearOffTabAt: idx, screenPoint: screenPoint)
-            }
-            tabItem.onDragSnapshot = { [weak self] image, screenPoint in
-                self?.showDragGhost(image: image, screenPoint: screenPoint, tabSize: tabItem.bounds.size)
-            }
-            tabItem.onDragMovedScreen = { [weak self] screenPoint in
-                self?.moveDragGhost(to: screenPoint)
-            }
+
+            let tabItem = createTabItemView(info: info, index: i)
             stackView.addArrangedSubview(tabItem)
             tabViews.append(tabItem)
         }
 
-        // Force layout to recalculate stack width before positioning the + button
         stackView.needsLayout = true
         needsLayout = true
-
-        // Auto-scroll to the selected tab after layout
         scrollToSelectedTab()
+    }
+
+    private func createTabItemView(info: TabDisplayInfo, index: Int) -> TabItemView {
+        let tabItem = TabItemView(
+            title: info.title,
+            isSelected: index == selectedIndex,
+            selectedBgColor: selectedBgColor,
+            accentColor: accentColor,
+            bgColor: bgColor,
+            tabColor: info.tabColor,
+            isDangerMode: info.isDangerMode,
+            orientation: orientation,
+            groupColor: info.groupColor,
+            isGrouped: info.groupID != nil
+        )
+        tabItem.index = index
+        tabItem.onSelect = { [weak self] idx in
+            guard let self else { return }
+            self.delegate?.tabBar(self, didSelectTabAt: idx)
+        }
+        tabItem.onClose = { [weak self] idx in
+            guard let self else { return }
+            self.delegate?.tabBar(self, didCloseTabAt: idx)
+        }
+        tabItem.onDoubleClick = { [weak self] idx in
+            guard let self else { return }
+            self.delegate?.tabBar(self, didDoubleClickTabAt: idx)
+        }
+        tabItem.onRightClick = { [weak self] idx, location in
+            guard let self else { return }
+            let windowLocation = tabItem.convert(location, to: self)
+            self.delegate?.tabBar(self, didRightClickTabAt: idx, location: windowLocation)
+        }
+        tabItem.onDragBegan = { [weak self] idx, point in
+            self?.beginDrag(fromIndex: idx, point: point)
+        }
+        tabItem.onDragMoved = { [weak self] point in
+            self?.updateDrag(point: point)
+        }
+        tabItem.onDragEnded = { [weak self] in
+            self?.endDrag()
+        }
+        tabItem.onDragTornOff = { [weak self] idx, screenPoint in
+            guard let self else { return }
+            self.dismissDragGhost(animated: false)
+            self.endDrag()
+            self.delegate?.tabBar(self, didTearOffTabAt: idx, screenPoint: screenPoint)
+        }
+        tabItem.onDragSnapshot = { [weak self] image, screenPoint in
+            self?.showDragGhost(image: image, screenPoint: screenPoint, tabSize: tabItem.bounds.size)
+        }
+        tabItem.onDragMovedScreen = { [weak self] screenPoint in
+            self?.moveDragGhost(to: screenPoint)
+        }
+        return tabItem
     }
 
     private func scrollToSelectedTab() {
         guard selectedIndex >= 0 && selectedIndex < tabViews.count else { return }
         let tabView = tabViews[selectedIndex]
-        // Delay to ensure layout is complete
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.updateAddButtonPosition()
@@ -215,17 +360,28 @@ final class CustomTabBarView: NSView {
 
     private func updateAddButtonPosition() {
         stackView.layoutSubtreeIfNeeded()
-        // Use the union of arranged subview frames for accurate width after add/remove
-        var stackWidth: CGFloat = 0
-        if let last = stackView.arrangedSubviews.last {
-            stackWidth = last.frame.maxX
-        }
         let buttonSize: CGFloat = 28
-        let maxX = bounds.width - 4 - buttonSize
-        let buttonX = min(stackWidth + 4, maxX)
-        let buttonY = round((bounds.height - buttonSize) / 2)
-        addButton.frame = NSRect(x: buttonX, y: buttonY, width: buttonSize, height: buttonSize)
-        scrollView.contentInsets.right = (stackWidth + buttonSize + 8 > bounds.width) ? (buttonSize + 8) : 0
+
+        switch orientation {
+        case .horizontal:
+            var stackWidth: CGFloat = 0
+            if let last = stackView.arrangedSubviews.last(where: { !$0.isHidden }) {
+                stackWidth = last.frame.maxX
+            }
+            let maxX = bounds.width - 4 - buttonSize
+            let buttonX = min(stackWidth + 4, maxX)
+            let buttonY = round((bounds.height - buttonSize) / 2)
+            addButton.frame = NSRect(x: buttonX, y: buttonY, width: buttonSize, height: buttonSize)
+            scrollView.contentInsets.right = (stackWidth + buttonSize + 8 > bounds.width) ? (buttonSize + 8) : 0
+            scrollView.contentInsets.bottom = 0
+
+        case .vertical:
+            let buttonX = round((bounds.width - buttonSize) / 2)
+            let buttonY: CGFloat = 4
+            addButton.frame = NSRect(x: buttonX, y: buttonY, width: buttonSize, height: buttonSize)
+            scrollView.contentInsets.bottom = buttonSize + 8
+            scrollView.contentInsets.right = 0
+        }
     }
 
     func updateTitle(at index: Int, title: String) {
@@ -238,13 +394,10 @@ final class CustomTabBarView: NSView {
     private func beginDrag(fromIndex: Int, point: NSPoint) {
         draggedTabIndex = fromIndex
         dragOrigin = point
-        // Fade the source tab to indicate it's being moved
         if fromIndex >= 0 && fromIndex < tabViews.count {
             dragSourceView = tabViews[fromIndex]
             dragSourceView?.alphaValue = 0.3
         }
-        // Monitor for mouseUp to ensure cleanup even if the tab view is
-        // replaced during reorder (removed views don't receive mouseUp)
         mouseUpMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseUp) { [weak self] event in
             self?.endDrag()
             return event
@@ -254,14 +407,23 @@ final class CustomTabBarView: NSView {
     private func updateDrag(point: NSPoint) {
         guard let fromIndex = draggedTabIndex, tabViews.count > 1 else { return }
 
-        // Find which tab the cursor is over
         let localPoint = convert(point, from: nil)
+
+        // Check if dragging over a group header
+        for (groupID, headerView) in groupHeaderViews {
+            let headerFrame = headerView.convert(headerView.bounds, to: self)
+            if headerFrame.contains(localPoint) {
+                delegate?.tabBar(self, didDragTab: fromIndex, intoGroup: groupID)
+                return
+            }
+        }
+
         for (i, tv) in tabViews.enumerated() {
+            guard !tv.isHidden else { continue }
             let tvFrame = tv.convert(tv.bounds, to: self)
             if tvFrame.contains(localPoint) && i != fromIndex {
                 delegate?.tabBar(self, didReorderTabFrom: fromIndex, to: i)
                 draggedTabIndex = i
-                // Update source view reference after reorder
                 dragSourceView = tabViews[i]
                 dragSourceView?.alphaValue = 0.3
                 break
@@ -271,12 +433,9 @@ final class CustomTabBarView: NSView {
 
     private func endDrag() {
         draggedTabIndex = nil
-        // Restore source tab opacity
         dragSourceView?.alphaValue = 1.0
         dragSourceView = nil
-        // Fade out and dismiss ghost window
         dismissDragGhost()
-        // Remove mouseUp monitor
         if let monitor = mouseUpMonitor {
             NSEvent.removeMonitor(monitor)
             mouseUpMonitor = nil
@@ -286,7 +445,6 @@ final class CustomTabBarView: NSView {
     // MARK: - Drag Ghost
 
     private func showDragGhost(image: NSImage, screenPoint: NSPoint, tabSize: NSSize) {
-        // Clean up any leftover ghost from a previous drag
         dismissDragGhost(animated: false)
         dragGhostTabSize = tabSize
         let ghostFrame = NSRect(
@@ -342,6 +500,100 @@ final class CustomTabBarView: NSView {
     }
 }
 
+// MARK: - Flipped View (for top-to-bottom vertical stacking)
+
+private class FlippedView: NSView {
+    override var isFlipped: Bool { true }
+}
+
+// MARK: - Tab Group Header View
+
+private class TabGroupHeaderView: NSView {
+
+    var onToggleCollapse: ((UUID) -> Void)?
+
+    private let groupID: UUID
+    private let nameLabel = NSTextField(labelWithString: "")
+    private let chevron = NSTextField(labelWithString: "")
+    private let isCollapsed: Bool
+    private let groupColor: NSColor?
+
+    init(group: TabGroupDisplayInfo, orientation: TabBarOrientation, bgColor: NSColor) {
+        self.groupID = group.id
+        self.isCollapsed = group.isCollapsed
+        self.groupColor = group.color
+        super.init(frame: .zero)
+
+        wantsLayer = true
+        let tintBase = group.color ?? NSColor(white: 0.4, alpha: 1.0)
+        layer?.backgroundColor = bgColor.blended(withFraction: 0.12, of: tintBase)?.cgColor ?? bgColor.cgColor
+
+        translatesAutoresizingMaskIntoConstraints = false
+
+        chevron.stringValue = isCollapsed ? "\u{25B6}" : "\u{25BC}" // right / down triangle
+        chevron.font = NSFont.systemFont(ofSize: 8, weight: .medium)
+        chevron.textColor = NSColor(white: 0.5, alpha: 1.0)
+        chevron.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(chevron)
+
+        let displayName = isCollapsed ? "\(group.name) (\(group.tabCount))" : group.name
+        nameLabel.stringValue = displayName
+        nameLabel.font = NSFont.systemFont(ofSize: 10, weight: .semibold)
+        nameLabel.textColor = NSColor(white: 0.6, alpha: 1.0)
+        nameLabel.lineBreakMode = .byTruncatingTail
+        nameLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(nameLabel)
+
+        let trackingArea = NSTrackingArea(
+            rect: .zero,
+            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(trackingArea)
+
+        switch orientation {
+        case .horizontal:
+            NSLayoutConstraint.activate([
+                heightAnchor.constraint(equalToConstant: CustomTabBarView.barHeight),
+                chevron.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
+                chevron.centerYAnchor.constraint(equalTo: centerYAnchor),
+                nameLabel.leadingAnchor.constraint(equalTo: chevron.trailingAnchor, constant: 4),
+                nameLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
+                nameLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+            ])
+        case .vertical:
+            NSLayoutConstraint.activate([
+                heightAnchor.constraint(equalToConstant: 34),
+                widthAnchor.constraint(equalToConstant: CustomTabBarView.sidebarWidth),
+                chevron.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+                chevron.centerYAnchor.constraint(equalTo: centerYAnchor),
+                nameLabel.leadingAnchor.constraint(equalTo: chevron.trailingAnchor, constant: 4),
+                nameLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+                nameLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+            ])
+        }
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) not implemented")
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        onToggleCollapse?(groupID)
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        layer?.backgroundColor = (NSColor(white: 0.2, alpha: 1.0)).cgColor
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        let tintBase = groupColor ?? NSColor(white: 0.4, alpha: 1.0)
+        let bgColor = AppConfig.shared.themeTabBarBg
+        layer?.backgroundColor = bgColor.blended(withFraction: 0.12, of: tintBase)?.cgColor ?? bgColor.cgColor
+    }
+}
+
 // MARK: - Tab Item View
 
 private class TabItemView: NSView {
@@ -360,7 +612,7 @@ private class TabItemView: NSView {
 
     private let titleLabel = NSTextField(labelWithString: "")
     private let closeButton: NSButton = {
-        let btn = NSButton(title: "×", target: nil, action: nil)
+        let btn = NSButton(title: "\u{00D7}", target: nil, action: nil)
         btn.isBordered = false
         btn.setButtonType(.momentaryChange)
         btn.font = NSFont.systemFont(ofSize: 14, weight: .regular)
@@ -374,6 +626,7 @@ private class TabItemView: NSView {
     private let bgColor: NSColor
     private let tabColor: NSColor?
     private let effectiveBgColor: NSColor
+    private let orientation: TabBarOrientation
 
     private var isDragging = false
     private var tornOff = false
@@ -382,20 +635,23 @@ private class TabItemView: NSView {
 
     private let isDangerMode: Bool
 
-    init(title: String, isSelected: Bool, selectedBgColor: NSColor, accentColor: NSColor, bgColor: NSColor, tabColor: NSColor? = nil, isDangerMode: Bool = false) {
+    init(title: String, isSelected: Bool, selectedBgColor: NSColor, accentColor: NSColor, bgColor: NSColor, tabColor: NSColor? = nil, isDangerMode: Bool = false, orientation: TabBarOrientation = .horizontal, groupColor: NSColor? = nil, isGrouped: Bool = false) {
         self.isSelected = isSelected
         self.selectedBgColor = selectedBgColor
         self.accentColor = accentColor
         self.bgColor = bgColor
         self.tabColor = tabColor
         self.isDangerMode = isDangerMode
-        // Compute effective background with subtle color tint
+        self.orientation = orientation
+        // Compute effective background: tab color tint, then subtle group tint
+        var base = isSelected ? selectedBgColor : bgColor
         if let tc = tabColor {
-            let base = isSelected ? selectedBgColor : bgColor
-            self.effectiveBgColor = base.blended(withFraction: 0.15, of: tc) ?? base
-        } else {
-            self.effectiveBgColor = isSelected ? selectedBgColor : bgColor
+            base = base.blended(withFraction: 0.15, of: tc) ?? base
         }
+        if isGrouped, let gc = groupColor {
+            base = base.blended(withFraction: 0.08, of: gc) ?? base
+        }
+        self.effectiveBgColor = base
         super.init(frame: .zero)
         setup(title: title)
     }
@@ -451,25 +707,49 @@ private class TabItemView: NSView {
         )
         addTrackingArea(trackingArea)
 
-        NSLayoutConstraint.activate([
-            widthAnchor.constraint(lessThanOrEqualToConstant: 180),
-            widthAnchor.constraint(greaterThanOrEqualToConstant: 80),
-            heightAnchor.constraint(equalToConstant: CustomTabBarView.barHeight),
+        switch orientation {
+        case .horizontal:
+            NSLayoutConstraint.activate([
+                widthAnchor.constraint(lessThanOrEqualToConstant: 180),
+                widthAnchor.constraint(greaterThanOrEqualToConstant: 80),
+                heightAnchor.constraint(equalToConstant: CustomTabBarView.barHeight),
 
-            titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
-            titleLabel.trailingAnchor.constraint(equalTo: closeButton.leadingAnchor, constant: -4),
-            titleLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+                titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+                titleLabel.trailingAnchor.constraint(equalTo: closeButton.leadingAnchor, constant: -4),
+                titleLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
 
-            closeButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
-            closeButton.centerYAnchor.constraint(equalTo: centerYAnchor),
-            closeButton.widthAnchor.constraint(equalToConstant: 18),
-            closeButton.heightAnchor.constraint(equalToConstant: 18),
+                closeButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
+                closeButton.centerYAnchor.constraint(equalTo: centerYAnchor),
+                closeButton.widthAnchor.constraint(equalToConstant: 18),
+                closeButton.heightAnchor.constraint(equalToConstant: 18),
 
-            accentLine.leadingAnchor.constraint(equalTo: leadingAnchor),
-            accentLine.trailingAnchor.constraint(equalTo: trailingAnchor),
-            accentLine.bottomAnchor.constraint(equalTo: bottomAnchor),
-            accentLine.heightAnchor.constraint(equalToConstant: 2),
-        ])
+                accentLine.leadingAnchor.constraint(equalTo: leadingAnchor),
+                accentLine.trailingAnchor.constraint(equalTo: trailingAnchor),
+                accentLine.bottomAnchor.constraint(equalTo: bottomAnchor),
+                accentLine.heightAnchor.constraint(equalToConstant: 2),
+            ])
+
+        case .vertical:
+            NSLayoutConstraint.activate([
+                widthAnchor.constraint(equalToConstant: CustomTabBarView.sidebarWidth),
+                heightAnchor.constraint(equalToConstant: CustomTabBarView.barHeight),
+
+                titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+                titleLabel.trailingAnchor.constraint(equalTo: closeButton.leadingAnchor, constant: -4),
+                titleLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+
+                closeButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
+                closeButton.centerYAnchor.constraint(equalTo: centerYAnchor),
+                closeButton.widthAnchor.constraint(equalToConstant: 18),
+                closeButton.heightAnchor.constraint(equalToConstant: 18),
+
+                // Accent line on left edge for vertical
+                accentLine.leadingAnchor.constraint(equalTo: leadingAnchor),
+                accentLine.topAnchor.constraint(equalTo: topAnchor),
+                accentLine.bottomAnchor.constraint(equalTo: bottomAnchor),
+                accentLine.widthAnchor.constraint(equalToConstant: 2),
+            ])
+        }
     }
 
     @objc private func closeClicked() {
@@ -498,9 +778,11 @@ private class TabItemView: NSView {
         let dx = abs(current.x - dragStartPoint.x)
         let dy = abs(current.y - dragStartPoint.y)
 
-        if !isDragging && !tornOff && dx > dragThreshold {
+        let dragAxis = orientation == .horizontal ? dx : dy
+        let tearAxis = orientation == .horizontal ? dy : dx
+
+        if !isDragging && !tornOff && dragAxis > dragThreshold {
             isDragging = true
-            // Capture snapshot of this tab for ghost preview
             if let bitmapRep = bitmapImageRepForCachingDisplay(in: bounds) {
                 cacheDisplay(in: bounds, to: bitmapRep)
                 let image = NSImage(size: bounds.size)
@@ -511,15 +793,13 @@ private class TabItemView: NSView {
             onDragBegan?(index, event.locationInWindow)
         }
 
-        // Send screen coordinates on every drag event
         if isDragging || tornOff {
             if let screenPoint = window?.convertPoint(toScreen: current) {
                 onDragMovedScreen?(screenPoint)
             }
         }
 
-        // Vertical tearoff: if dragged far enough vertically, tear off the tab
-        if dy > 30 && !tornOff {
+        if tearAxis > 30 && !tornOff {
             tornOff = true
             isDragging = false
             if let screenPoint = window?.convertPoint(toScreen: current) {
@@ -548,7 +828,6 @@ private class TabItemView: NSView {
     override func mouseEntered(with event: NSEvent) {
         if !isSelected {
             if tabColor != nil {
-                // Slightly brighten the tinted background on hover
                 layer?.backgroundColor = (effectiveBgColor.blended(withFraction: 0.1, of: .white) ?? effectiveBgColor).cgColor
             } else {
                 layer?.backgroundColor = NSColor(red: 30.0/255.0, green: 30.0/255.0, blue: 30.0/255.0, alpha: 1.0).cgColor
