@@ -44,7 +44,7 @@ final class UpdateChecker {
     // MARK: - Manual Check
 
     func checkNow(completion: ((_ hasUpdate: Bool, _ error: Error?) -> Void)? = nil) {
-        let url = URL(string: "https://api.github.com/repos/AwalTerminal/Awal-terminal/releases/latest")!
+        let url = URL(string: "https://api.github.com/repos/AwalTerminal/awal-terminal/releases/latest")!
         var request = URLRequest(url: url)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.timeoutInterval = 15

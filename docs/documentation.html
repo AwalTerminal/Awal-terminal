@@ -460,7 +460,7 @@
       <ul class="toc-list">
         <li><a href="#getting-started">Getting Started</a></li>
         <li><a href="#terminal-basics">Terminal Basics</a></li>
-        <li><a href="#tabs-split-panes">Tabs & Split Panes</a></li>
+        <li><a href="#tabs">Tabs</a></li>
         <li><a href="#quick-terminal">Quick Terminal</a></li>
         <li><a href="#ai-features">AI Features</a></li>
         <li><a href="#llm-integration">LLM Integration</a></li>
@@ -485,6 +485,12 @@
       <section class="doc-section" id="getting-started">
         <h2>Getting Started</h2>
         <h3>Installation</h3>
+        <p><strong>Homebrew (recommended):</strong></p>
+        <pre><code>brew tap AwalTerminal/tap
+brew install --cask awal-terminal</code></pre>
+        <p>No quarantine workarounds needed &mdash; Homebrew handles it automatically.</p>
+
+        <p><strong>Manual download:</strong></p>
         <p>Download the latest <code>.zip</code> from the releases page. After extracting, <strong>right-click</strong> (or Control-click) the app, choose <strong>Open</strong>, then click <strong>Open</strong> in the dialog to bypass macOS Gatekeeper.</p>
         <p>If that doesn't work, open Terminal and run:</p>
         <pre><code>xattr -cr AwalTerminal.app</code></pre>
@@ -555,9 +561,9 @@
         </div>
       </section>
 
-      <!-- 3. Tabs & Split Panes -->
-      <section class="doc-section" id="tabs-split-panes">
-        <h2>Tabs & Split Panes</h2>
+      <!-- 3. Tabs -->
+      <section class="doc-section" id="tabs">
+        <h2>Tabs</h2>
 
         <h3>Tabs</h3>
         <table class="doc-table">
@@ -599,19 +605,6 @@ worktree_branch_prefix = "awal/tab"  # default prefix for worktree branches</cod
         <pre><code>[tabs]
 orientation = "vertical"  # "horizontal" (default) or "vertical"</code></pre>
         <p>You can also toggle the orientation from <strong>Preferences &gt; Tabs</strong>.</p>
-
-        <h3>Split Panes</h3>
-        <p>Split any tab into multiple panes for side-by-side terminal sessions:</p>
-        <table class="doc-table">
-          <thead><tr><th>Shortcut</th><th>Action</th></tr></thead>
-          <tbody>
-            <tr><td><code>Cmd+D</code></td><td>Split horizontally (side by side)</td></tr>
-            <tr><td><code>Cmd+Shift+D</code></td><td>Split vertically (top and bottom)</td></tr>
-            <tr><td><code>Cmd+Option+Arrow</code></td><td>Move focus between panes</td></tr>
-            <tr><td><code>Cmd+Shift+W</code></td><td>Close the focused pane</td></tr>
-          </tbody>
-        </table>
-        <p>Each pane runs its own independent terminal session. Drag the divider between panes to resize them.</p>
 
       </section>
 
@@ -1118,7 +1111,7 @@ slugs = "ZpDEwZj1Yq"</code></pre>
         </ul>
 
         <h3>Voice Settings</h3>
-        <p>Enable voice input by setting <code>enabled = true</code> under <code>[voice]</code>. Voice uses push-to-talk mode with on-device Whisper transcription. Configure the hotkey, sensitivity threshold, and language.</p>
+        <p>Enable voice input by setting <code>enabled = true</code> under <code>[voice]</code>. Voice uses push-to-talk mode with on-device speech recognition (Apple SFSpeechRecognizer). Configure the hotkey, sensitivity threshold, and language.</p>
 
         <h3>AI Components Settings</h3>
         <table class="doc-table">

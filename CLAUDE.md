@@ -35,7 +35,7 @@ The release script `scripts/release.sh <tag>` handles build, bundle, zip, tag, a
 11. Update Homebrew cask: in `homebrew-cask/awal-terminal.rb`, set `version` to the new tag (without `v` prefix) and update `sha256` (`shasum -a 256 docs/AwalTerminal.zip`). Commit and push.
 
 - Website download link (`docs/index.html`) uses `/releases/latest/download/AwalTerminal.zip` — auto-resolves to newest release
-- Check download counts: `gh api repos/AwalTerminal/Awal-terminal/releases -q '.[].assets[] | "\(.name): \(.download_count) downloads"'`
+- Check download counts: `gh api repos/AwalTerminal/awal-terminal/releases -q '.[].assets[] | "\(.name): \(.download_count) downloads"'`
 
 ## Documentation Maintenance
 

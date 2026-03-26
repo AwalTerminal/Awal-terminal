@@ -11,7 +11,7 @@
 
 <p align="center">
   <a href="https://awalterminal.github.io/Awal-terminal/">Website</a> &middot;
-  <a href="https://github.com/AwalTerminal/Awal-terminal/releases/latest/download/AwalTerminal.zip">Download</a>
+  <a href="https://github.com/AwalTerminal/awal-terminal/releases/latest/download/AwalTerminal.zip">Download</a>
 </p>
 
 ---
@@ -55,7 +55,6 @@ A native macOS terminal built from scratch with Swift and Rust, designed specifi
 | Smart Autocomplete | File path and command history completions as you type |
 | Remote Control | Detect Claude Code's remote control mode, show a REMOTE badge in the status bar, and display a QR code popover to connect from your phone. Enable from the View menu |
 | Prevent Sleep | Prevent macOS from sleeping during active terminal sessions. Auto-activates during remote control sessions |
-| Split Panes | Split terminal tabs horizontally or vertically for side-by-side sessions within a single tab |
 | Stealth Mode | Full-screen black overlay that hides all terminal content while your session continues safely in the background. Press any key to return |
 | Fully Configurable | Theme colors, fonts, keybindings, and voice settings in a single config file |
 
@@ -72,7 +71,7 @@ No quarantine workarounds needed — Homebrew handles it automatically.
 
 ### Download manually
 
-Grab the latest build from [GitHub Releases](https://github.com/AwalTerminal/Awal-terminal/releases/latest).
+Grab the latest build from [GitHub Releases](https://github.com/AwalTerminal/awal-terminal/releases/latest).
 
 Since the app is not yet notarized with Apple, macOS will block it on first launch. To bypass this:
 
@@ -125,7 +124,6 @@ status_bar_bg = "#161616"
 
 [voice]
 enabled = true
-whisper_model = "tiny.en"
 language = "en"
 vad_threshold = 0.02
 dictation_auto_enter = false
