@@ -13,6 +13,8 @@ class TabState {
     var worktreeInfo: WorktreeInfo?
     var remoteControlURL: String?
     var isSleepPrevented = false
+    /// ID of the tab group this tab belongs to, or nil if ungrouped.
+    var groupID: UUID?
     /// Set when the user manually closes the AI side panel; prevents auto-reopen.
     var userClosedAIPanel = false
 

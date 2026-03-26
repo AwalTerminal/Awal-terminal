@@ -61,6 +61,33 @@ struct SavedTabState: Codable {
     let tabColorHex: String?
     let isDangerMode: Bool
     let userClosedAIPanel: Bool
+    let groupID: String?
+
+    init(splitTree: SavedSplitNode, customTitle: String?, tabColorHex: String?, isDangerMode: Bool, userClosedAIPanel: Bool, groupID: String? = nil) {
+        self.splitTree = splitTree
+        self.customTitle = customTitle
+        self.tabColorHex = tabColorHex
+        self.isDangerMode = isDangerMode
+        self.userClosedAIPanel = userClosedAIPanel
+        self.groupID = groupID
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        splitTree = try container.decode(SavedSplitNode.self, forKey: .splitTree)
+        customTitle = try container.decodeIfPresent(String.self, forKey: .customTitle)
+        tabColorHex = try container.decodeIfPresent(String.self, forKey: .tabColorHex)
+        isDangerMode = try container.decode(Bool.self, forKey: .isDangerMode)
+        userClosedAIPanel = try container.decode(Bool.self, forKey: .userClosedAIPanel)
+        groupID = try container.decodeIfPresent(String.self, forKey: .groupID)
+    }
+}
+
+struct SavedTabGroup: Codable {
+    let id: String
+    let name: String
+    let colorHex: String?
+    let isCollapsed: Bool
 }
 
 struct SavedRect: Codable {
@@ -76,13 +103,25 @@ struct SavedWindowState: Codable {
     let savedAt: Date
     let version: Int
     let windowFrame: SavedRect?
+    let groups: [SavedTabGroup]?
 
-    init(tabs: [SavedTabState], activeTabIndex: Int, savedAt: Date, version: Int, windowFrame: SavedRect? = nil) {
+    init(tabs: [SavedTabState], activeTabIndex: Int, savedAt: Date, version: Int, windowFrame: SavedRect? = nil, groups: [SavedTabGroup]? = nil) {
         self.tabs = tabs
         self.activeTabIndex = activeTabIndex
         self.savedAt = savedAt
         self.version = version
         self.windowFrame = windowFrame
+        self.groups = groups
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        tabs = try container.decode([SavedTabState].self, forKey: .tabs)
+        activeTabIndex = try container.decode(Int.self, forKey: .activeTabIndex)
+        savedAt = try container.decode(Date.self, forKey: .savedAt)
+        version = try container.decode(Int.self, forKey: .version)
+        windowFrame = try container.decodeIfPresent(SavedRect.self, forKey: .windowFrame)
+        groups = try container.decodeIfPresent([SavedTabGroup].self, forKey: .groups)
     }
 }
 

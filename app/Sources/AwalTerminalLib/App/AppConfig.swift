@@ -29,6 +29,10 @@ struct CustomSecurityRule {
     let description: String
 }
 
+enum TabBarOrientation: String {
+    case horizontal, vertical
+}
+
 /// Application configuration loaded from ~/.config/awal/config.toml
 struct AppConfig {
 
@@ -72,6 +76,7 @@ struct AppConfig {
     var pasteTruncateLength: Int = 10_000
 
     // Tabs
+    var tabsOrientation: TabBarOrientation = .horizontal
     var tabsRandomColors: Bool = false
     var tabsRandomColorPalette: [NSColor] = []
     var tabsConfirmClose: Bool = false
@@ -207,6 +212,7 @@ struct AppConfig {
         if let v = parsed["paste.truncate_length"], let n = Int(v) { config.pasteTruncateLength = n }
 
         // Tabs
+        if let v = parsed["tabs.orientation"] { config.tabsOrientation = TabBarOrientation(rawValue: v) ?? .horizontal }
         if let v = parsed["tabs.random_colors"] { config.tabsRandomColors = v == "true" }
         if let v = parsed["tabs.confirm_close"] { config.tabsConfirmClose = v == "true" }
         if let v = parsed["tabs.worktree_isolation"] { config.tabsWorktreeIsolation = v == "true" }
