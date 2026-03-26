@@ -786,7 +786,7 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         alert.beginSheetModal(for: window) { [weak self] response in
             guard response == .alertFirstButtonReturn, let self else { return }
             let name = field.stringValue.isEmpty ? "New Group" : field.stringValue
-            self.createGroup(name: name, tabIndices: [index])
+            self.createGroup(name: name, color: self.nextGroupColor(), tabIndices: [index])
         }
     }
 
@@ -823,6 +823,42 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
     @objc private func contextUngroup(_ sender: NSMenuItem) {
         guard let group = sender.representedObject as? TabGroup else { return }
         deleteGroup(group, closeTabs: false)
+    }
+
+    @objc private func contextCloseGroup(_ sender: NSMenuItem) {
+        guard let group = sender.representedObject as? TabGroup else { return }
+        deleteGroup(group, closeTabs: true)
+    }
+
+    @objc private func contextSetGroupColor(_ sender: NSMenuItem) {
+        guard let action = sender.representedObject as? GroupColorAction else { return }
+        action.group.color = action.color
+        reloadTabBar()
+    }
+
+    @objc private func contextCustomGroupColor(_ sender: NSMenuItem) {
+        guard let group = sender.representedObject as? TabGroup else { return }
+        let panel = NSColorPanel.shared
+        panel.setTarget(nil)
+        panel.setAction(nil)
+        panel.color = group.color ?? .gray
+        panel.showsAlpha = false
+        panel.isContinuous = true
+
+        let helper = GroupColorPanelHelper(group: group) { [weak self] grp, color in
+            grp.color = color
+            self?.reloadTabBar()
+        }
+        objc_setAssociatedObject(panel, "groupColorHelper", helper, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        panel.setTarget(helper)
+        panel.setAction(#selector(GroupColorPanelHelper.colorChanged(_:)))
+        panel.orderFront(nil)
+    }
+
+    @objc private func contextClearGroupColor(_ sender: NSMenuItem) {
+        guard let group = sender.representedObject as? TabGroup else { return }
+        group.color = nil
+        reloadTabBar()
     }
 
     // MARK: - Move Tab to New Window
@@ -928,6 +964,70 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         removeTabFromGroup(at: fromIndex)
     }
 
+    func tabBar(_ tabBar: CustomTabBarView, didRenameGroup groupID: UUID, to name: String) {
+        guard let group = tabGroups.first(where: { $0.id == groupID }) else { return }
+        renameGroup(group, name: name)
+    }
+
+    func tabBar(_ tabBar: CustomTabBarView, didChangeGroupColor groupID: UUID, to color: NSColor?) {
+        guard let group = tabGroups.first(where: { $0.id == groupID }) else { return }
+        group.color = color
+        reloadTabBar()
+    }
+
+    func tabBar(_ tabBar: CustomTabBarView, didRightClickGroup groupID: UUID, location: NSPoint) {
+        guard let group = tabGroups.first(where: { $0.id == groupID }) else { return }
+
+        let menu = NSMenu()
+
+        let renameItem = NSMenuItem(title: "Rename Group", action: #selector(contextRenameGroup(_:)), keyEquivalent: "")
+        renameItem.target = self
+        renameItem.representedObject = group
+        menu.addItem(renameItem)
+
+        // Color submenu (matches Tab Color style)
+        let colorMenu = NSMenu(title: "Group Color")
+        let paletteNames = ["Red", "Orange", "Yellow", "Green", "Blue", "Purple", "Pink", "Teal"]
+        for (name, color) in zip(paletteNames, Self.defaultTabColorPalette) {
+            let item = NSMenuItem(title: name, action: #selector(contextSetGroupColor(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = GroupColorAction(group: group, color: color)
+            let swatch = NSImage(size: NSSize(width: 12, height: 12), flipped: false) { rect in
+                color.setFill()
+                NSBezierPath(roundedRect: rect, xRadius: 2, yRadius: 2).fill()
+                return true
+            }
+            item.image = swatch
+            colorMenu.addItem(item)
+        }
+        colorMenu.addItem(NSMenuItem.separator())
+        let customGroupColorItem = NSMenuItem(title: "Custom…", action: #selector(contextCustomGroupColor(_:)), keyEquivalent: "")
+        customGroupColorItem.target = self
+        customGroupColorItem.representedObject = group
+        colorMenu.addItem(customGroupColorItem)
+        let clearGroupColorItem = NSMenuItem(title: "Clear Color", action: #selector(contextClearGroupColor(_:)), keyEquivalent: "")
+        clearGroupColorItem.target = self
+        clearGroupColorItem.representedObject = group
+        colorMenu.addItem(clearGroupColorItem)
+        let colorMenuItem = NSMenuItem(title: "Group Color", action: nil, keyEquivalent: "")
+        colorMenuItem.submenu = colorMenu
+        menu.addItem(colorMenuItem)
+
+        menu.addItem(NSMenuItem.separator())
+
+        let ungroupItem = NSMenuItem(title: "Ungroup All Tabs", action: #selector(contextUngroup(_:)), keyEquivalent: "")
+        ungroupItem.target = self
+        ungroupItem.representedObject = group
+        menu.addItem(ungroupItem)
+
+        let closeGroupItem = NSMenuItem(title: "Close Group", action: #selector(contextCloseGroup(_:)), keyEquivalent: "")
+        closeGroupItem.target = self
+        closeGroupItem.representedObject = group
+        menu.addItem(closeGroupItem)
+
+        menu.popUp(positioning: nil, at: location, in: tabBar)
+    }
+
     // MARK: - Rename Tab
 
     @objc func renameTab(_ sender: Any?) {
@@ -1002,6 +1102,12 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         activeTabIndex = tabs.firstIndex(where: { $0 === activeTab }) ?? 0
         reloadTabBar()
         return group
+    }
+
+    private func nextGroupColor() -> NSColor {
+        let usedColors = Set(tabGroups.compactMap { $0.color?.hexString })
+        let palette = Self.defaultTabColorPalette
+        return palette.first { !usedColors.contains($0.hexString) } ?? palette[tabGroups.count % palette.count]
     }
 
     func renameGroup(_ group: TabGroup, name: String) {
@@ -2058,6 +2164,29 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
 }
 
 // MARK: - Color Panel Helper
+
+private class GroupColorAction: NSObject {
+    let group: TabGroup
+    let color: NSColor
+    init(group: TabGroup, color: NSColor) {
+        self.group = group
+        self.color = color
+    }
+}
+
+private class GroupColorPanelHelper: NSObject {
+    let group: TabGroup
+    let onChange: (TabGroup, NSColor) -> Void
+
+    init(group: TabGroup, onChange: @escaping (TabGroup, NSColor) -> Void) {
+        self.group = group
+        self.onChange = onChange
+    }
+
+    @objc func colorChanged(_ sender: NSColorPanel) {
+        onChange(group, sender.color)
+    }
+}
 
 private class ColorPanelHelper: NSObject {
     let tabIndex: Int

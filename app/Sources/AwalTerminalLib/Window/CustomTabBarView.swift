@@ -15,6 +15,9 @@ protocol CustomTabBarDelegate: AnyObject {
     func tabBar(_ tabBar: CustomTabBarView, didToggleGroupCollapse groupID: UUID)
     func tabBar(_ tabBar: CustomTabBarView, didDragTab fromIndex: Int, intoGroup groupID: UUID)
     func tabBar(_ tabBar: CustomTabBarView, didDragTabOutOfGroup fromIndex: Int)
+    func tabBar(_ tabBar: CustomTabBarView, didRenameGroup groupID: UUID, to name: String)
+    func tabBar(_ tabBar: CustomTabBarView, didChangeGroupColor groupID: UUID, to color: NSColor?)
+    func tabBar(_ tabBar: CustomTabBarView, didRightClickGroup groupID: UUID, location: NSPoint)
 }
 
 /// Display metadata for a single tab, computed by the controller.
@@ -163,7 +166,7 @@ final class CustomTabBarView: NSView {
             stackClipConstraints = [
                 stackView.topAnchor.constraint(equalTo: clipView.topAnchor),
                 stackView.bottomAnchor.constraint(equalTo: clipView.bottomAnchor),
-                stackView.leadingAnchor.constraint(equalTo: clipView.leadingAnchor),
+                stackView.leadingAnchor.constraint(equalTo: clipView.leadingAnchor, constant: 12),
             ]
 
             scrollConstraints = [
@@ -267,7 +270,17 @@ final class CustomTabBarView: NSView {
                         guard let self else { return }
                         self.delegate?.tabBar(self, didToggleGroupCollapse: groupID)
                     }
+                    header.onRightClick = { [weak self] groupID, localLocation in
+                        guard let self else { return }
+                        let location = header.convert(localLocation, to: self)
+                        self.delegate?.tabBar(self, didRightClickGroup: groupID, location: location)
+                    }
+                    // Add spacing before the pill
+                    if let lastView = stackView.arrangedSubviews.last {
+                        stackView.setCustomSpacing(6, after: lastView)
+                    }
                     stackView.addArrangedSubview(header)
+                    stackView.setCustomSpacing(2, after: header)
                     groupHeaderViews[gid] = header
                     insertedGroups.insert(gid)
                 }
@@ -511,38 +524,25 @@ private class FlippedView: NSView {
 private class TabGroupHeaderView: NSView {
 
     var onToggleCollapse: ((UUID) -> Void)?
+    var onRightClick: ((UUID, NSPoint) -> Void)?
 
     private let groupID: UUID
     private let nameLabel = NSTextField(labelWithString: "")
     private let chevron = NSTextField(labelWithString: "")
     private let isCollapsed: Bool
     private let groupColor: NSColor?
+    private let orientation: TabBarOrientation
+    private var headerBorderLayer: CALayer?
 
     init(group: TabGroupDisplayInfo, orientation: TabBarOrientation, bgColor: NSColor) {
         self.groupID = group.id
         self.isCollapsed = group.isCollapsed
         self.groupColor = group.color
+        self.orientation = orientation
         super.init(frame: .zero)
 
         wantsLayer = true
-        let tintBase = group.color ?? NSColor(white: 0.4, alpha: 1.0)
-        layer?.backgroundColor = bgColor.blended(withFraction: 0.12, of: tintBase)?.cgColor ?? bgColor.cgColor
-
         translatesAutoresizingMaskIntoConstraints = false
-
-        chevron.stringValue = isCollapsed ? "\u{25B6}" : "\u{25BC}" // right / down triangle
-        chevron.font = NSFont.systemFont(ofSize: 8, weight: .medium)
-        chevron.textColor = NSColor(white: 0.5, alpha: 1.0)
-        chevron.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(chevron)
-
-        let displayName = isCollapsed ? "\(group.name) (\(group.tabCount))" : group.name
-        nameLabel.stringValue = displayName
-        nameLabel.font = NSFont.systemFont(ofSize: 10, weight: .semibold)
-        nameLabel.textColor = NSColor(white: 0.6, alpha: 1.0)
-        nameLabel.lineBreakMode = .byTruncatingTail
-        nameLabel.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(nameLabel)
 
         let trackingArea = NSTrackingArea(
             rect: .zero,
@@ -554,44 +554,121 @@ private class TabGroupHeaderView: NSView {
 
         switch orientation {
         case .horizontal:
-            NSLayoutConstraint.activate([
-                heightAnchor.constraint(equalToConstant: CustomTabBarView.barHeight),
-                chevron.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
-                chevron.centerYAnchor.constraint(equalTo: centerYAnchor),
-                nameLabel.leadingAnchor.constraint(equalTo: chevron.trailingAnchor, constant: 4),
-                nameLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
-                nameLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            ])
+            setupHorizontalPill(group: group)
         case .vertical:
-            NSLayoutConstraint.activate([
-                heightAnchor.constraint(equalToConstant: 34),
-                widthAnchor.constraint(equalToConstant: CustomTabBarView.sidebarWidth),
-                chevron.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
-                chevron.centerYAnchor.constraint(equalTo: centerYAnchor),
-                nameLabel.leadingAnchor.constraint(equalTo: chevron.trailingAnchor, constant: 4),
-                nameLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
-                nameLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            ])
+            setupVerticalRow(group: group, bgColor: bgColor)
         }
+
+        // Add connecting border on the header itself
+        let borderColor = (group.color ?? NSColor(white: 0.4, alpha: 1.0)).withAlphaComponent(0.85)
+        let border = CALayer()
+        border.backgroundColor = borderColor.cgColor
+        wantsLayer = true
+        layer?.addSublayer(border)
+        headerBorderLayer = border
+    }
+
+    private func setupHorizontalPill(group: TabGroupDisplayInfo) {
+        let pillColor = group.color ?? NSColor(white: 0.4, alpha: 1.0)
+        layer?.backgroundColor = pillColor.withAlphaComponent(0.85).cgColor
+        layer?.cornerRadius = 6
+        layer?.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner] // bottom only (layer coords)
+
+        let displayName = isCollapsed ? "\(group.name) (\(group.tabCount))" : group.name
+        nameLabel.stringValue = displayName
+        nameLabel.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
+        nameLabel.textColor = .white
+        nameLabel.lineBreakMode = .byTruncatingTail
+        nameLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(nameLabel)
+
+        NSLayoutConstraint.activate([
+            heightAnchor.constraint(equalToConstant: CustomTabBarView.barHeight),
+            nameLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+            nameLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+            nameLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
+    }
+
+    private var pillLayer: CALayer?
+
+    private func setupVerticalRow(group: TabGroupDisplayInfo, bgColor: NSColor) {
+        let pillColor = group.color ?? NSColor(white: 0.4, alpha: 1.0)
+
+        // Inset colored pill sublayer
+        let pill = CALayer()
+        pill.backgroundColor = pillColor.withAlphaComponent(0.85).cgColor
+        pill.cornerRadius = 6
+        pill.maskedCorners = [.layerMinXMinYCorner, .layerMinXMaxYCorner] // left side only
+        wantsLayer = true
+        layer?.addSublayer(pill)
+        pillLayer = pill
+
+        chevron.stringValue = isCollapsed ? "\u{25B6}" : "\u{25BC}"
+        chevron.font = NSFont.systemFont(ofSize: 8, weight: .medium)
+        chevron.textColor = .white
+        chevron.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(chevron)
+
+        let displayName = isCollapsed ? "\(group.name) (\(group.tabCount))" : group.name
+        nameLabel.stringValue = displayName
+        nameLabel.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
+        nameLabel.textColor = .white
+        nameLabel.lineBreakMode = .byTruncatingTail
+        nameLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(nameLabel)
+
+        NSLayoutConstraint.activate([
+            heightAnchor.constraint(equalToConstant: 26),
+            widthAnchor.constraint(equalToConstant: CustomTabBarView.sidebarWidth),
+            chevron.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
+            chevron.centerYAnchor.constraint(equalTo: centerYAnchor),
+            nameLabel.leadingAnchor.constraint(equalTo: chevron.trailingAnchor, constant: 4),
+            nameLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
+            nameLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) not implemented")
     }
 
+    override func layout() {
+        super.layout()
+        if let pill = pillLayer {
+            // Left inset only, flush right
+            pill.frame = NSRect(x: 6, y: 0, width: bounds.width - 6, height: bounds.height)
+        }
+        if let border = headerBorderLayer {
+            if orientation == .horizontal {
+                border.frame = NSRect(x: 0, y: bounds.height - 1, width: bounds.width, height: 1)
+            } else {
+                border.frame = NSRect(x: bounds.width - 1, y: 0, width: 1, height: bounds.height)
+            }
+        }
+    }
+
     override func mouseDown(with event: NSEvent) {
         onToggleCollapse?(groupID)
     }
 
+    override func rightMouseDown(with event: NSEvent) {
+        let location = convert(event.locationInWindow, from: nil)
+        onRightClick?(groupID, location)
+    }
+
     override func mouseEntered(with event: NSEvent) {
-        layer?.backgroundColor = (NSColor(white: 0.2, alpha: 1.0)).cgColor
+        let pillColor = groupColor ?? NSColor(white: 0.4, alpha: 1.0)
+        let target = pillLayer ?? layer
+        target?.backgroundColor = pillColor.cgColor
     }
 
     override func mouseExited(with event: NSEvent) {
-        let tintBase = groupColor ?? NSColor(white: 0.4, alpha: 1.0)
-        let bgColor = AppConfig.shared.themeTabBarBg
-        layer?.backgroundColor = bgColor.blended(withFraction: 0.12, of: tintBase)?.cgColor ?? bgColor.cgColor
+        let pillColor = groupColor ?? NSColor(white: 0.4, alpha: 1.0)
+        let target = pillLayer ?? layer
+        target?.backgroundColor = pillColor.withAlphaComponent(0.85).cgColor
     }
+
 }
 
 // MARK: - Tab Item View
@@ -634,6 +711,7 @@ private class TabItemView: NSView {
     private let dragThreshold: CGFloat = 5.0
 
     private let isDangerMode: Bool
+    private var groupBorderLayer: CALayer?
 
     init(title: String, isSelected: Bool, selectedBgColor: NSColor, accentColor: NSColor, bgColor: NSColor, tabColor: NSColor? = nil, isDangerMode: Bool = false, orientation: TabBarOrientation = .horizontal, groupColor: NSColor? = nil, isGrouped: Bool = false) {
         self.isSelected = isSelected
@@ -645,19 +723,41 @@ private class TabItemView: NSView {
         self.orientation = orientation
         // Compute effective background: tab color tint, then subtle group tint
         var base = isSelected ? selectedBgColor : bgColor
-        if let tc = tabColor {
-            base = base.blended(withFraction: 0.15, of: tc) ?? base
-        }
         if isGrouped, let gc = groupColor {
             base = base.blended(withFraction: 0.08, of: gc) ?? base
+        }
+        if let tc = tabColor {
+            base = base.blended(withFraction: 0.15, of: tc) ?? base
         }
         self.effectiveBgColor = base
         super.init(frame: .zero)
         setup(title: title)
+
+        // Add group color border to visually connect tab to its group header
+        if isGrouped, let gc = groupColor {
+            let border = CALayer()
+            border.backgroundColor = gc.withAlphaComponent(0.85).cgColor
+            wantsLayer = true
+            layer?.addSublayer(border)
+            groupBorderLayer = border
+        }
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) not implemented")
+    }
+
+    override func layout() {
+        super.layout()
+        if let border = groupBorderLayer {
+            if orientation == .horizontal {
+                // Top border
+                border.frame = NSRect(x: 0, y: bounds.height - 1, width: bounds.width, height: 1)
+            } else {
+                // Right border
+                border.frame = NSRect(x: bounds.width - 1, y: 0, width: 1, height: bounds.height)
+            }
+        }
     }
 
     private static func textColor(for bgColor: NSColor, isSelected: Bool, hasTabColor: Bool) -> NSColor {
