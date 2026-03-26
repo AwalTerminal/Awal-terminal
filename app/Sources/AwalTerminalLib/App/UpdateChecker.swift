@@ -102,10 +102,26 @@ final class UpdateChecker {
         if let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String, !v.isEmpty {
             return v
         }
-        // Fallback: git tag (debug builds)
+        // Bundle.main.infoDictionary can fail depending on launch method;
+        // try reading Info.plist directly from the expected bundle location.
+        if let execURL = Bundle.main.executableURL {
+            let plistURL = execURL
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("Contents/Info.plist")
+            if let data = try? Data(contentsOf: plistURL),
+               let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
+               let v = plist["CFBundleShortVersionString"] as? String, !v.isEmpty {
+                return v
+            }
+        }
+        // Fallback: git tag (debug builds outside a bundle)
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/usr/bin/git")
         proc.arguments = ["describe", "--tags", "--abbrev=0"]
+        if let execURL = Bundle.main.executableURL {
+            proc.currentDirectoryURL = execURL.deletingLastPathComponent()
+        }
         let pipe = Pipe()
         proc.standardOutput = pipe
         proc.standardError = FileHandle.nullDevice
