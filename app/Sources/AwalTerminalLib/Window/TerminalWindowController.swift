@@ -477,6 +477,11 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
             }
         }
 
+        // Remove groups that no longer have any member tabs
+        tabGroups.removeAll { group in
+            !tabs.contains { $0.groupID == group.id }
+        }
+
         reloadTabBar()
 
         // Restore first responder — clicking the tab's close button steals it
@@ -909,20 +914,13 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
 
     func tabBar(_ tabBar: CustomTabBarView, didToggleGroupCollapse groupID: UUID) {
         guard let group = tabGroups.first(where: { $0.id == groupID }) else { return }
-        group.isCollapsed.toggle()
-        // If active tab is now hidden in a collapsed group, switch to a visible tab
-        if group.isCollapsed, activeTab.groupID == groupID {
-            if let visibleIdx = firstVisibleTabIndex() {
-                switchToTab(at: visibleIdx)
-                return
-            }
-        }
-        reloadTabBar()
+        toggleGroupCollapse(group)
     }
 
     func tabBar(_ tabBar: CustomTabBarView, didDragTab fromIndex: Int, intoGroup groupID: UUID) {
         guard fromIndex >= 0 && fromIndex < tabs.count else { return }
-        addTab(at: fromIndex, toGroup: tabGroups.first { $0.id == groupID }!)
+        guard let group = tabGroups.first(where: { $0.id == groupID }) else { return }
+        addTab(at: fromIndex, toGroup: group)
     }
 
     func tabBar(_ tabBar: CustomTabBarView, didDragTabOutOfGroup fromIndex: Int) {
@@ -1062,7 +1060,9 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         if group.isCollapsed, activeTab.groupID == group.id {
             if let visibleIdx = firstVisibleTabIndex() {
                 switchToTab(at: visibleIdx)
-                return
+            } else {
+                // Can't collapse — no visible tabs would remain
+                group.isCollapsed = false
             }
         }
         reloadTabBar()
@@ -1201,6 +1201,14 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         tabGroups = (state.groups ?? []).compactMap { sg in
             guard let id = UUID(uuidString: sg.id) else { return nil }
             return TabGroup(id: id, name: sg.name, color: sg.colorHex.flatMap { NSColor.fromHex($0) }, isCollapsed: sg.isCollapsed)
+        }
+
+        // Clear orphaned group references
+        let validGroupIDs = Set(tabGroups.map { $0.id })
+        for tab in tabs where tab.groupID != nil {
+            if !validGroupIDs.contains(tab.groupID!) {
+                tab.groupID = nil
+            }
         }
 
         // Set active tab

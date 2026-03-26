@@ -117,6 +117,74 @@ final class WindowStateStoreTests: XCTestCase {
         XCTAssertNil(decoded.tabs[1].customTitle)
     }
 
+    func testSavedTabGroup_encodeDecode() throws {
+        let group = SavedTabGroup(id: "550E8400-E29B-41D4-A716-446655440000", name: "Backend", colorHex: "#FF0000", isCollapsed: true)
+
+        let data = try JSONEncoder().encode(group)
+        let decoded = try JSONDecoder().decode(SavedTabGroup.self, from: data)
+
+        XCTAssertEqual(decoded.id, "550E8400-E29B-41D4-A716-446655440000")
+        XCTAssertEqual(decoded.name, "Backend")
+        XCTAssertEqual(decoded.colorHex, "#FF0000")
+        XCTAssertTrue(decoded.isCollapsed)
+    }
+
+    func testSavedWindowState_groupRoundTrip() throws {
+        let groupID = "550E8400-E29B-41D4-A716-446655440000"
+        let tab1 = SavedTabState(
+            splitTree: .leaf(SavedPaneState(modelName: "Claude", workingDir: nil, isDangerMode: false, sessionId: nil)),
+            customTitle: nil, tabColorHex: nil, isDangerMode: false, userClosedAIPanel: false, groupID: groupID
+        )
+        let tab2 = SavedTabState(
+            splitTree: .leaf(SavedPaneState(modelName: "Shell", workingDir: nil, isDangerMode: false, sessionId: nil)),
+            customTitle: nil, tabColorHex: nil, isDangerMode: false, userClosedAIPanel: false, groupID: groupID
+        )
+        let groups = [SavedTabGroup(id: groupID, name: "Backend", colorHex: "#27AE60", isCollapsed: false)]
+
+        let date = Date(timeIntervalSince1970: 1700000000)
+        let state = SavedWindowState(tabs: [tab1, tab2], activeTabIndex: 0, savedAt: date, version: 1, groups: groups)
+
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(state)
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let decoded = try decoder.decode(SavedWindowState.self, from: data)
+
+        XCTAssertEqual(decoded.groups?.count, 1)
+        XCTAssertEqual(decoded.groups?[0].id, groupID)
+        XCTAssertEqual(decoded.groups?[0].name, "Backend")
+        XCTAssertEqual(decoded.groups?[0].colorHex, "#27AE60")
+        XCTAssertFalse(decoded.groups?[0].isCollapsed ?? true)
+        XCTAssertEqual(decoded.tabs[0].groupID, groupID)
+        XCTAssertEqual(decoded.tabs[1].groupID, groupID)
+    }
+
+    func testSavedWindowState_legacyWithoutGroups() throws {
+        // Simulate legacy saved state JSON without groups or groupID fields
+        let json = """
+        {
+            "tabs": [{
+                "splitTree": {"type": "leaf", "pane": {"modelName": "Shell", "isDangerMode": false}},
+                "isDangerMode": false,
+                "userClosedAIPanel": false
+            }],
+            "activeTabIndex": 0,
+            "savedAt": "2023-11-14T22:13:20Z",
+            "version": 1
+        }
+        """
+        let data = json.data(using: .utf8)!
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let decoded = try decoder.decode(SavedWindowState.self, from: data)
+
+        XCTAssertNil(decoded.groups)
+        XCTAssertNil(decoded.tabs[0].groupID)
+        XCTAssertEqual(decoded.tabs.count, 1)
+    }
+
     func testSavedTabState_dangerMode() throws {
         let tab = SavedTabState(
             splitTree: .leaf(SavedPaneState(modelName: "Claude", workingDir: "/tmp", isDangerMode: true, sessionId: nil)),

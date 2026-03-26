@@ -585,6 +585,21 @@ worktree_branch_prefix = "awal/tab"  # default prefix for worktree branches</cod
         <h3>Plan-Aware Tab Naming</h3>
         <p>When an AI agent outputs a plan header (e.g. "Here is Claude's plan:"), Awal detects the plan title from the following line and shows a banner at the bottom of the terminal offering to rename the tab. Click <strong>Rename</strong> to apply the plan title as the tab name, or dismiss the banner to keep the current title. Previously dismissed titles won't re-trigger.</p>
 
+        <h3>Tab Groups</h3>
+        <p>Organize related tabs into named, color-coded groups. Groups keep their member tabs contiguous and can be collapsed to save space.</p>
+        <table class="doc-table">
+          <thead><tr><th>Shortcut</th><th>Action</th></tr></thead>
+          <tbody>
+            <tr><td><code>Cmd+Shift+G</code></td><td>Create a new group from the current tab</td></tr>
+            <tr><td><code>Cmd+Shift+.</code></td><td>Toggle collapse on the current tab's group</td></tr>
+          </tbody>
+        </table>
+        <p>Right-click any tab for additional group actions: add to group, remove from group, rename group, or ungroup. Drag a tab onto a group header to move it into that group. Tearing off a grouped tab moves the entire group to the new window.</p>
+        <p>Switch between a horizontal top bar and a vertical sidebar layout with the <code>tabs.orientation</code> config option:</p>
+        <pre><code>[tabs]
+orientation = "vertical"  # "horizontal" (default) or "vertical"</code></pre>
+        <p>You can also toggle the orientation from <strong>Preferences &gt; Tabs</strong>.</p>
+
         <h3>Split Panes</h3>
         <p>Split any tab into multiple panes for side-by-side terminal sessions:</p>
         <table class="doc-table">
@@ -1199,6 +1214,8 @@ slugs = "ZpDEwZj1Yq"</code></pre>
             <tr><td>Tabs</td><td><code>Cmd+Shift+R</code></td><td>Rename tab</td></tr>
             <tr><td>Tabs</td><td><code>Cmd+Shift+]</code></td><td>Next tab</td></tr>
             <tr><td>Tabs</td><td><code>Cmd+Shift+[</code></td><td>Previous tab</td></tr>
+            <tr><td>Tabs</td><td><code>Cmd+Shift+G</code></td><td>New tab group</td></tr>
+            <tr><td>Tabs</td><td><code>Cmd+Shift+.</code></td><td>Toggle group collapse</td></tr>
 <tr><td>AI</td><td><code>Cmd+Shift+I</code></td><td>Toggle AI side panel</td></tr>
             <tr><td>AI</td><td><code>Cmd+Shift+D</code></td><td>Toggle Mission Control</td></tr>
             <tr><td>AI</td><td><code>Cmd+Option+Shift+R</code></td><td>Start/stop session recording</td></tr>

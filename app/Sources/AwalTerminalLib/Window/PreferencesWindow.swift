@@ -27,7 +27,7 @@ class PreferencesWindow: NSWindowController, NSWindowDelegate {
             backing: .buffered,
             defer: false
         )
-        window.title = "Preferences"
+        window.title = "Settings"
         window.center()
         window.isReleasedWhenClosed = false
         window.appearance = NSAppearance(named: .darkAqua)
