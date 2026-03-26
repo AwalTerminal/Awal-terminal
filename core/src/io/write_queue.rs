@@ -72,3 +72,70 @@ impl WriteQueue {
         total
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_queue_has_no_pending() {
+        let q = WriteQueue::new();
+        assert!(!q.has_pending());
+    }
+
+    #[test]
+    fn default_queue_has_no_pending() {
+        let q = WriteQueue::default();
+        assert!(!q.has_pending());
+    }
+
+    #[test]
+    fn push_makes_pending() {
+        let mut q = WriteQueue::new();
+        q.push(b"hello");
+        assert!(q.has_pending());
+    }
+
+    #[test]
+    fn push_empty_data_is_ignored() {
+        let mut q = WriteQueue::new();
+        q.push(b"");
+        assert!(!q.has_pending());
+    }
+
+    #[test]
+    fn push_multiple_chunks() {
+        let mut q = WriteQueue::new();
+        q.push(b"one");
+        q.push(b"two");
+        q.push(b"three");
+        assert!(q.has_pending());
+    }
+
+    #[test]
+    fn push_preserves_data_order() {
+        let mut q = WriteQueue::new();
+        q.push(b"first");
+        q.push(b"second");
+        // Verify the front chunk is "first"
+        assert_eq!(q.queue.front().unwrap(), b"first");
+        assert_eq!(q.queue.back().unwrap(), b"second");
+    }
+
+    #[test]
+    fn push_single_byte() {
+        let mut q = WriteQueue::new();
+        q.push(&[0x42]);
+        assert!(q.has_pending());
+        assert_eq!(q.queue.front().unwrap(), &[0x42]);
+    }
+
+    #[test]
+    fn push_large_data() {
+        let mut q = WriteQueue::new();
+        let big = vec![0xAA; 65536];
+        q.push(&big);
+        assert!(q.has_pending());
+        assert_eq!(q.queue.front().unwrap().len(), 65536);
+    }
+}

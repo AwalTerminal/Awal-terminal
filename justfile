@@ -106,3 +106,20 @@ size: build
 size-universal: build-app-universal
     @ls -lh app/.build/apple/Products/Release/AwalTerminal | awk '{print "Binary: " $5}'
     @lipo -info app/.build/apple/Products/Release/AwalTerminal
+
+# Run tests with code coverage
+coverage: coverage-rust coverage-swift
+
+# Rust code coverage (requires cargo-llvm-cov: cargo install cargo-llvm-cov)
+coverage-rust:
+    cd {{core_dir}} && cargo llvm-cov --text
+
+# Swift code coverage
+coverage-swift: build-core-debug
+    cd {{app_dir}} && swift test --enable-code-coverage
+    @echo "\n--- Swift Coverage Summary ---"
+    @xcrun llvm-cov report \
+        {{app_dir}}/.build/debug/AwalTerminalPackageTests.xctest/Contents/MacOS/AwalTerminalPackageTests \
+        -instr-profile={{app_dir}}/.build/debug/codecov/default.profdata \
+        -ignore-filename-regex='\.build|Tests' \
+        2>/dev/null || echo "Run 'swift test --enable-code-coverage' first"

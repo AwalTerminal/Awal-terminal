@@ -62,3 +62,118 @@ pub enum MouseMode {
     Button,
     Any,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_modes() {
+        let m = TerminalModes::default();
+        assert!(!m.cursor_keys_application);
+        assert!(m.auto_wrap);
+        assert!(m.cursor_visible);
+        assert!(!m.alternate_screen);
+        assert!(!m.bracketed_paste);
+        assert_eq!(m.mouse_tracking, MouseMode::None);
+        assert!(!m.sgr_mouse);
+        assert!(!m.origin_mode);
+        assert!(!m.insert_mode);
+        assert!(!m.linefeed_mode);
+        assert!(!m.synchronized_output);
+        assert!(m.kitty_keyboard_stack.is_empty());
+    }
+
+    #[test]
+    fn set_and_query_boolean_modes() {
+        let mut m = TerminalModes::default();
+        m.cursor_keys_application = true;
+        assert!(m.cursor_keys_application);
+        m.alternate_screen = true;
+        assert!(m.alternate_screen);
+        m.bracketed_paste = true;
+        assert!(m.bracketed_paste);
+        m.origin_mode = true;
+        assert!(m.origin_mode);
+        m.insert_mode = true;
+        assert!(m.insert_mode);
+        m.linefeed_mode = true;
+        assert!(m.linefeed_mode);
+        m.synchronized_output = true;
+        assert!(m.synchronized_output);
+    }
+
+    #[test]
+    fn clear_boolean_modes() {
+        let mut m = TerminalModes::default();
+        // auto_wrap and cursor_visible default to true; clear them
+        m.auto_wrap = false;
+        assert!(!m.auto_wrap);
+        m.cursor_visible = false;
+        assert!(!m.cursor_visible);
+    }
+
+    #[test]
+    fn mouse_tracking_modes() {
+        let mut m = TerminalModes::default();
+        for mode in [
+            MouseMode::X10,
+            MouseMode::Normal,
+            MouseMode::Button,
+            MouseMode::Any,
+            MouseMode::None,
+        ] {
+            m.mouse_tracking = mode;
+            assert_eq!(m.mouse_tracking, mode);
+        }
+    }
+
+    #[test]
+    fn sgr_mouse_toggle() {
+        let mut m = TerminalModes::default();
+        assert!(!m.sgr_mouse);
+        m.sgr_mouse = true;
+        assert!(m.sgr_mouse);
+        m.sgr_mouse = false;
+        assert!(!m.sgr_mouse);
+    }
+
+    #[test]
+    fn kitty_keyboard_flags_empty_returns_zero() {
+        let m = TerminalModes::default();
+        assert_eq!(m.kitty_keyboard_flags(), 0);
+    }
+
+    #[test]
+    fn kitty_keyboard_push_and_query() {
+        let mut m = TerminalModes::default();
+        m.kitty_keyboard_stack.push(1);
+        assert_eq!(m.kitty_keyboard_flags(), 1);
+        m.kitty_keyboard_stack.push(7);
+        assert_eq!(m.kitty_keyboard_flags(), 7);
+    }
+
+    #[test]
+    fn kitty_keyboard_pop_restores_previous() {
+        let mut m = TerminalModes::default();
+        m.kitty_keyboard_stack.push(3);
+        m.kitty_keyboard_stack.push(15);
+        assert_eq!(m.kitty_keyboard_flags(), 15);
+        m.kitty_keyboard_stack.pop();
+        assert_eq!(m.kitty_keyboard_flags(), 3);
+        m.kitty_keyboard_stack.pop();
+        assert_eq!(m.kitty_keyboard_flags(), 0);
+    }
+
+    #[test]
+    fn clone_is_independent() {
+        let mut original = TerminalModes::default();
+        original.bracketed_paste = true;
+        original.kitty_keyboard_stack.push(42);
+        let mut cloned = original.clone();
+        cloned.bracketed_paste = false;
+        cloned.kitty_keyboard_stack.push(99);
+        assert!(original.bracketed_paste);
+        assert_eq!(original.kitty_keyboard_flags(), 42);
+    }
+}

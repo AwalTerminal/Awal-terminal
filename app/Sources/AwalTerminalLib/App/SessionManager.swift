@@ -16,6 +16,12 @@ class SessionManager {
         try? FileManager.default.createDirectory(at: sessionsDir, withIntermediateDirectories: true)
     }
 
+    /// Test-only initializer for injecting a custom sessions directory.
+    init(sessionsDir: URL) {
+        self.sessionsDir = sessionsDir
+        try? FileManager.default.createDirectory(at: sessionsDir, withIntermediateDirectories: true)
+    }
+
     // MARK: - Session Metadata
 
     struct SessionInfo: Codable {

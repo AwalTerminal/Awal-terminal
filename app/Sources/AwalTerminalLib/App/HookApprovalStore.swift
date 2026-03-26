@@ -27,6 +27,14 @@ final class HookApprovalStore {
         load()
     }
 
+    /// Test-only initializer for injecting custom paths.
+    init(storePath: URL, auditLogPath: URL) {
+        self.storePath = storePath
+        self.auditLogPath = auditLogPath
+        self.approvals = [:]
+        load()
+    }
+
     // MARK: - Public API
 
     /// Returns `true` when the hook key exists AND the stored hash matches

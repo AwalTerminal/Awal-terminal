@@ -201,6 +201,18 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
         }
         ConfigWriter.updateValue(key: "system.prevent_sleep", value: current ? "false" : "true")
         AppConfig.reload()
+
+        // Sync per-tab sleep prevention state with the new config value
+        let newValue = AppConfig.shared.preventSleep
+        for controller in TerminalWindowTracker.shared.allControllers {
+            for tab in controller.tabs {
+                tab.isSleepPrevented = newValue
+                tab.statusBar.setAwake(newValue)
+            }
+        }
+        if !newValue {
+            StealthOverlayWindow.shared.dismiss()
+        }
     }
 
     @objc func toggleStealthMode(_ sender: Any?) {

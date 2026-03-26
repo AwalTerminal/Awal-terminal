@@ -145,3 +145,159 @@ impl Color {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- Cell tests ---
+
+    #[test]
+    fn cell_default_is_space_with_default_colors() {
+        let cell = Cell::default();
+        assert_eq!(cell.ch, ' ');
+        assert_eq!(cell.fg, Color::Default);
+        assert_eq!(cell.bg, Color::Default);
+        assert_eq!(cell.attrs, CellAttrs::empty());
+    }
+
+    #[test]
+    fn cell_reset_restores_defaults() {
+        let mut cell = Cell {
+            ch: 'X',
+            fg: Color::Rgb(255, 0, 0),
+            bg: Color::Indexed(42),
+            attrs: CellAttrs::BOLD | CellAttrs::ITALIC,
+        };
+        cell.reset();
+        assert_eq!(cell.ch, ' ');
+        assert_eq!(cell.fg, Color::Default);
+        assert_eq!(cell.bg, Color::Default);
+        assert_eq!(cell.attrs, CellAttrs::empty());
+    }
+
+    #[test]
+    fn cell_clone_is_independent() {
+        let original = Cell {
+            ch: 'A',
+            fg: Color::Rgb(1, 2, 3),
+            bg: Color::Indexed(7),
+            attrs: CellAttrs::UNDERLINE,
+        };
+        let cloned = {
+            let mut c = original.clone();
+            c.ch = 'B';
+            c.fg = Color::Default;
+            c
+        };
+        assert_eq!(cloned.ch, 'B');
+        assert_eq!(cloned.fg, Color::Default);
+        assert_eq!(original.ch, 'A');
+        assert_eq!(original.fg, Color::Rgb(1, 2, 3));
+    }
+
+    // --- CellAttrs tests ---
+
+    #[test]
+    fn cell_attrs_empty_has_no_flags() {
+        let attrs = CellAttrs::empty();
+        assert!(!attrs.contains(CellAttrs::BOLD));
+        assert!(!attrs.contains(CellAttrs::WIDE));
+        assert!(attrs.is_empty());
+    }
+
+    #[test]
+    fn cell_attrs_combine_flags() {
+        let attrs = CellAttrs::BOLD | CellAttrs::ITALIC | CellAttrs::STRIKETHROUGH;
+        assert!(attrs.contains(CellAttrs::BOLD));
+        assert!(attrs.contains(CellAttrs::ITALIC));
+        assert!(attrs.contains(CellAttrs::STRIKETHROUGH));
+        assert!(!attrs.contains(CellAttrs::DIM));
+        assert!(!attrs.contains(CellAttrs::UNDERLINE));
+    }
+
+    #[test]
+    fn cell_attrs_remove_flag() {
+        let mut attrs = CellAttrs::BOLD | CellAttrs::DIM;
+        attrs.remove(CellAttrs::BOLD);
+        assert!(!attrs.contains(CellAttrs::BOLD));
+        assert!(attrs.contains(CellAttrs::DIM));
+    }
+
+    #[test]
+    fn cell_attrs_wide_flags_are_distinct() {
+        let wide = CellAttrs::WIDE;
+        let spacer = CellAttrs::WIDE_SPACER;
+        assert!(!wide.contains(CellAttrs::WIDE_SPACER));
+        assert!(!spacer.contains(CellAttrs::WIDE));
+    }
+
+    // --- Color tests ---
+
+    #[test]
+    fn color_default_to_rgb() {
+        let palette = default_palette();
+        assert_eq!(Color::Default.to_rgb(&palette), (229, 229, 229));
+    }
+
+    #[test]
+    fn color_rgb_to_rgb_passthrough() {
+        let palette = default_palette();
+        assert_eq!(Color::Rgb(10, 20, 30).to_rgb(&palette), (10, 20, 30));
+    }
+
+    #[test]
+    fn color_indexed_resolves_via_palette() {
+        let palette = default_palette();
+        // Index 0 is black (0,0,0)
+        assert_eq!(Color::Indexed(0).to_rgb(&palette), (0, 0, 0));
+        // Index 9 is bright red (255,0,0)
+        assert_eq!(Color::Indexed(9).to_rgb(&palette), (255, 0, 0));
+    }
+
+    #[test]
+    fn color_to_rgb_with_default_uses_custom_default() {
+        let palette = default_palette();
+        let custom = (100, 100, 100);
+        assert_eq!(Color::Default.to_rgb_with_default(&palette, custom), custom);
+        // Non-default colors should ignore the custom default
+        assert_eq!(
+            Color::Rgb(1, 2, 3).to_rgb_with_default(&palette, custom),
+            (1, 2, 3)
+        );
+    }
+
+    #[test]
+    fn color_default_bg_rgb() {
+        assert_eq!(Color::default_bg_rgb(), (30, 30, 30));
+    }
+
+    // --- Palette tests ---
+
+    #[test]
+    fn default_palette_has_256_entries() {
+        let palette = default_palette();
+        assert_eq!(palette.len(), 256);
+    }
+
+    #[test]
+    fn default_palette_base16_are_rgb() {
+        let palette = default_palette();
+        for i in 0..16 {
+            assert!(
+                matches!(palette[i], Color::Rgb(_, _, _)),
+                "palette[{}] should be Rgb",
+                i
+            );
+        }
+    }
+
+    #[test]
+    fn default_palette_grayscale_ramp() {
+        let palette = default_palette();
+        // First grayscale entry (232) should be Rgb(8,8,8)
+        assert_eq!(palette[232], Color::Rgb(8, 8, 8));
+        // Last grayscale entry (255) should be Rgb(238,238,238)
+        assert_eq!(palette[255], Color::Rgb(238, 238, 238));
+    }
+}
