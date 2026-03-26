@@ -653,6 +653,16 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
         shellMenu.addItem(prevTabItem)
 
         shellMenu.addItem(NSMenuItem.separator())
+
+        let newGroupItem = NSMenuItem(title: "New Tab Group", action: #selector(TerminalWindowController.createGroupFromCurrentTab(_:)), keyEquivalent: "g")
+        newGroupItem.keyEquivalentModifierMask = [.command, .shift]
+        shellMenu.addItem(newGroupItem)
+
+        let toggleCollapseItem = NSMenuItem(title: "Toggle Group Collapse", action: #selector(TerminalWindowController.toggleCurrentGroupCollapse(_:)), keyEquivalent: ".")
+        toggleCollapseItem.keyEquivalentModifierMask = [.command, .shift]
+        shellMenu.addItem(toggleCollapseItem)
+
+        shellMenu.addItem(NSMenuItem.separator())
         shellMenu.addItem(withTitle: "Manage Worktrees…", action: #selector(showManageWorktrees(_:)), keyEquivalent: "")
 
         shellMenuItem.submenu = shellMenu
@@ -882,6 +892,8 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation 
         "remote_control": "Remote Control (Claude only)",
         "command_palette": "Command Palette",
         "stealth_mode": "Stealth Mode",
+        "create_tab_group": "New Tab Group",
+        "toggle_group_collapse": "Toggle Group Collapse",
     ]
 
     private func applyKeybindings(_ menu: NSMenu) {

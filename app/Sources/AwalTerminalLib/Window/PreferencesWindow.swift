@@ -151,6 +151,16 @@ class PreferencesWindow: NSWindowController, NSWindowDelegate {
         grid.columnSpacing = 12
         grid.rowSpacing = 10
 
+        // Tab bar position
+        let orientationLabel = NSTextField(labelWithString: "Tab Bar Position")
+        orientationLabel.font = .systemFont(ofSize: 13)
+        let orientationPopup = NSPopUpButton()
+        orientationPopup.addItems(withTitles: ["Top", "Left Side"])
+        orientationPopup.selectItem(at: config.tabsOrientation == .vertical ? 1 : 0)
+        orientationPopup.target = self
+        orientationPopup.action = #selector(tabsOrientationChanged(_:))
+        grid.addRow(with: [orientationLabel, orientationPopup])
+
         // Confirm close toggle
         let confirmLabel = NSTextField(labelWithString: "Confirm Close")
         confirmLabel.font = .systemFont(ofSize: 13)
@@ -253,6 +263,13 @@ class PreferencesWindow: NSWindowController, NSWindowDelegate {
             swatch.heightAnchor.constraint(equalToConstant: 18).isActive = true
             stack.addArrangedSubview(swatch)
         }
+    }
+
+    @objc private func tabsOrientationChanged(_ sender: NSPopUpButton) {
+        let value = sender.indexOfSelectedItem == 1 ? "vertical" : "horizontal"
+        ConfigWriter.updateValue(key: "tabs.orientation", value: value)
+        AppConfig.reload()
+        NotificationCenter.default.post(name: .tabBarOrientationDidChange, object: nil)
     }
 
     @objc private func tabsConfirmCloseChanged(_ sender: NSButton) {
@@ -487,6 +504,8 @@ class PreferencesWindow: NSWindowController, NSWindowDelegate {
             ("toggle_side_panel", "AI Side Panel", "cmd+shift+i"),
             ("quick_terminal", "Quick Terminal", "ctrl+`"),
             ("settings", "Settings", "cmd+,"),
+            ("create_tab_group", "New Tab Group", "cmd+shift+g"),
+            ("toggle_group_collapse", "Toggle Group Collapse", "cmd+shift+."),
         ]
 
         let scrollView = NSScrollView()
