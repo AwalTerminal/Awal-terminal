@@ -16,9 +16,11 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
 
     private let tabBar = CustomTabBarView()
     private let contentArea = NSView()
+    private var tabBarLayoutConstraints: [NSLayoutConstraint] = []
     private var sleepPreventionPopover: NSPopover?
 
     private(set) var tabs: [TabState] = []
+    private(set) var tabGroups: [TabGroup] = []
     private(set) var activeTabIndex: Int = 0
 
     private var activeTab: TabState { tabs[activeTabIndex] }
@@ -53,30 +55,7 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         super.init(window: window)
         window.delegate = self
 
-        // Layout: tabBar at top, contentArea fills the rest
-        let container = NSView()
-        container.wantsLayer = true
-
-        tabBar.translatesAutoresizingMaskIntoConstraints = false
-        tabBar.delegate = self
-        contentArea.translatesAutoresizingMaskIntoConstraints = false
-        contentArea.wantsLayer = true
-
-        container.addSubview(tabBar)
-        container.addSubview(contentArea)
-
-        NSLayoutConstraint.activate([
-            tabBar.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            tabBar.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            tabBar.topAnchor.constraint(equalTo: container.topAnchor),
-            tabBar.heightAnchor.constraint(equalToConstant: CustomTabBarView.barHeight),
-
-            contentArea.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            contentArea.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            contentArea.topAnchor.constraint(equalTo: tabBar.bottomAnchor),
-            contentArea.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-        ])
-
+        let container = setupWindowLayout(for: window)
         window.contentView = container
 
         // Create the first tab
@@ -127,30 +106,7 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         super.init(window: window)
         window.delegate = self
 
-        // Layout: tabBar at top, contentArea fills the rest
-        let container = NSView()
-        container.wantsLayer = true
-
-        tabBar.translatesAutoresizingMaskIntoConstraints = false
-        tabBar.delegate = self
-        contentArea.translatesAutoresizingMaskIntoConstraints = false
-        contentArea.wantsLayer = true
-
-        container.addSubview(tabBar)
-        container.addSubview(contentArea)
-
-        NSLayoutConstraint.activate([
-            tabBar.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            tabBar.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            tabBar.topAnchor.constraint(equalTo: container.topAnchor),
-            tabBar.heightAnchor.constraint(equalToConstant: CustomTabBarView.barHeight),
-
-            contentArea.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            contentArea.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            contentArea.topAnchor.constraint(equalTo: tabBar.bottomAnchor),
-            contentArea.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-        ])
-
+        let container = setupWindowLayout(for: window)
         window.contentView = container
 
         // Adopt the tab
@@ -171,14 +127,136 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         }
     }
 
+    /// Create a new window adopting multiple tabs and optionally a group (for group tearoff).
+    init(adoptingTabs tabsToAdopt: [TabState], group: TabGroup?, screenPoint: NSPoint? = nil) {
+        let screenFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let width = max(1024, screenFrame.width * 0.8)
+        let height = max(700, screenFrame.height * 0.8)
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: width, height: height),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "Awal Terminal"
+        window.backgroundColor = AppConfig.shared.themeTabBarBg
+        window.isOpaque = true
+        window.minSize = NSSize(width: 800, height: 500)
+        window.tabbingMode = .disallowed
+
+        if let pt = screenPoint {
+            let origin = NSPoint(x: pt.x - width / 2, y: pt.y - height + 30)
+            window.setFrameOrigin(origin)
+        } else {
+            window.center()
+        }
+
+        super.init(window: window)
+        window.delegate = self
+
+        let container = setupWindowLayout(for: window)
+        window.contentView = container
+
+        // Adopt all tabs
+        tabs = tabsToAdopt
+        if let group = group {
+            tabGroups.append(group)
+        }
+        activeTabIndex = 0
+        for tab in tabsToAdopt {
+            rewireTabCallbacks(tab)
+        }
+        installTab(tabs[0])
+        reloadTabBar()
+
+        wireVoiceCallbacks()
+
+        componentObserver = NotificationCenter.default.addObserver(
+            forName: RegistryManager.componentsDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            self?.handleComponentsDidChange(notification)
+        }
+    }
+
     deinit {
         if let observer = componentObserver {
             NotificationCenter.default.removeObserver(observer)
         }
+        NotificationCenter.default.removeObserver(self, name: .tabBarOrientationDidChange, object: nil)
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) not implemented")
+    }
+
+    // MARK: - Window Layout
+
+    /// Shared layout setup used by both init methods.
+    private func setupWindowLayout(for window: NSWindow) -> NSView {
+        let container = NSView()
+        container.wantsLayer = true
+
+        tabBar.translatesAutoresizingMaskIntoConstraints = false
+        tabBar.delegate = self
+        contentArea.translatesAutoresizingMaskIntoConstraints = false
+        contentArea.wantsLayer = true
+
+        container.addSubview(tabBar)
+        container.addSubview(contentArea)
+
+        applyTabBarLayout(in: container, orientation: AppConfig.shared.tabsOrientation)
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleOrientationChange),
+            name: .tabBarOrientationDidChange,
+            object: nil
+        )
+
+        return container
+    }
+
+    private func applyTabBarLayout(in container: NSView, orientation: TabBarOrientation) {
+        NSLayoutConstraint.deactivate(tabBarLayoutConstraints)
+        tabBar.setOrientation(orientation)
+
+        switch orientation {
+        case .horizontal:
+            tabBarLayoutConstraints = [
+                tabBar.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+                tabBar.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+                tabBar.topAnchor.constraint(equalTo: container.topAnchor),
+                tabBar.heightAnchor.constraint(equalToConstant: CustomTabBarView.barHeight),
+
+                contentArea.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+                contentArea.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+                contentArea.topAnchor.constraint(equalTo: tabBar.bottomAnchor),
+                contentArea.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            ]
+        case .vertical:
+            tabBarLayoutConstraints = [
+                tabBar.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+                tabBar.topAnchor.constraint(equalTo: container.topAnchor),
+                tabBar.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+                tabBar.widthAnchor.constraint(equalToConstant: CustomTabBarView.sidebarWidth),
+
+                contentArea.leadingAnchor.constraint(equalTo: tabBar.trailingAnchor),
+                contentArea.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+                contentArea.topAnchor.constraint(equalTo: container.topAnchor),
+                contentArea.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            ]
+        }
+        NSLayoutConstraint.activate(tabBarLayoutConstraints)
+    }
+
+    @objc private func handleOrientationChange() {
+        guard let container = window?.contentView else { return }
+        let newOrientation = AppConfig.shared.tabsOrientation
+        applyTabBarLayout(in: container, orientation: newOrientation)
+        reloadTabBar()
     }
 
     // MARK: - Tab State Creation
@@ -307,10 +385,31 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
     // MARK: - Tab Bar
 
     private func reloadTabBar() {
-        let titles = tabs.map { $0.title }
-        let colors = tabs.map { $0.tabColor }
-        let dangers = tabs.map { $0.isDangerMode }
-        tabBar.reloadTabs(titles: titles, selectedIndex: activeTabIndex, tabColors: colors, dangerFlags: dangers)
+        let displayTabs = tabs.enumerated().map { (i, tab) -> TabDisplayInfo in
+            let group = self.group(for: tab)
+            let isFirst = tab.groupID != nil && (i == 0 || tabs[i - 1].groupID != tab.groupID)
+            let isLast = tab.groupID != nil && (i == tabs.count - 1 || tabs[i + 1].groupID != tab.groupID)
+            return TabDisplayInfo(
+                title: tab.title,
+                tabColor: tab.tabColor,
+                isDangerMode: tab.isDangerMode,
+                groupID: tab.groupID,
+                groupColor: group?.color,
+                isFirstInGroup: isFirst,
+                isLastInGroup: isLast
+            )
+        }
+        let displayGroups = tabGroups.map { g -> TabGroupDisplayInfo in
+            let count = tabs.filter { $0.groupID == g.id }.count
+            return TabGroupDisplayInfo(id: g.id, name: g.name, color: g.color, isCollapsed: g.isCollapsed, tabCount: count)
+        }
+        tabBar.reloadTabs(tabs: displayTabs, selectedIndex: activeTabIndex, groups: displayGroups)
+    }
+
+    /// Find the group for a given tab.
+    func group(for tab: TabState) -> TabGroup? {
+        guard let gid = tab.groupID else { return nil }
+        return tabGroups.first { $0.id == gid }
     }
 
     private func updateWindowTitle() {
@@ -472,6 +571,54 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
 
         menu.addItem(NSMenuItem.separator())
 
+        // Tab grouping items
+        let tab = tabs[index]
+        if let gid = tab.groupID, let group = tabGroups.first(where: { $0.id == gid }) {
+            let renameGroupItem = NSMenuItem(title: "Rename Group…", action: #selector(contextRenameGroup(_:)), keyEquivalent: "")
+            renameGroupItem.target = self
+            renameGroupItem.representedObject = group
+            menu.addItem(renameGroupItem)
+
+            let removeFromGroupItem = NSMenuItem(title: "Remove from Group", action: #selector(contextRemoveFromGroup(_:)), keyEquivalent: "")
+            removeFromGroupItem.target = self
+            removeFromGroupItem.tag = index
+            menu.addItem(removeFromGroupItem)
+
+            let ungroupItem = NSMenuItem(title: "Ungroup", action: #selector(contextUngroup(_:)), keyEquivalent: "")
+            ungroupItem.target = self
+            ungroupItem.representedObject = group
+            menu.addItem(ungroupItem)
+        } else {
+            let newGroupItem = NSMenuItem(title: "New Group from Tab", action: #selector(contextNewGroup(_:)), keyEquivalent: "")
+            newGroupItem.target = self
+            newGroupItem.tag = index
+            menu.addItem(newGroupItem)
+        }
+
+        if !tabGroups.isEmpty && tab.groupID == nil {
+            let addToGroupMenu = NSMenu(title: "Add to Group")
+            for group in tabGroups {
+                let item = NSMenuItem(title: group.name, action: #selector(contextAddToGroup(_:)), keyEquivalent: "")
+                item.target = self
+                item.tag = index
+                item.representedObject = group
+                if let gc = group.color {
+                    let swatch = NSImage(size: NSSize(width: 12, height: 12), flipped: false) { rect in
+                        gc.setFill()
+                        NSBezierPath(roundedRect: rect, xRadius: 2, yRadius: 2).fill()
+                        return true
+                    }
+                    item.image = swatch
+                }
+                addToGroupMenu.addItem(item)
+            }
+            let addToGroupMenuItem = NSMenuItem(title: "Add to Group", action: nil, keyEquivalent: "")
+            addToGroupMenuItem.submenu = addToGroupMenu
+            menu.addItem(addToGroupMenuItem)
+        }
+
+        menu.addItem(NSMenuItem.separator())
+
         let closeItem = NSMenuItem(title: "Close", action: #selector(contextClose(_:)), keyEquivalent: "")
         closeItem.target = self
         closeItem.tag = index
@@ -497,10 +644,47 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
               fromIndex >= 0 && fromIndex < tabs.count,
               toIndex >= 0 && toIndex < tabs.count else { return }
 
+        let tab = tabs[fromIndex]
+
+        // If the tab is in a group, move the entire group together
+        if let gid = tab.groupID {
+            let groupIndices = tabs.enumerated().compactMap { $0.element.groupID == gid ? $0.offset : nil }
+            guard groupIndices.count > 1 else {
+                // Single-member group — move just the tab
+                moveSingleTab(from: fromIndex, to: toIndex)
+                return
+            }
+
+            // Extract all group tabs (in reverse to preserve indices)
+            let groupTabs = groupIndices.map { tabs[$0] }
+            for idx in groupIndices.reversed() {
+                tabs.remove(at: idx)
+            }
+
+            // Determine insertion point — clamp to valid range
+            let insertAt: Int
+            if toIndex > fromIndex {
+                // Moving forward: insert after the target position (adjusted for removed elements)
+                insertAt = min(toIndex - groupIndices.count + 1, tabs.count)
+            } else {
+                // Moving backward
+                insertAt = max(toIndex, 0)
+            }
+            let clamped = min(insertAt, tabs.count)
+            tabs.insert(contentsOf: groupTabs, at: clamped)
+
+            // Track the active tab
+            activeTabIndex = tabs.firstIndex(where: { $0 === activeTab }) ?? 0
+        } else {
+            moveSingleTab(from: fromIndex, to: toIndex)
+        }
+        reloadTabBar()
+    }
+
+    private func moveSingleTab(from fromIndex: Int, to toIndex: Int) {
         let tab = tabs.remove(at: fromIndex)
         tabs.insert(tab, at: toIndex)
 
-        // Update active index to follow the active tab
         if activeTabIndex == fromIndex {
             activeTabIndex = toIndex
         } else if fromIndex < activeTabIndex && toIndex >= activeTabIndex {
@@ -508,7 +692,6 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         } else if fromIndex > activeTabIndex && toIndex <= activeTabIndex {
             activeTabIndex += 1
         }
-        reloadTabBar()
     }
 
     @objc private func contextRename(_ sender: NSMenuItem) {
@@ -581,6 +764,62 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         reloadTabBar()
     }
 
+    @objc private func contextNewGroup(_ sender: NSMenuItem) {
+        let index = sender.tag
+        guard index >= 0 && index < tabs.count else { return }
+
+        let alert = NSAlert.branded()
+        alert.messageText = "New Tab Group"
+        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: "Cancel")
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 200, height: 24))
+        field.stringValue = "New Group"
+        alert.accessoryView = field
+        alert.window.initialFirstResponder = field
+
+        guard let window else { return }
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn, let self else { return }
+            let name = field.stringValue.isEmpty ? "New Group" : field.stringValue
+            self.createGroup(name: name, tabIndices: [index])
+        }
+    }
+
+    @objc private func contextAddToGroup(_ sender: NSMenuItem) {
+        let index = sender.tag
+        guard let group = sender.representedObject as? TabGroup else { return }
+        addTab(at: index, toGroup: group)
+    }
+
+    @objc private func contextRemoveFromGroup(_ sender: NSMenuItem) {
+        removeTabFromGroup(at: sender.tag)
+    }
+
+    @objc private func contextRenameGroup(_ sender: NSMenuItem) {
+        guard let group = sender.representedObject as? TabGroup else { return }
+
+        let alert = NSAlert.branded()
+        alert.messageText = "Rename Group"
+        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: "Cancel")
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 200, height: 24))
+        field.stringValue = group.name
+        alert.accessoryView = field
+        alert.window.initialFirstResponder = field
+
+        guard let window else { return }
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn, let self else { return }
+            let name = field.stringValue.isEmpty ? group.name : field.stringValue
+            self.renameGroup(group, name: name)
+        }
+    }
+
+    @objc private func contextUngroup(_ sender: NSMenuItem) {
+        guard let group = sender.representedObject as? TabGroup else { return }
+        deleteGroup(group, closeTabs: false)
+    }
+
     // MARK: - Move Tab to New Window
 
     @objc private func contextMoveToNewWindow(_ sender: NSMenuItem) {
@@ -588,18 +827,58 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
     }
 
     func moveTabToNewWindow(at index: Int, screenPoint: NSPoint? = nil) {
-        guard tabs.count > 1, index >= 0, index < tabs.count else { return }
+        guard index >= 0, index < tabs.count else { return }
 
         let tab = tabs[index]
 
+        // If the tab is in a group, move the entire group
+        if let gid = tab.groupID {
+            let groupIndices = tabs.enumerated().compactMap { $0.element.groupID == gid ? $0.offset : nil }
+            // Don't tear off if it would empty the window
+            guard tabs.count > groupIndices.count else { return }
+
+            let groupTabs = groupIndices.map { tabs[$0] }
+            let group = tabGroups.first { $0.id == gid }
+
+            // Uninstall active tab if it's in this group
+            let activeWasInGroup = groupIndices.contains(activeTabIndex)
+            if activeWasInGroup {
+                uninstallTab(activeTab)
+            }
+
+            // Remove group tabs (reverse order to preserve indices)
+            for idx in groupIndices.reversed() {
+                tabs.remove(at: idx)
+            }
+            tabGroups.removeAll { $0.id == gid }
+
+            // Fix active tab index
+            if activeWasInGroup {
+                activeTabIndex = min(groupIndices.first ?? 0, tabs.count - 1)
+                installTab(activeTab)
+            } else {
+                // Recalculate — some tabs before activeTab may have been removed
+                let removedBefore = groupIndices.filter { $0 < activeTabIndex }.count
+                activeTabIndex -= removedBefore
+            }
+            reloadTabBar()
+
+            let newController = TerminalWindowController(adoptingTabs: groupTabs, group: group, screenPoint: screenPoint)
+            TerminalWindowTracker.shared.register(newController)
+            newController.showWindow(nil)
+            newController.window?.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        // Ungrouped tab — existing behavior
+        guard tabs.count > 1 else { return }
+
         if index == activeTabIndex {
-            // Moving the active tab — uninstall without cleanup, switch to neighbor
             uninstallTab(tab)
             tabs.remove(at: index)
             activeTabIndex = min(index, tabs.count - 1)
             installTab(activeTab)
         } else {
-            // Moving a background tab
             tabs.remove(at: index)
             if index < activeTabIndex {
                 activeTabIndex -= 1
@@ -607,7 +886,6 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         }
         reloadTabBar()
 
-        // Create a new window adopting the tab
         let newController = TerminalWindowController(adoptingTab: tab, screenPoint: screenPoint)
         TerminalWindowTracker.shared.register(newController)
         newController.showWindow(nil)
@@ -629,10 +907,44 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         moveTabToNewWindow(at: index, screenPoint: screenPoint)
     }
 
+    func tabBar(_ tabBar: CustomTabBarView, didToggleGroupCollapse groupID: UUID) {
+        guard let group = tabGroups.first(where: { $0.id == groupID }) else { return }
+        group.isCollapsed.toggle()
+        // If active tab is now hidden in a collapsed group, switch to a visible tab
+        if group.isCollapsed, activeTab.groupID == groupID {
+            if let visibleIdx = firstVisibleTabIndex() {
+                switchToTab(at: visibleIdx)
+                return
+            }
+        }
+        reloadTabBar()
+    }
+
+    func tabBar(_ tabBar: CustomTabBarView, didDragTab fromIndex: Int, intoGroup groupID: UUID) {
+        guard fromIndex >= 0 && fromIndex < tabs.count else { return }
+        addTab(at: fromIndex, toGroup: tabGroups.first { $0.id == groupID }!)
+    }
+
+    func tabBar(_ tabBar: CustomTabBarView, didDragTabOutOfGroup fromIndex: Int) {
+        guard fromIndex >= 0 && fromIndex < tabs.count else { return }
+        removeTabFromGroup(at: fromIndex)
+    }
+
     // MARK: - Rename Tab
 
     @objc func renameTab(_ sender: Any?) {
         renameTab(at: activeTabIndex)
+    }
+
+    @objc func createGroupFromCurrentTab(_ sender: Any?) {
+        let item = NSMenuItem()
+        item.tag = activeTabIndex
+        contextNewGroup(item)
+    }
+
+    @objc func toggleCurrentGroupCollapse(_ sender: Any?) {
+        guard let group = group(for: activeTab) else { return }
+        toggleGroupCollapse(group)
     }
 
     private func renameTab(at index: Int) {
@@ -667,6 +979,104 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         }
     }
 
+    // MARK: - Tab Grouping
+
+    @discardableResult
+    func createGroup(name: String, color: NSColor? = nil, tabIndices: [Int]) -> TabGroup? {
+        let validIndices = tabIndices.filter { $0 >= 0 && $0 < tabs.count }
+        guard !validIndices.isEmpty else { return nil }
+
+        let group = TabGroup(name: name, color: color)
+        tabGroups.append(group)
+
+        // Move tabs to be contiguous starting at the position of the first tab
+        let firstIdx = validIndices.min()!
+        var movedTabs: [TabState] = []
+        for idx in validIndices.sorted().reversed() {
+            let tab = tabs.remove(at: idx)
+            tab.groupID = group.id
+            movedTabs.insert(tab, at: 0)
+        }
+        let insertAt = min(firstIdx, tabs.count)
+        tabs.insert(contentsOf: movedTabs, at: insertAt)
+
+        // Fix active tab index
+        activeTabIndex = tabs.firstIndex(where: { $0 === activeTab }) ?? 0
+        reloadTabBar()
+        return group
+    }
+
+    func renameGroup(_ group: TabGroup, name: String) {
+        group.name = name
+        reloadTabBar()
+    }
+
+    func deleteGroup(_ group: TabGroup, closeTabs: Bool = false) {
+        if closeTabs {
+            let indices = tabs.enumerated().compactMap { $0.element.groupID == group.id ? $0.offset : nil }
+            for idx in indices.reversed() {
+                performCloseTab(at: idx)
+            }
+        } else {
+            for tab in tabs where tab.groupID == group.id {
+                tab.groupID = nil
+            }
+        }
+        tabGroups.removeAll { $0.id == group.id }
+        reloadTabBar()
+    }
+
+    func addTab(at index: Int, toGroup group: TabGroup) {
+        guard index >= 0 && index < tabs.count else { return }
+        let tab = tabs[index]
+        guard tab.groupID != group.id else { return }
+
+        tab.groupID = group.id
+
+        // Move the tab to be contiguous with other group members
+        let tab_ = tabs.remove(at: index)
+        if let lastGroupIdx = tabs.lastIndex(where: { $0.groupID == group.id }) {
+            tabs.insert(tab_, at: lastGroupIdx + 1)
+        } else {
+            tabs.insert(tab_, at: min(index, tabs.count))
+        }
+        activeTabIndex = tabs.firstIndex(where: { $0 === activeTab }) ?? 0
+        reloadTabBar()
+    }
+
+    func removeTabFromGroup(at index: Int) {
+        guard index >= 0 && index < tabs.count else { return }
+        let tab = tabs[index]
+        guard let gid = tab.groupID else { return }
+        tab.groupID = nil
+
+        // Remove empty groups
+        if !tabs.contains(where: { $0.groupID == gid }) {
+            tabGroups.removeAll { $0.id == gid }
+        }
+        reloadTabBar()
+    }
+
+    func toggleGroupCollapse(_ group: TabGroup) {
+        group.isCollapsed.toggle()
+        if group.isCollapsed, activeTab.groupID == group.id {
+            if let visibleIdx = firstVisibleTabIndex() {
+                switchToTab(at: visibleIdx)
+                return
+            }
+        }
+        reloadTabBar()
+    }
+
+    /// Returns the index of the first tab that is not inside a collapsed group.
+    private func firstVisibleTabIndex() -> Int? {
+        let collapsedIDs = Set(tabGroups.filter { $0.isCollapsed }.map { $0.id })
+        return tabs.firstIndex { tab in
+            guard let gid = tab.groupID else { return true }
+            return !collapsedIDs.contains(gid)
+        }
+    }
+
     // MARK: - Session State Capture / Restore
 
     func captureWindowState() -> SavedWindowState? {
@@ -683,7 +1093,8 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
                 customTitle: tab.customTitle,
                 tabColorHex: tab.tabColor.map { $0.hexString },
                 isDangerMode: tab.isDangerMode,
-                userClosedAIPanel: tab.userClosedAIPanel
+                userClosedAIPanel: tab.userClosedAIPanel,
+                groupID: tab.groupID?.uuidString
             )
         }
 
@@ -702,12 +1113,17 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
             frame = nil
         }
 
+        let savedGroups: [SavedTabGroup]? = tabGroups.isEmpty ? nil : tabGroups.map { g in
+            SavedTabGroup(id: g.id.uuidString, name: g.name, colorHex: g.color?.hexString, isCollapsed: g.isCollapsed)
+        }
+
         return SavedWindowState(
             tabs: savedTabs,
             activeTabIndex: filteredActiveIndex,
             savedAt: Date(),
             version: 1,
-            windowFrame: frame
+            windowFrame: frame,
+            groups: savedGroups
         )
     }
 
@@ -763,6 +1179,9 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
             if let hex = savedTab.tabColorHex {
                 tab.tabColor = NSColor.fromHex(hex)
             }
+            if let gid = savedTab.groupID {
+                tab.groupID = UUID(uuidString: gid)
+            }
 
             // Wire per-tab token tracker
             statusBar.tokenTracker = tab.tokenTracker
@@ -776,6 +1195,12 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
             wireStatusBar(statusBar, tab: tab)
 
             tabs.append(tab)
+        }
+
+        // Restore tab groups
+        tabGroups = (state.groups ?? []).compactMap { sg in
+            guard let id = UUID(uuidString: sg.id) else { return nil }
+            return TabGroup(id: id, name: sg.name, color: sg.colorHex.flatMap { NSColor.fromHex($0) }, isCollapsed: sg.isCollapsed)
         }
 
         // Set active tab
