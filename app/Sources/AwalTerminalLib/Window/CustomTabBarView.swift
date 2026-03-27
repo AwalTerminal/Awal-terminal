@@ -25,6 +25,7 @@ struct TabDisplayInfo {
     let title: String
     let tabColor: NSColor?
     let isDangerMode: Bool
+    let isGenerating: Bool
     let groupID: UUID?
     let groupColor: NSColor?
     let isFirstInGroup: Bool
@@ -314,6 +315,7 @@ final class CustomTabBarView: NSView {
             bgColor: bgColor,
             tabColor: info.tabColor,
             isDangerMode: info.isDangerMode,
+            isGenerating: info.isGenerating,
             orientation: orientation,
             groupColor: info.groupColor,
             isGrouped: info.groupID != nil
@@ -711,15 +713,20 @@ private class TabItemView: NSView {
     private let dragThreshold: CGFloat = 5.0
 
     private let isDangerMode: Bool
+    private let isGenerating: Bool
     private var groupBorderLayer: CALayer?
+    private var generatingLabel: NSTextField?
+    private var generatingTimer: Timer?
+    private var generatingDotCount: Int = 0
 
-    init(title: String, isSelected: Bool, selectedBgColor: NSColor, accentColor: NSColor, bgColor: NSColor, tabColor: NSColor? = nil, isDangerMode: Bool = false, orientation: TabBarOrientation = .horizontal, groupColor: NSColor? = nil, isGrouped: Bool = false) {
+    init(title: String, isSelected: Bool, selectedBgColor: NSColor, accentColor: NSColor, bgColor: NSColor, tabColor: NSColor? = nil, isDangerMode: Bool = false, isGenerating: Bool = false, orientation: TabBarOrientation = .horizontal, groupColor: NSColor? = nil, isGrouped: Bool = false) {
         self.isSelected = isSelected
         self.selectedBgColor = selectedBgColor
         self.accentColor = accentColor
         self.bgColor = bgColor
         self.tabColor = tabColor
         self.isDangerMode = isDangerMode
+        self.isGenerating = isGenerating
         self.orientation = orientation
         // Compute effective background: tab color tint, then subtle group tint
         var base = isSelected ? selectedBgColor : bgColor
@@ -786,6 +793,25 @@ private class TabItemView: NSView {
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(titleLabel)
 
+        // Loading indicator (animated dots) — shown when generating and feature enabled
+        let showIndicator = isGenerating && AppConfig.shared.tabsLoadingIndicator
+        var indicatorLabel: NSTextField?
+        if showIndicator {
+            let label = NSTextField(labelWithString: ".")
+            label.font = NSFont.systemFont(ofSize: 12, weight: .bold)
+            label.textColor = NSColor(red: 0.3, green: 0.85, blue: 0.4, alpha: 1.0)
+            label.isEditable = false
+            label.isBordered = false
+            label.drawsBackground = false
+            label.translatesAutoresizingMaskIntoConstraints = false
+            label.setContentHuggingPriority(.required, for: .horizontal)
+            label.setContentCompressionResistancePriority(.required, for: .horizontal)
+            addSubview(label)
+            indicatorLabel = label
+            self.generatingLabel = label
+            startGeneratingAnimation()
+        }
+
         closeButton.target = self
         closeButton.action = #selector(closeClicked)
         closeButton.translatesAutoresizingMaskIntoConstraints = false
@@ -806,6 +832,12 @@ private class TabItemView: NSView {
             userInfo: nil
         )
         addTrackingArea(trackingArea)
+
+        // Position indicator at the far right, overlapping the close button's spot
+        if let indicator = indicatorLabel {
+            indicator.centerYAnchor.constraint(equalTo: centerYAnchor).isActive = true
+            indicator.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8).isActive = true
+        }
 
         switch orientation {
         case .horizontal:
@@ -858,6 +890,22 @@ private class TabItemView: NSView {
 
     func updateTitle(_ title: String) {
         titleLabel.stringValue = title
+    }
+
+    private func startGeneratingAnimation() {
+        generatingDotCount = 0
+        generatingTimer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: true) { [weak self] _ in
+            guard let self, let label = self.generatingLabel else { return }
+            self.generatingDotCount = (self.generatingDotCount + 1) % 4
+            let dots = ["", ".", "..", "..."]
+            label.stringValue = dots[self.generatingDotCount]
+        }
+    }
+
+    override func removeFromSuperview() {
+        generatingTimer?.invalidate()
+        generatingTimer = nil
+        super.removeFromSuperview()
     }
 
     // MARK: - Mouse Events
@@ -934,6 +982,7 @@ private class TabItemView: NSView {
             }
         }
         closeButton.alphaValue = 1
+        generatingLabel?.alphaValue = 0
     }
 
     override func mouseExited(with event: NSEvent) {
@@ -941,5 +990,6 @@ private class TabItemView: NSView {
             layer?.backgroundColor = effectiveBgColor.cgColor
         }
         closeButton.alphaValue = 0
+        generatingLabel?.alphaValue = 1
     }
 }

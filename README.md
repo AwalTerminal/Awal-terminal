@@ -141,6 +141,7 @@ truncate_length = 10000
 random_colors = true
 # random_color_palette = "#E55353, #3498DB, #27AE60"
 confirm_close = true
+loading_indicator = true
 worktree_isolation = false
 # worktree_branch_prefix = "awal/tab"
 

@@ -605,6 +605,9 @@ worktree_branch_prefix = "awal/tab"  # default prefix for worktree branches</cod
         <pre><code>[tabs]
 orientation = "vertical"  # "horizontal" (default) or "vertical"</code></pre>
         <p>You can also toggle the orientation from <strong>Preferences &gt; Tabs</strong>.</p>
+        <p>Show an animated activity indicator on tabs when AI is generating output with the <code>tabs.loading_indicator</code> config option:</p>
+        <pre><code>[tabs]
+loading_indicator = true  # false (default)</code></pre>
 
       </section>
 
@@ -1050,6 +1053,7 @@ truncate_length = 10000
 random_colors = true
 # random_color_palette = "#E55353, #3498DB, #27AE60"
 confirm_close = true
+loading_indicator = true
 worktree_isolation = false
 # worktree_branch_prefix = "awal/tab"
 

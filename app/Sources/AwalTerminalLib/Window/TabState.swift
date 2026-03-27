@@ -10,6 +10,7 @@ class TabState {
     var tabColor: NSColor?
     var hasSession = false
     var isDangerMode = false
+    var isGenerating = false
     var worktreeInfo: WorktreeInfo?
     var remoteControlURL: String?
     var isSleepPrevented = false

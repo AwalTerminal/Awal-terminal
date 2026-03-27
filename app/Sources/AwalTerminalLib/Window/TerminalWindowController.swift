@@ -393,6 +393,7 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
                 title: tab.title,
                 tabColor: tab.tabColor,
                 isDangerMode: tab.isDangerMode,
+                isGenerating: tab.isGenerating,
                 groupID: tab.groupID,
                 groupColor: group?.color,
                 isFirstInGroup: isFirst,
@@ -1512,8 +1513,9 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
             guard let self, let tab else { return }
             self.showSleepPreventionPopover(for: tab)
         }
-        terminal.onGeneratingChanged = { [weak terminal, weak tab] isGenerating in
-            guard let terminal, let tab else { return }
+        terminal.onGeneratingChanged = { [weak self, weak terminal, weak tab] isGenerating in
+            guard let self, let terminal, let tab else { return }
+            tab.isGenerating = isGenerating
             if isGenerating {
                 tab.statusBar.setGenerating(true)
                 tab.aiSidePanel.setGenerating(true, surface: terminal.surfacePointer, phaseText: terminal.generationPhase)
@@ -1521,6 +1523,7 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
                 tab.statusBar.setGenerating(false)
                 tab.aiSidePanel.setGenerating(false)
             }
+            self.reloadTabBar()
         }
 
         // Show AWAKE badge if sleep prevention is already active globally

@@ -175,6 +175,13 @@ class PreferencesWindow: NSWindowController, NSWindowDelegate {
         quitConfirmCheck.state = config.quitConfirmClose ? .on : .off
         grid.addRow(with: [quitConfirmLabel, quitConfirmCheck])
 
+        // Loading indicator toggle
+        let loadingLabel = NSTextField(labelWithString: "Loading Indicator")
+        loadingLabel.font = .systemFont(ofSize: 13)
+        let loadingCheck = NSButton(checkboxWithTitle: "Show activity indicator on tabs", target: self, action: #selector(tabsLoadingIndicatorChanged(_:)))
+        loadingCheck.state = config.tabsLoadingIndicator ? .on : .off
+        grid.addRow(with: [loadingLabel, loadingCheck])
+
         // Random colors toggle
         let enabledLabel = NSTextField(labelWithString: "Random Colors")
         enabledLabel.font = .systemFont(ofSize: 13)
@@ -281,6 +288,12 @@ class PreferencesWindow: NSWindowController, NSWindowDelegate {
     @objc private func quitConfirmCloseChanged(_ sender: NSButton) {
         let enabled = sender.state == .on
         ConfigWriter.updateValue(key: "quit.confirm_close", value: enabled ? "true" : "false")
+        AppConfig.reload()
+    }
+
+    @objc private func tabsLoadingIndicatorChanged(_ sender: NSButton) {
+        let enabled = sender.state == .on
+        ConfigWriter.updateValue(key: "tabs.loading_indicator", value: enabled ? "true" : "false")
         AppConfig.reload()
     }
 
