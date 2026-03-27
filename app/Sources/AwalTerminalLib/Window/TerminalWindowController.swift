@@ -18,6 +18,8 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
     private let contentArea = NSView()
     private var tabBarLayoutConstraints: [NSLayoutConstraint] = []
     private var sleepPreventionPopover: NSPopover?
+    private var debounceSaveTimer: Timer?
+    private var periodicSaveTimer: Timer?
 
     private(set) var tabs: [TabState] = []
     private(set) var tabGroups: [TabGroup] = []
@@ -29,6 +31,31 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
     func flashStatusBar(_ message: String) {
         guard !tabs.isEmpty else { return }
         activeTab.statusBar.showFlash(message)
+    }
+
+    /// Schedule a debounced save of all window state (2-second delay).
+    func markStateDirty() {
+        debounceSaveTimer?.invalidate()
+        debounceSaveTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
+            self?.saveStateNow()
+        }
+    }
+
+    /// Immediately save the state of all windows to disk.
+    private func saveStateNow() {
+        debounceSaveTimer?.invalidate()
+        let states = TerminalWindowTracker.shared.allControllers.compactMap { $0.captureWindowState() }
+        if !states.isEmpty {
+            WindowStateStore.saveAll(states)
+        } else {
+            WindowStateStore.deleteAllState()
+        }
+    }
+
+    private func startPeriodicSaveTimer() {
+        periodicSaveTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
+            self?.saveStateNow()
+        }
     }
 
     init(isInitialTab: Bool = true, model: LLMModel? = nil, workingDir: String? = nil) {
@@ -66,6 +93,7 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         reloadTabBar()
 
         wireVoiceCallbacks()
+        startPeriodicSaveTimer()
 
         // Observe AI component sync changes
         componentObserver = NotificationCenter.default.addObserver(
@@ -117,6 +145,7 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         reloadTabBar()
 
         wireVoiceCallbacks()
+        startPeriodicSaveTimer()
 
         componentObserver = NotificationCenter.default.addObserver(
             forName: RegistryManager.componentsDidChange,
@@ -182,6 +211,8 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
     }
 
     deinit {
+        debounceSaveTimer?.invalidate()
+        periodicSaveTimer?.invalidate()
         if let observer = componentObserver {
             NotificationCenter.default.removeObserver(observer)
         }
@@ -405,6 +436,7 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
             return TabGroupDisplayInfo(id: g.id, name: g.name, color: g.color, isCollapsed: g.isCollapsed, tabCount: count)
         }
         tabBar.reloadTabs(tabs: displayTabs, selectedIndex: activeTabIndex, groups: displayGroups)
+        markStateDirty()
     }
 
     /// Find the group for a given tab.
@@ -821,6 +853,15 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         }
     }
 
+    @objc private func contextNewTabInGroup(_ sender: NSMenuItem) {
+        guard let group = sender.representedObject as? TabGroup else { return }
+        let tab = createTabState(isInitialTab: true)
+        tabs.append(tab)
+        let newIndex = tabs.count - 1
+        addTab(at: newIndex, toGroup: group)
+        switchToTab(at: tabs.firstIndex(where: { $0 === tab }) ?? newIndex)
+    }
+
     @objc private func contextUngroup(_ sender: NSMenuItem) {
         guard let group = sender.representedObject as? TabGroup else { return }
         deleteGroup(group, closeTabs: false)
@@ -985,6 +1026,11 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         renameItem.target = self
         renameItem.representedObject = group
         menu.addItem(renameItem)
+
+        let newTabItem = NSMenuItem(title: "New Tab in Group", action: #selector(contextNewTabInGroup(_:)), keyEquivalent: "")
+        newTabItem.target = self
+        newTabItem.representedObject = group
+        menu.addItem(newTabItem)
 
         // Color submenu (matches Tab Color style)
         let colorMenu = NSMenu(title: "Group Color")
@@ -1187,13 +1233,12 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
     // MARK: - Session State Capture / Restore
 
     func captureWindowState() -> SavedWindowState? {
-        let activeTabs = tabs.filter { $0.hasSession }
-        guard activeTabs.count > 1 else { return nil }
+        guard !tabs.isEmpty else { return nil }
 
         // Track used session IDs to avoid duplicates (two tabs watching same JSONL)
         var usedSessionIds = Set<String>()
 
-        let savedTabs = activeTabs.map { tab -> SavedTabState in
+        let savedTabs = tabs.map { tab -> SavedTabState in
             let splitTree = captureSplitNode(tab.splitContainer.rootNode, tab: tab, usedSessionIds: &usedSessionIds)
             return SavedTabState(
                 splitTree: splitTree,
@@ -1205,12 +1250,7 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
             )
         }
 
-        let filteredActiveIndex: Int
-        if activeTabIndex < tabs.count && tabs[activeTabIndex].hasSession {
-            filteredActiveIndex = activeTabs.firstIndex(where: { $0 === tabs[activeTabIndex] }) ?? 0
-        } else {
-            filteredActiveIndex = 0
-        }
+        let filteredActiveIndex = activeTabIndex
 
         let frame: SavedRect?
         if let wf = window?.frame {
@@ -1792,12 +1832,15 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         let newTerminal = TerminalView.createTerminalPane(model: model, workingDir: dir)
         wireTerminalCallbacks(newTerminal, tab: tab)
         tab.splitContainer.splitFocused(direction: direction, newTerminal: newTerminal)
+        markStateDirty()
     }
 
     @objc func closePane(_ sender: Any?) {
         let hasRemaining = activeTab.splitContainer.closeFocused()
         if !hasRemaining {
             closeTab(at: activeTabIndex)
+        } else {
+            markStateDirty()
         }
     }
 
@@ -2105,6 +2148,8 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
     }
 
     func windowWillClose(_ notification: Notification) {
+        debounceSaveTimer?.invalidate()
+        periodicSaveTimer?.invalidate()
         // Cleanup all tabs before window closes
         for tab in tabs {
             tab.splitContainer.cleanupAllTerminals()

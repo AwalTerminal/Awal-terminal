@@ -185,6 +185,10 @@ enum WindowStateStore {
         FileManager.default.fileExists(atPath: storeURL.path)
     }
 
+    static func deleteAllState() {
+        try? FileManager.default.removeItem(at: appStateURL)
+    }
+
     // MARK: - Multi-Window Persistence
 
     private static var appStateURL: URL {
@@ -226,8 +230,6 @@ enum WindowStateStore {
             try? FileManager.default.removeItem(at: url)
             return nil
         }
-        // Clean up app_state file after loading
-        try? FileManager.default.removeItem(at: url)
         return validWindows
     }
 }
