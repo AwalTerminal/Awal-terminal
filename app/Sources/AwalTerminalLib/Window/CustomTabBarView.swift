@@ -107,7 +107,7 @@ final class CustomTabBarView: NSView {
         wantsLayer = true
         layer?.backgroundColor = bgColor.cgColor
 
-        stackView.spacing = 1
+        stackView.spacing = 3
         stackView.translatesAutoresizingMaskIntoConstraints = false
 
         flippedDocumentView.translatesAutoresizingMaskIntoConstraints = false
@@ -122,8 +122,16 @@ final class CustomTabBarView: NSView {
         addButton.target = self
         addButton.action = #selector(addClicked)
         addButton.wantsLayer = true
-        addButton.layer?.backgroundColor = bgColor.cgColor
-        addButton.layer?.cornerRadius = 14
+        addButton.layer?.backgroundColor = NSColor.clear.cgColor
+        addButton.layer?.cornerRadius = 6
+        // Dashed border — sized dynamically in updateAddButtonPosition
+        let dash = CAShapeLayer()
+        dash.strokeColor = NSColor(white: 1.0, alpha: 0.2).cgColor
+        dash.fillColor = nil
+        dash.lineDashPattern = [4, 3]
+        dash.lineWidth = 1
+        dash.name = "dashBorder"
+        addButton.layer?.addSublayer(dash)
         addSubview(addButton)
 
         let border = NSView()
@@ -186,7 +194,7 @@ final class CustomTabBarView: NSView {
 
         case .vertical:
             stackView.orientation = .vertical
-            stackView.alignment = .leading
+            stackView.alignment = .centerX
             scrollView.horizontalScrollElasticity = .none
             scrollView.verticalScrollElasticity = .allowed
 
@@ -197,7 +205,7 @@ final class CustomTabBarView: NSView {
 
             let docView = flippedDocumentView
             stackClipConstraints = [
-                stackView.topAnchor.constraint(equalTo: docView.topAnchor),
+                stackView.topAnchor.constraint(equalTo: docView.topAnchor, constant: 6),
                 stackView.leadingAnchor.constraint(equalTo: docView.leadingAnchor),
                 stackView.trailingAnchor.constraint(equalTo: docView.trailingAnchor),
                 docView.bottomAnchor.constraint(greaterThanOrEqualTo: stackView.bottomAnchor),
@@ -238,6 +246,8 @@ final class CustomTabBarView: NSView {
     // MARK: - Public API
 
     func reloadTabs(tabs: [TabDisplayInfo], selectedIndex: Int, groups: [TabGroupDisplayInfo] = []) {
+        let previousSelectedIndex = self.selectedIndex
+        let savedScrollOrigin = scrollView.contentView.bounds.origin
         self.selectedIndex = selectedIndex
 
         // Remove old views
@@ -276,12 +286,12 @@ final class CustomTabBarView: NSView {
                         let location = header.convert(localLocation, to: self)
                         self.delegate?.tabBar(self, didRightClickGroup: groupID, location: location)
                     }
-                    // Add spacing before the pill
+                    // Add spacing before the group header
                     if let lastView = stackView.arrangedSubviews.last {
-                        stackView.setCustomSpacing(6, after: lastView)
+                        stackView.setCustomSpacing(10, after: lastView)
                     }
                     stackView.addArrangedSubview(header)
-                    stackView.setCustomSpacing(2, after: header)
+                    stackView.setCustomSpacing(3, after: header)
                     groupHeaderViews[gid] = header
                     insertedGroups.insert(gid)
                 }
@@ -303,7 +313,17 @@ final class CustomTabBarView: NSView {
 
         stackView.needsLayout = true
         needsLayout = true
-        scrollToSelectedTab()
+
+        if selectedIndex != previousSelectedIndex {
+            scrollToSelectedTab()
+        } else {
+            // Preserve scroll position (e.g. during collapse/expand)
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.updateAddButtonPosition()
+                self.scrollView.contentView.scroll(to: savedScrollOrigin)
+            }
+        }
     }
 
     private func createTabItemView(info: TabDisplayInfo, index: Int) -> TabItemView {
@@ -387,14 +407,27 @@ final class CustomTabBarView: NSView {
             let buttonX = min(stackWidth + 4, maxX)
             let buttonY = round((bounds.height - buttonSize) / 2)
             addButton.frame = NSRect(x: buttonX, y: buttonY, width: buttonSize, height: buttonSize)
+            // Hide dashed border in horizontal mode
+            if let dash = addButton.layer?.sublayers?.first(where: { $0.name == "dashBorder" }) as? CAShapeLayer {
+                dash.isHidden = true
+            }
+            addButton.layer?.backgroundColor = bgColor.cgColor
             scrollView.contentInsets.right = (stackWidth + buttonSize + 8 > bounds.width) ? (buttonSize + 8) : 0
             scrollView.contentInsets.bottom = 0
 
         case .vertical:
-            let buttonX = round((bounds.width - buttonSize) / 2)
-            let buttonY: CGFloat = 4
-            addButton.frame = NSRect(x: buttonX, y: buttonY, width: buttonSize, height: buttonSize)
-            scrollView.contentInsets.bottom = buttonSize + 8
+            let tabWidth = CustomTabBarView.sidebarWidth - TabGroupHeaderView.tabInset * 2
+            let tabHeight = CustomTabBarView.barHeight
+            let buttonX = round((bounds.width - tabWidth) / 2)
+            let buttonY: CGFloat = 8
+            addButton.frame = NSRect(x: buttonX, y: buttonY, width: tabWidth, height: tabHeight)
+            addButton.layer?.backgroundColor = NSColor.clear.cgColor
+            // Show dashed border in vertical mode
+            if let dash = addButton.layer?.sublayers?.first(where: { $0.name == "dashBorder" }) as? CAShapeLayer {
+                dash.isHidden = false
+                dash.path = CGPath(roundedRect: CGRect(x: 0, y: 0, width: tabWidth, height: tabHeight), cornerWidth: 6, cornerHeight: 6, transform: nil)
+            }
+            scrollView.contentInsets.bottom = tabHeight + 20
             scrollView.contentInsets.right = 0
         }
     }
@@ -530,11 +563,11 @@ private class TabGroupHeaderView: NSView {
 
     private let groupID: UUID
     private let nameLabel = NSTextField(labelWithString: "")
-    private let chevron = NSTextField(labelWithString: "")
+    private let chevronImageView = NSImageView()
     private let isCollapsed: Bool
     private let groupColor: NSColor?
     private let orientation: TabBarOrientation
-    private var headerBorderLayer: CALayer?
+    private var groupColorBarLayer: CALayer?
 
     init(group: TabGroupDisplayInfo, orientation: TabBarOrientation, bgColor: NSColor) {
         self.groupID = group.id
@@ -560,14 +593,6 @@ private class TabGroupHeaderView: NSView {
         case .vertical:
             setupVerticalRow(group: group, bgColor: bgColor)
         }
-
-        // Add connecting border on the header itself
-        let borderColor = (group.color ?? NSColor(white: 0.4, alpha: 1.0)).withAlphaComponent(0.85)
-        let border = CALayer()
-        border.backgroundColor = borderColor.cgColor
-        wantsLayer = true
-        layer?.addSublayer(border)
-        headerBorderLayer = border
     }
 
     private func setupHorizontalPill(group: TabGroupDisplayInfo) {
@@ -593,40 +618,47 @@ private class TabGroupHeaderView: NSView {
     }
 
     private var pillLayer: CALayer?
+    fileprivate static let tabInset: CGFloat = 8
 
     private func setupVerticalRow(group: TabGroupDisplayInfo, bgColor: NSColor) {
         let pillColor = group.color ?? NSColor(white: 0.4, alpha: 1.0)
+        let insetWidth = CustomTabBarView.sidebarWidth - Self.tabInset * 2
 
-        // Inset colored pill sublayer
-        let pill = CALayer()
-        pill.backgroundColor = pillColor.withAlphaComponent(0.85).cgColor
-        pill.cornerRadius = 6
-        pill.maskedCorners = [.layerMinXMinYCorner, .layerMinXMaxYCorner] // left side only
+        // No pill background — group headers are flat section dividers
+        // Just a left-edge color bar for group identification
+        let colorBar = CALayer()
+        colorBar.backgroundColor = pillColor.withAlphaComponent(0.5).cgColor
+        colorBar.cornerRadius = 1.5
         wantsLayer = true
-        layer?.addSublayer(pill)
-        pillLayer = pill
+        layer?.addSublayer(colorBar)
+        groupColorBarLayer = colorBar
 
-        chevron.stringValue = isCollapsed ? "\u{25B6}" : "\u{25BC}"
-        chevron.font = NSFont.systemFont(ofSize: 8, weight: .medium)
-        chevron.textColor = .white
-        chevron.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(chevron)
+        // SF Symbol chevron
+        let symbolName = isCollapsed ? "chevron.right" : "chevron.down"
+        if let symbolImage = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil) {
+            let config = NSImage.SymbolConfiguration(pointSize: 8, weight: .medium)
+            chevronImageView.image = symbolImage.withSymbolConfiguration(config)
+            chevronImageView.contentTintColor = NSColor(white: 0.4, alpha: 1.0)
+        }
+        chevronImageView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(chevronImageView)
 
         let displayName = isCollapsed ? "\(group.name) (\(group.tabCount))" : group.name
-        nameLabel.stringValue = displayName
-        nameLabel.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
-        nameLabel.textColor = .white
+        nameLabel.stringValue = displayName.uppercased()
+        nameLabel.font = NSFont.systemFont(ofSize: 10, weight: .semibold)
+        nameLabel.textColor = NSColor(white: 0.4, alpha: 1.0)
         nameLabel.lineBreakMode = .byTruncatingTail
         nameLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(nameLabel)
 
         NSLayoutConstraint.activate([
-            heightAnchor.constraint(equalToConstant: 26),
-            widthAnchor.constraint(equalToConstant: CustomTabBarView.sidebarWidth),
-            chevron.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
-            chevron.centerYAnchor.constraint(equalTo: centerYAnchor),
-            nameLabel.leadingAnchor.constraint(equalTo: chevron.trailingAnchor, constant: 4),
-            nameLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
+            heightAnchor.constraint(equalToConstant: 22),
+            widthAnchor.constraint(equalToConstant: insetWidth),
+            chevronImageView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
+            chevronImageView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            chevronImageView.widthAnchor.constraint(equalToConstant: 10),
+            nameLabel.leadingAnchor.constraint(equalTo: chevronImageView.trailingAnchor, constant: 4),
+            nameLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
             nameLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
     }
@@ -637,15 +669,13 @@ private class TabGroupHeaderView: NSView {
 
     override func layout() {
         super.layout()
-        if let pill = pillLayer {
-            // Left inset only, flush right
-            pill.frame = NSRect(x: 6, y: 0, width: bounds.width - 6, height: bounds.height)
-        }
-        if let border = headerBorderLayer {
-            if orientation == .horizontal {
-                border.frame = NSRect(x: 0, y: bounds.height - 1, width: bounds.width, height: 1)
-            } else {
-                border.frame = NSRect(x: bounds.width - 1, y: 0, width: 1, height: bounds.height)
+        if orientation == .vertical {
+            if let bar = groupColorBarLayer {
+                bar.frame = NSRect(x: 0, y: 3, width: 3, height: bounds.height - 6)
+            }
+        } else {
+            if let pill = pillLayer {
+                pill.frame = NSRect(x: 6, y: 0, width: bounds.width - 6, height: bounds.height)
             }
         }
     }
@@ -660,15 +690,23 @@ private class TabGroupHeaderView: NSView {
     }
 
     override func mouseEntered(with event: NSEvent) {
-        let pillColor = groupColor ?? NSColor(white: 0.4, alpha: 1.0)
-        let target = pillLayer ?? layer
-        target?.backgroundColor = pillColor.cgColor
+        if orientation == .vertical {
+            layer?.backgroundColor = NSColor(white: 1.0, alpha: 0.04).cgColor
+        } else {
+            let pillColor = groupColor ?? NSColor(white: 0.4, alpha: 1.0)
+            let target = pillLayer ?? layer
+            target?.backgroundColor = pillColor.cgColor
+        }
     }
 
     override func mouseExited(with event: NSEvent) {
-        let pillColor = groupColor ?? NSColor(white: 0.4, alpha: 1.0)
-        let target = pillLayer ?? layer
-        target?.backgroundColor = pillColor.withAlphaComponent(0.85).cgColor
+        if orientation == .vertical {
+            layer?.backgroundColor = NSColor.clear.cgColor
+        } else {
+            let pillColor = groupColor ?? NSColor(white: 0.4, alpha: 1.0)
+            let target = pillLayer ?? layer
+            target?.backgroundColor = pillColor.withAlphaComponent(0.85).cgColor
+        }
     }
 
 }
@@ -691,11 +729,14 @@ private class TabItemView: NSView {
 
     private let titleLabel = NSTextField(labelWithString: "")
     private let closeButton: NSButton = {
-        let btn = NSButton(title: "\u{00D7}", target: nil, action: nil)
+        let btn = NSButton(title: "", target: nil, action: nil)
         btn.isBordered = false
         btn.setButtonType(.momentaryChange)
-        btn.font = NSFont.systemFont(ofSize: 14, weight: .regular)
-        btn.contentTintColor = NSColor(white: 0.5, alpha: 1.0)
+        if let symbol = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close") {
+            let config = NSImage.SymbolConfiguration(pointSize: 8, weight: .semibold)
+            btn.image = symbol.withSymbolConfiguration(config)
+        }
+        btn.contentTintColor = NSColor(white: 0.6, alpha: 1.0)
         return btn
     }()
     private let accentLine = NSView()
@@ -714,6 +755,7 @@ private class TabItemView: NSView {
 
     private let isDangerMode: Bool
     private let isGenerating: Bool
+    private var closeCircleLayer: CALayer?
     private var groupBorderLayer: CALayer?
     private var generatingLabel: NSTextField?
     private var generatingTimer: Timer?
@@ -731,17 +773,24 @@ private class TabItemView: NSView {
         // Compute effective background: tab color tint, then subtle group tint
         var base = isSelected ? selectedBgColor : bgColor
         if isGrouped, let gc = groupColor {
-            base = base.blended(withFraction: 0.08, of: gc) ?? base
+            base = base.blended(withFraction: 0.05, of: gc) ?? base
         }
         if let tc = tabColor {
-            base = base.blended(withFraction: 0.15, of: tc) ?? base
+            base = base.blended(withFraction: 0.10, of: tc) ?? base
         }
         self.effectiveBgColor = base
         super.init(frame: .zero)
         setup(title: title)
 
-        // Add group color border to visually connect tab to its group header
-        if isGrouped, let gc = groupColor {
+        // Add group color bar on left edge to visually connect tab to its group header
+        if orientation == .vertical, isGrouped, let gc = groupColor {
+            let bar = CALayer()
+            bar.backgroundColor = gc.withAlphaComponent(0.3).cgColor
+            bar.cornerRadius = 1.5
+            wantsLayer = true
+            layer?.addSublayer(bar)
+            groupBorderLayer = bar
+        } else if orientation == .horizontal, isGrouped, let gc = groupColor {
             let border = CALayer()
             border.backgroundColor = gc.withAlphaComponent(0.85).cgColor
             wantsLayer = true
@@ -756,20 +805,25 @@ private class TabItemView: NSView {
 
     override func layout() {
         super.layout()
+        if let circle = closeCircleLayer {
+            let circleSize: CGFloat = 20
+            let btnFrame = closeButton.frame
+            let cx = btnFrame.midX - circleSize / 2
+            let cy = btnFrame.midY - circleSize / 2
+            circle.frame = NSRect(x: cx, y: cy, width: circleSize, height: circleSize)
+        }
         if let border = groupBorderLayer {
             if orientation == .horizontal {
-                // Top border
                 border.frame = NSRect(x: 0, y: bounds.height - 1, width: bounds.width, height: 1)
             } else {
-                // Right border
-                border.frame = NSRect(x: bounds.width - 1, y: 0, width: 1, height: bounds.height)
+                border.frame = NSRect(x: 0, y: 4, width: 3, height: bounds.height - 8)
             }
         }
     }
 
     private static func textColor(for bgColor: NSColor, isSelected: Bool, hasTabColor: Bool) -> NSColor {
         guard hasTabColor else {
-            return isSelected ? NSColor(white: 0.85, alpha: 1.0) : NSColor(white: 0.5, alpha: 1.0)
+            return isSelected ? NSColor(white: 0.85, alpha: 1.0) : NSColor(white: 0.55, alpha: 1.0)
         }
         let rgb = bgColor.usingColorSpace(.sRGB) ?? bgColor
         let luminance = 0.299 * rgb.redComponent + 0.587 * rgb.greenComponent + 0.114 * rgb.blueComponent
@@ -783,7 +837,17 @@ private class TabItemView: NSView {
         wantsLayer = true
         layer?.backgroundColor = effectiveBgColor.cgColor
 
-        titleLabel.font = NSFont.systemFont(ofSize: 12, weight: .regular)
+        if orientation == .vertical {
+            layer?.cornerRadius = 6
+            if isSelected {
+                layer?.borderWidth = 1
+                layer?.borderColor = NSColor(white: 1.0, alpha: 0.08).cgColor
+            }
+        }
+
+        let fontSize: CGFloat = orientation == .vertical ? 11.5 : 12
+        let fontWeight: NSFont.Weight = (orientation == .vertical && isSelected) ? .medium : .regular
+        titleLabel.font = NSFont.systemFont(ofSize: fontSize, weight: fontWeight)
         titleLabel.textColor = Self.textColor(for: effectiveBgColor, isSelected: isSelected, hasTabColor: tabColor != nil)
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.isEditable = false
@@ -811,6 +875,17 @@ private class TabItemView: NSView {
             self.generatingLabel = label
             startGeneratingAnimation()
         }
+
+        // Circular background behind close button
+        let circle = CALayer()
+        let circleSize: CGFloat = 20
+        circle.cornerRadius = circleSize / 2
+        circle.backgroundColor = NSColor(white: 1.0, alpha: 0.12).cgColor
+        wantsLayer = true
+        layer?.addSublayer(circle)
+        closeCircleLayer = circle
+
+        circle.isHidden = true
 
         closeButton.target = self
         closeButton.action = #selector(closeClicked)
@@ -862,11 +937,13 @@ private class TabItemView: NSView {
             ])
 
         case .vertical:
+            let insetWidth = CustomTabBarView.sidebarWidth - TabGroupHeaderView.tabInset * 2
+            accentLine.layer?.cornerRadius = 1.5
             NSLayoutConstraint.activate([
-                widthAnchor.constraint(equalToConstant: CustomTabBarView.sidebarWidth),
+                widthAnchor.constraint(equalToConstant: insetWidth),
                 heightAnchor.constraint(equalToConstant: CustomTabBarView.barHeight),
 
-                titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+                titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
                 titleLabel.trailingAnchor.constraint(equalTo: closeButton.leadingAnchor, constant: -4),
                 titleLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
 
@@ -875,11 +952,11 @@ private class TabItemView: NSView {
                 closeButton.widthAnchor.constraint(equalToConstant: 18),
                 closeButton.heightAnchor.constraint(equalToConstant: 18),
 
-                // Accent line on left edge for vertical
+                // Accent line as rounded pill on left edge
                 accentLine.leadingAnchor.constraint(equalTo: leadingAnchor),
-                accentLine.topAnchor.constraint(equalTo: topAnchor),
-                accentLine.bottomAnchor.constraint(equalTo: bottomAnchor),
-                accentLine.widthAnchor.constraint(equalToConstant: 2),
+                accentLine.topAnchor.constraint(equalTo: topAnchor, constant: 6),
+                accentLine.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6),
+                accentLine.widthAnchor.constraint(equalToConstant: 3),
             ])
         }
     }
@@ -975,13 +1052,10 @@ private class TabItemView: NSView {
 
     override func mouseEntered(with event: NSEvent) {
         if !isSelected {
-            if tabColor != nil {
-                layer?.backgroundColor = (effectiveBgColor.blended(withFraction: 0.1, of: .white) ?? effectiveBgColor).cgColor
-            } else {
-                layer?.backgroundColor = NSColor(red: 30.0/255.0, green: 30.0/255.0, blue: 30.0/255.0, alpha: 1.0).cgColor
-            }
+            layer?.backgroundColor = (effectiveBgColor.blended(withFraction: 0.06, of: .white) ?? effectiveBgColor).cgColor
         }
         closeButton.alphaValue = 1
+        closeCircleLayer?.isHidden = false
         generatingLabel?.alphaValue = 0
     }
 
@@ -990,6 +1064,7 @@ private class TabItemView: NSView {
             layer?.backgroundColor = effectiveBgColor.cgColor
         }
         closeButton.alphaValue = 0
+        closeCircleLayer?.isHidden = true
         generatingLabel?.alphaValue = 1
     }
 }
