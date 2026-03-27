@@ -841,4 +841,31 @@ extension TerminalView {
         // Final fallback: hard-truncate
         return String(shortened.prefix(maxLen - 1)) + "…"
     }
+
+    // MARK: - Return to Menu
+
+    func returnToMenu() {
+        appState = .menu
+        menuPhase = .main
+        menuRendered = false
+        menuSelection = 0
+        activeModelName = ""
+        activeProvider = ""
+
+        readSource?.cancel()
+        readSource = nil
+        processSource?.cancel()
+        processSource = nil
+
+        if let s = surface {
+            let reset = "\u{1b}[2J\u{1b}[H\u{1b}[?25h\u{1b}[0m"
+            let resetBytes = Array(reset.utf8)
+            resetBytes.withUnsafeBufferPointer { ptr in
+                at_surface_feed_bytes(s, ptr.baseAddress!, UInt32(ptr.count))
+            }
+        }
+
+        buildMenuEntries()
+        renderMenu()
+    }
 }

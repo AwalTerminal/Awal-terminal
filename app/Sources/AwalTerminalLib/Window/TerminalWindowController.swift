@@ -1364,8 +1364,30 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         terminal.onProcessExited = { [weak self, weak tab] in
             guard let self, let tab else { return }
             guard let model = terminal.currentModel, model.name != "Shell" else { return }
-            if let index = self.tabs.firstIndex(where: { $0 === tab }) {
-                self.closeTab(at: index)
+
+            let alert = NSAlert()
+            alert.messageText = "Close this tab?"
+            alert.informativeText = "\(model.name) session has ended."
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: "Close")
+            alert.addButton(withTitle: "Cancel")
+            let response = alert.runModal()
+            if response == .alertFirstButtonReturn {
+                if let index = self.tabs.firstIndex(where: { $0 === tab }) {
+                    if self.tabs.count == 1 {
+                        self.window?.performClose(nil)
+                    } else {
+                        self.cleanupWorktreeWithPrompt(for: tab) { [weak self] shouldClose in
+                            guard let self, shouldClose else { return }
+                            self.performCloseTab(at: index)
+                        }
+                    }
+                }
+            } else {
+                // User cancelled — return to menu for new session
+                tab.hasSession = false
+                tab.statusBar.resetSession()
+                terminal.returnToMenu()
             }
         }
 
