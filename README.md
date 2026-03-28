@@ -21,7 +21,9 @@
 A native macOS terminal built from scratch with Swift and Rust, designed specifically for working with AI coding agents like Claude Code, Gemini CLI, and Codex CLI.
 
 <p align="center">
-  <img src="docs/assets/screenshot-1.png" alt="Awal Terminal screenshot" width="720">
+  <img src="docs/assets/1.png" alt="Workspace selector" width="270">
+  <img src="docs/assets/5.png" alt="AI Components manager" width="270">
+  <img src="docs/assets/6.png" alt="Mission Control dashboard" width="270">
 </p>
 
 ## Features
