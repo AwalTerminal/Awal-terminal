@@ -1,6 +1,6 @@
 cask "awal-terminal" do
-  version "0.25.0"
-  sha256 "2997375d9d0b1eccee485390c624d78109acb4d08e9c65e4cae4b1c6fcfb3159"
+  version "0.25.1"
+  sha256 "1c879e529e4adbd63656d5ebcaaf22e211656b533b04aada37982c7ac36ca059"
 
   url "https://github.com/AwalTerminal/awal-terminal/releases/download/v#{version}/AwalTerminal.zip"
   name "Awal Terminal"
