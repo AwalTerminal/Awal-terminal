@@ -105,6 +105,10 @@ extension TerminalView {
 
     func renderMenu() {
         guard let s = surface else { return }
+        if menuEntries.isEmpty {
+            buildMenuEntries()
+            moveToFirstSelectable()
+        }
         let cols = Int(termCols)
         let rows = Int(termRows)
 

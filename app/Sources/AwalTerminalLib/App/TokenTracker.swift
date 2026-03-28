@@ -82,8 +82,17 @@ class TokenTracker {
             return (url, date)
         }.sorted { $0.1 > $1.1 }
 
-        guard let latestURL = sorted.first?.0 else { return }
-        let latestPath = latestURL.path
+        // Stick with the file we're already tracking (avoids cross-tab drift
+        // when multiple tabs share the same project directory). Only discover
+        // the latest file on first scan or when the tracked file is deleted.
+        let targetURL: URL
+        if !lastFile.isEmpty, fm.fileExists(atPath: lastFile) {
+            targetURL = URL(fileURLWithPath: lastFile)
+        } else {
+            guard let latest = sorted.first?.0 else { return }
+            targetURL = latest
+        }
+        let latestPath = targetURL.path
 
         // Check file size to skip re-parsing if unchanged
         guard let attrs = try? fm.attributesOfItem(atPath: latestPath),

@@ -1401,6 +1401,11 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
     private func buildSplitNode(from saved: SavedSplitNode) -> SplitNode {
         switch saved {
         case .leaf(let pane):
+            // If modelName is empty, this tab was showing the initial menu — restore as menu
+            if pane.modelName.isEmpty {
+                return .leaf(TerminalView(frame: .zero))
+            }
+
             let model = ModelCatalog.find(pane.modelName) ?? ModelCatalog.find("Shell")!
             let workingDir = pane.workingDir.flatMap { dir -> String? in
                 FileManager.default.fileExists(atPath: dir) ? dir : nil
