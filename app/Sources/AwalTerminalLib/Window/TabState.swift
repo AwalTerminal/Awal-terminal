@@ -1,6 +1,7 @@
 import AppKit
 
 class TabState {
+    let id = UUID()
     let splitContainer: SplitContainerView
     let statusBar: StatusBarView
     let aiSidePanel: AISidePanelView

@@ -22,6 +22,7 @@ protocol CustomTabBarDelegate: AnyObject {
 
 /// Display metadata for a single tab, computed by the controller.
 struct TabDisplayInfo {
+    let tabID: UUID
     let title: String
     let tabColor: NSColor?
     let isDangerMode: Bool
@@ -72,8 +73,8 @@ final class CustomTabBarView: NSView {
 
     // Drag-to-reorder state
     private var draggedTabIndex: Int?
+    private var draggedTabID: UUID?
     private var dragOrigin: NSPoint = .zero
-    private let dragThreshold: CGFloat = 5.0
 
     // Drag ghost state
     private var dragGhostWindow: NSPanel?
@@ -270,7 +271,7 @@ final class CustomTabBarView: NSView {
 
         for (i, info) in tabs.enumerated() {
             // Insert group header before the first tab of each group
-            if let gid = info.groupID, info.isFirstInGroup {
+            if let gid = info.groupID, info.isFirstInGroup, !insertedGroups.contains(gid) {
                 if let groupInfo = groups.first(where: { $0.id == gid }) {
                     let header = TabGroupHeaderView(
                         group: groupInfo,
@@ -341,6 +342,7 @@ final class CustomTabBarView: NSView {
             isGrouped: info.groupID != nil
         )
         tabItem.index = index
+        tabItem.tabID = info.tabID
         tabItem.onSelect = { [weak self] idx in
             guard let self else { return }
             self.delegate?.tabBar(self, didSelectTabAt: idx)
@@ -441,6 +443,7 @@ final class CustomTabBarView: NSView {
 
     private func beginDrag(fromIndex: Int, point: NSPoint) {
         draggedTabIndex = fromIndex
+        draggedTabID = (fromIndex >= 0 && fromIndex < tabViews.count) ? tabViews[fromIndex].tabID : nil
         dragOrigin = point
         if fromIndex >= 0 && fromIndex < tabViews.count {
             dragSourceView = tabViews[fromIndex]
@@ -453,6 +456,10 @@ final class CustomTabBarView: NSView {
     }
 
     private func updateDrag(point: NSPoint) {
+        // Re-resolve drag index from stable tab ID (index may be stale after reloadTabs)
+        if let id = draggedTabID, let resolved = tabViews.firstIndex(where: { $0.tabID == id }) {
+            draggedTabIndex = resolved
+        }
         guard let fromIndex = draggedTabIndex, tabViews.count > 1 else { return }
 
         let localPoint = convert(point, from: nil)
@@ -471,9 +478,13 @@ final class CustomTabBarView: NSView {
             let tvFrame = tv.convert(tv.bounds, to: self)
             if tvFrame.contains(localPoint) && i != fromIndex {
                 delegate?.tabBar(self, didReorderTabFrom: fromIndex, to: i)
-                draggedTabIndex = i
-                dragSourceView = tabViews[i]
-                dragSourceView?.alphaValue = 0.3
+                // Re-resolve after reload instead of using potentially stale 'i'
+                if let id = draggedTabID, let resolved = tabViews.firstIndex(where: { $0.tabID == id }) {
+                    draggedTabIndex = resolved
+                    dragSourceView?.alphaValue = 1.0
+                    dragSourceView = tabViews[resolved]
+                    dragSourceView?.alphaValue = 0.3
+                }
                 break
             }
         }
@@ -481,6 +492,7 @@ final class CustomTabBarView: NSView {
 
     private func endDrag() {
         draggedTabIndex = nil
+        draggedTabID = nil
         dragSourceView?.alphaValue = 1.0
         dragSourceView = nil
         dismissDragGhost()
@@ -716,6 +728,7 @@ private class TabGroupHeaderView: NSView {
 private class TabItemView: NSView {
 
     var index: Int = 0
+    var tabID: UUID?
     var onSelect: ((Int) -> Void)?
     var onClose: ((Int) -> Void)?
     var onDoubleClick: ((Int) -> Void)?

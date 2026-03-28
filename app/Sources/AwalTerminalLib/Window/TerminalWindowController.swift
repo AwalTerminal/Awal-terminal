@@ -421,6 +421,7 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
             let isFirst = tab.groupID != nil && (i == 0 || tabs[i - 1].groupID != tab.groupID)
             let isLast = tab.groupID != nil && (i == tabs.count - 1 || tabs[i + 1].groupID != tab.groupID)
             return TabDisplayInfo(
+                tabID: tab.id,
                 title: tab.title,
                 tabColor: tab.tabColor,
                 isDangerMode: tab.isDangerMode,
@@ -491,6 +492,12 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
 
     private func performCloseTab(at index: Int) {
         guard index >= 0 && index < tabs.count else { return }
+
+        // Last tab — close the window instead of leaving empty state
+        if tabs.count == 1 {
+            window?.performClose(nil)
+            return
+        }
 
         let closingActiveTab = (index == activeTabIndex)
 
@@ -752,6 +759,7 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         }
 
         let keepIndex = sender.tag
+        guard keepIndex >= 0 && keepIndex < tabs.count else { return }
         let keepTab = tabs[keepIndex]
         // Cleanup all tabs except the one being kept
         for (i, tab) in tabs.enumerated() where i != keepIndex {
@@ -1357,6 +1365,27 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
                 tab.groupID = nil
             }
         }
+
+        // Remove groups that have no member tabs
+        tabGroups.removeAll { group in
+            !tabs.contains { $0.groupID == group.id }
+        }
+
+        // Re-contiguify groups: gather each group's tabs together
+        // Preserve relative order: place each group at the position of its first member
+        var reordered: [TabState] = []
+        var placedGroups = Set<UUID>()
+        for tab in tabs {
+            if let gid = tab.groupID {
+                if !placedGroups.contains(gid) {
+                    placedGroups.insert(gid)
+                    reordered.append(contentsOf: tabs.filter { $0.groupID == gid })
+                }
+            } else {
+                reordered.append(tab)
+            }
+        }
+        tabs = reordered
 
         // Set active tab
         activeTabIndex = min(state.activeTabIndex, tabs.count - 1)
