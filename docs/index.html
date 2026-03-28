@@ -71,17 +71,43 @@
       padding: 0 24px;
     }
 
-    section { padding: 100px 0; }
+    section { padding: 120px 0; }
 
-    /* ── Dot Grid Background ── */
-    body::before {
-      content: '';
+    /* ── Scroll Progress Bar ── */
+    #scrollProgress {
+      position: fixed;
+      top: 0;
+      left: 0;
+      height: 2px;
+      width: 0%;
+      background: linear-gradient(90deg, var(--accent), var(--cyan));
+      z-index: 200;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      pointer-events: none;
+    }
+    #scrollProgress.visible { opacity: 1; }
+
+    /* ── Cursor Spotlight ── */
+    #cursorGlow {
+      position: fixed;
+      width: 600px;
+      height: 600px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(56, 152, 244, 0.06) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 1;
+      transform: translate(-50%, -50%);
+      will-change: transform;
+      transition: opacity 0.3s;
+    }
+
+    /* ── Particle Canvas ── */
+    #particleCanvas {
       position: fixed;
       inset: 0;
-      background-image: radial-gradient(rgba(56, 152, 244, 0.06) 1px, transparent 1px);
-      background-size: 32px 32px;
-      pointer-events: none;
       z-index: 0;
+      pointer-events: none;
     }
 
     /* ── Noise texture overlay ── */
@@ -97,7 +123,46 @@
 
     section, footer { position: relative; z-index: 1; }
 
-    /* ── Buttons ── */
+    /* ── Section Dividers ── */
+    .section-divider {
+      position: relative;
+      height: 1px;
+      max-width: 600px;
+      margin: 0 auto;
+      background: linear-gradient(90deg, transparent, rgba(56, 152, 244, 0.3), transparent);
+      z-index: 1;
+    }
+
+    /* ── Floating decorative elements (parallax) ── */
+    .deco {
+      position: absolute;
+      pointer-events: none;
+      will-change: transform;
+      z-index: 0;
+    }
+
+    .deco-line {
+      width: 200px;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(56, 152, 244, 0.15), transparent);
+      transform: rotate(-15deg);
+    }
+
+    .deco-circle {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      border: 1px solid rgba(56, 152, 244, 0.06);
+    }
+
+    .deco-dot {
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: rgba(56, 152, 244, 0.2);
+    }
+
+    /* ── Buttons ��─ */
     .btn {
       display: inline-flex;
       align-items: center;
@@ -111,6 +176,7 @@
       cursor: pointer;
       text-decoration: none;
       font-family: inherit;
+      will-change: transform;
     }
 
     .btn-primary {
@@ -120,7 +186,6 @@
     }
     .btn-primary:hover {
       text-decoration: none;
-      transform: translateY(-2px);
       box-shadow: 0 8px 40px var(--accent-glow);
     }
 
@@ -134,7 +199,6 @@
       border-color: var(--accent);
       background: rgba(56, 152, 244, 0.08);
       text-decoration: none;
-      transform: translateY(-2px);
     }
 
     /* ── Nav ── */
@@ -148,6 +212,13 @@
       background: rgba(10, 12, 16, 0.7);
       backdrop-filter: blur(20px);
       border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      transition: background 0.4s ease, border-color 0.4s ease, box-shadow 0.4s ease;
+    }
+
+    nav.nav-scrolled {
+      background: rgba(10, 12, 16, 0.95);
+      border-bottom-color: rgba(56, 152, 244, 0.1);
+      box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3);
     }
 
     nav .container {
@@ -196,7 +267,7 @@
       overflow: visible;
     }
 
-    /* Animated gradient orbs */
+    /* Animated gradient orbs (parallax layers) */
     .orb {
       position: absolute;
       border-radius: 50%;
@@ -204,6 +275,7 @@
       opacity: 0.4;
       pointer-events: none;
       animation: float 20s ease-in-out infinite;
+      will-change: transform;
     }
 
     .orb-1 {
@@ -236,6 +308,8 @@
 
     .hero .container { position: relative; z-index: 1; }
 
+    .hero-content { will-change: transform; }
+
     .hero h1 {
       font-size: clamp(42px, 7vw, 72px);
       font-weight: 800;
@@ -261,6 +335,15 @@
       width: var(--block);
       height: var(--block);
       border-radius: 2px;
+      opacity: 0;
+      transform: scale(0);
+      transition: opacity 0.4s cubic-bezier(0.34, 1.56, 0.64, 1),
+                  transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .ascii-logo span.revealed {
+      opacity: 1;
+      transform: scale(1);
     }
 
     .ascii-logo .on {
@@ -273,8 +356,13 @@
 
     .ascii-logo .off {
       background: transparent;
+      opacity: 1;
+      transform: scale(1);
     }
 
+    /* Shimmer removed — cascade reveal is sufficient */
+
+    /* ── Hero Tagline (character-by-character reveal) ── */
     .hero-tagline {
       font-family: var(--mono);
       font-size: clamp(15px, 2.5vw, 18px);
@@ -282,6 +370,22 @@
       font-weight: 500;
       margin-bottom: 16px;
       letter-spacing: -0.01em;
+    }
+
+    .hero-tagline .char {
+      display: inline-block;
+      opacity: 0;
+      transform: translateY(8px);
+      filter: blur(4px);
+      transition: opacity 0.3s ease, transform 0.3s ease, filter 0.3s ease;
+    }
+    .hero-tagline .char.revealed {
+      opacity: 1;
+      transform: translateY(0);
+      filter: blur(0);
+    }
+    .hero-tagline .char.space {
+      width: 0.3em;
     }
 
     .hero-tagline .typed-prefix {
@@ -309,6 +413,13 @@
       max-width: 480px;
       margin: 0 auto 44px;
       line-height: 1.7;
+      opacity: 0;
+      transform: translateY(16px);
+      transition: opacity 0.6s ease 0.8s, transform 0.6s ease 0.8s;
+    }
+    .hero-sub.revealed {
+      opacity: 1;
+      transform: translateY(0);
     }
 
     .hero-actions {
@@ -316,12 +427,27 @@
       gap: 16px;
       justify-content: center;
       flex-wrap: wrap;
+      opacity: 0;
+      transform: translateY(16px);
+      transition: opacity 0.6s ease 1s, transform 0.6s ease 1s;
+    }
+    .hero-actions.revealed {
+      opacity: 1;
+      transform: translateY(0);
     }
 
     /* ── Live Terminal Demo ── */
     .terminal-demo {
       margin-top: 72px;
       text-align: left;
+      will-change: transform, opacity, filter;
+      opacity: 0;
+      transform: translateY(30px);
+      transition: opacity 0.8s ease 1.2s, transform 0.8s ease 1.2s;
+    }
+    .terminal-demo.revealed {
+      opacity: 1;
+      transform: translateY(0);
     }
 
     .awal-window {
@@ -331,6 +457,66 @@
       box-shadow:
         0 8px 80px rgba(0, 0, 0, 0.6),
         0 0 0 1px rgba(255, 255, 255, 0.08);
+      position: relative;
+    }
+
+    /* CRT boot effects */
+    .awal-window::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(255, 255, 255, 0.008) 2px,
+        rgba(255, 255, 255, 0.008) 4px
+      );
+      pointer-events: none;
+      z-index: 10;
+      border-radius: 10px;
+    }
+
+    /* Scan line animation */
+    .awal-window .scanline {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, rgba(56, 152, 244, 0.3), rgba(255, 255, 255, 0.1), rgba(56, 152, 244, 0.3), transparent);
+      z-index: 11;
+      pointer-events: none;
+      opacity: 0;
+    }
+    .awal-window .scanline.animate {
+      opacity: 1;
+      animation: scanDown 0.5s ease-out forwards;
+    }
+    @keyframes scanDown {
+      from { top: 0; opacity: 1; }
+      to { top: 100%; opacity: 0; }
+    }
+
+    /* Screen flash */
+    .awal-window .screen-flash {
+      position: absolute;
+      inset: 0;
+      background: white;
+      z-index: 12;
+      pointer-events: none;
+      opacity: 0;
+      border-radius: 10px;
+    }
+    .awal-window .screen-flash.animate {
+      animation: flashOn 0.4s ease-out forwards;
+    }
+    @keyframes flashOn {
+      0% { opacity: 0; }
+      15% { opacity: 0.06; }
+      40% { opacity: 0; }
+      55% { opacity: 0.03; }
+      100% { opacity: 0; }
     }
 
     /* macOS titlebar */
@@ -394,6 +580,8 @@
       line-height: 1.7;
       min-height: 180px;
       color: #cccccc;
+      /* Subtle chromatic aberration */
+      text-shadow: 0.3px 0 rgba(56, 152, 244, 0.15), -0.3px 0 rgba(244, 114, 182, 0.1);
     }
 
     .awal-banner-box {
@@ -415,13 +603,13 @@
     }
 
     .awal-line { opacity: 0; animation: typeLine 0.3s ease forwards; }
-    .awal-line:nth-child(1) { animation-delay: 0.3s; }
-    .awal-line:nth-child(2) { animation-delay: 0.8s; }
-    .awal-line:nth-child(3) { animation-delay: 1.2s; }
-    .awal-line:nth-child(4) { animation-delay: 2.4s; }
-    .awal-line:nth-child(5) { animation-delay: 2.4s; }
-    .awal-line:nth-child(6) { animation-delay: 3.2s; }
-    .awal-line:nth-child(7) { animation-delay: 3.2s; }
+    .awal-line:nth-child(1) { animation-delay: 1.8s; }
+    .awal-line:nth-child(2) { animation-delay: 2.3s; }
+    .awal-line:nth-child(3) { animation-delay: 2.7s; }
+    .awal-line:nth-child(4) { animation-delay: 3.9s; }
+    .awal-line:nth-child(5) { animation-delay: 3.9s; }
+    .awal-line:nth-child(6) { animation-delay: 4.7s; }
+    .awal-line:nth-child(7) { animation-delay: 4.7s; }
 
     @keyframes typeLine {
       from { opacity: 0; transform: translateY(3px); }
@@ -436,8 +624,8 @@
       vertical-align: bottom;
       max-width: 0;
       animation:
-        typewrite 0.8s steps(12) 1.6s forwards,
-        blink-caret 0.6s step-end 1.6s 3;
+        typewrite 0.8s steps(12) 3.1s forwards,
+        blink-caret 0.6s step-end 3.1s 3;
       border-right: 2px solid transparent;
     }
 
@@ -451,7 +639,7 @@
     .awal-reveal {
       display: inline;
       opacity: 0;
-      animation: revealText 0.4s ease 2.8s forwards;
+      animation: revealText 0.4s ease 4.3s forwards;
     }
 
     @keyframes revealText {
@@ -471,7 +659,7 @@
       height: 1.1em;
       background: #cccccc;
       vertical-align: text-bottom;
-      animation: cursor-blink 1s step-end infinite 3.5s;
+      animation: cursor-blink 1s step-end infinite 5s;
       opacity: 0;
     }
 
@@ -521,8 +709,28 @@
       gap: 16px;
     }
 
-    /* ── Screenshot Showcase ── */
-    .showcase { padding-top: 20px; }
+    /* ── Horizontal Scroll Showcase ── */
+    .showcase {
+      padding-top: 20px;
+      padding-bottom: 0;
+      position: relative;
+    }
+
+    .showcase-scroll-runway {
+      height: 550vh;
+      position: relative;
+    }
+
+    .showcase-sticky {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      overflow: hidden;
+      padding: 80px 0 40px;
+    }
 
     .showcase-label {
       font-family: var(--mono);
@@ -538,106 +746,56 @@
       text-align: center;
       font-size: clamp(28px, 4vw, 40px);
       font-weight: 700;
-      margin-bottom: 56px;
+      margin-bottom: 48px;
       letter-spacing: -0.02em;
     }
 
-    .card-stack {
-      position: relative;
-      max-width: 900px;
-      margin: 0 auto;
-      perspective: 1200px;
-      aspect-ratio: 16 / 10;
-      cursor: pointer;
+    .showcase-track {
+      display: flex;
+      gap: 40px;
+      padding: 0 calc(50vw - 400px);
+      will-change: transform;
+      transition: none;
     }
 
-    .card-stack-item {
-      position: absolute;
-      inset: 0;
-      transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1),
-                  opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1),
-                  z-index 0s 0.3s;
-      transform: translateX(0) rotateZ(0deg) scale(0.88);
-      opacity: 0;
-      z-index: 0;
-    }
-
-    .card-stack-item.pos-center {
-      transform: translateX(0) rotateZ(0deg) scale(1);
-      opacity: 1;
-      z-index: 3;
-    }
-
-    .card-stack-item.pos-left {
-      transform: translateX(-6%) rotateZ(-4deg) scale(0.92);
-      opacity: 0.6;
-      z-index: 1;
-    }
-
-    .card-stack-item.pos-right {
-      transform: translateX(6%) rotateZ(4deg) scale(0.92);
-      opacity: 0.6;
-      z-index: 2;
-    }
-
-    /* On hover: fan out more */
-    .card-stack:hover .card-stack-item.pos-center {
-      transform: translateX(0) rotateZ(0deg) scale(1);
-    }
-    .card-stack:hover .card-stack-item.pos-left {
-      transform: translateX(-10%) rotateZ(-6deg) scale(0.90);
-      opacity: 0.75;
-    }
-    .card-stack:hover .card-stack-item.pos-right {
-      transform: translateX(10%) rotateZ(6deg) scale(0.90);
-      opacity: 0.75;
-    }
-
-    .card-stack-inner {
+    .showcase-slide {
+      flex: 0 0 800px;
+      max-width: 800px;
       border-radius: 14px;
       overflow: hidden;
-      border: none;
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-      position: relative;
+      transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.4s ease;
+      transform: scale(0.92);
+      opacity: 0.5;
     }
 
-    .screenshot-wrap {
-      border-radius: 0;
-      overflow: hidden;
+    .showcase-slide.active {
+      transform: scale(1);
+      opacity: 1;
     }
 
-    .screenshot-wrap img {
+    .showcase-slide img {
       width: 100%;
       height: auto;
       display: block;
     }
 
-    .screenshot-caption {
-      position: absolute;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      padding: 32px 20px 16px;
-      background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
+    .showcase-slide .screenshot-caption {
+      padding: 16px 20px;
+      background: rgba(0, 0, 0, 0.6);
       color: var(--text-muted);
       font-size: 13px;
       text-align: center;
-      opacity: 0;
-      transition: opacity 0.4s ease;
     }
 
-    .card-stack-item.active .screenshot-caption {
-      opacity: 1;
-    }
-
-    .card-stack-dots {
+    .showcase-dots {
       display: flex;
       justify-content: center;
       gap: 10px;
       margin-top: 24px;
     }
 
-    .card-dot {
+    .showcase-dot {
       width: 10px;
       height: 10px;
       border-radius: 50%;
@@ -645,15 +803,17 @@
       background: transparent;
       cursor: pointer;
       padding: 0;
-      transition: background 0.3s ease, border-color 0.3s ease;
+      transition: background 0.3s ease, border-color 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
     }
 
-    .card-dot.active {
+    .showcase-dot.active {
       background: var(--accent);
       border-color: var(--accent);
+      transform: scale(1.2);
+      box-shadow: 0 0 12px var(--accent-glow);
     }
 
-    /* ── Benchmark ── */
+    /* ── Benchmark ─�� */
     .benchmark {
       text-align: center;
       padding: 80px 0;
@@ -676,6 +836,8 @@
       overflow-x: auto;
       border-radius: 12px;
       border: 1px solid rgba(255,255,255,0.06);
+      backdrop-filter: blur(8px);
+      background: rgba(14, 16, 22, 0.4);
     }
     .benchmark-table {
       width: 100%;
@@ -701,6 +863,14 @@
       background: var(--accent);
       color: #fff;
     }
+    /* Awal column glow */
+    .benchmark-table th.highlight.glow-pulse {
+      animation: columnGlow 2s ease-in-out infinite;
+    }
+    @keyframes columnGlow {
+      0%, 100% { box-shadow: 0 0 0 rgba(56, 152, 244, 0); }
+      50% { box-shadow: 0 0 20px rgba(56, 152, 244, 0.4); }
+    }
     .benchmark-table td {
       background: var(--bg-card);
     }
@@ -718,13 +888,42 @@
     .benchmark-table .check {
       color: #34d399;
       font-weight: 700;
+      display: inline-block;
+      transform: scale(0);
+      transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
     }
+    .benchmark-table .check.pop { transform: scale(1); }
     .benchmark-table .cross {
       color: rgba(255,255,255,0.2);
+      display: inline-block;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+    .benchmark-table .cross.pop { opacity: 1; }
+
+    /* Table row wipe reveal */
+    .benchmark-table tbody tr {
+      opacity: 0;
+      transform: translateX(-20px);
+      transition: opacity 0.5s ease, transform 0.5s ease;
+    }
+    .benchmark-table tbody tr.revealed {
+      opacity: 1;
+      transform: translateX(0);
     }
 
-    /* ── Features ── */
-    .features { overflow: hidden; }
+    /* ── Features (sticky header + 3D tilt cards) ── */
+    .features {
+      overflow: visible;
+      position: relative;
+    }
+
+    .features-header {
+      position: sticky;
+      top: 80px;
+      z-index: 2;
+      padding-bottom: 32px;
+    }
 
     .features-label {
       font-family: var(--mono);
@@ -736,11 +935,24 @@
       margin-bottom: 16px;
     }
 
+    /* Clip-path reveal for features heading */
+    .features-header .clip-reveal {
+      clip-path: inset(0 100% 0 0);
+      transition: clip-path 1s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .features-header .clip-reveal.revealed {
+      clip-path: inset(0 0% 0 0);
+    }
+    /* Ensure it's visible if JS hasn't run or reduced motion */
+    @media (prefers-reduced-motion: reduce) {
+      .features-header .clip-reveal { clip-path: none; }
+    }
+
     .features h2 {
       text-align: center;
       font-size: clamp(28px, 4vw, 40px);
       font-weight: 700;
-      margin-bottom: 56px;
+      margin-bottom: 0;
       letter-spacing: -0.02em;
     }
 
@@ -748,40 +960,70 @@
       display: grid;
       grid-template-columns: repeat(3, 1fr);
       gap: 20px;
+      position: relative;
+      z-index: 1;
+      perspective: 1000px;
     }
 
     .feature-card {
-      background: linear-gradient(135deg, rgba(14, 16, 22, 0.8), rgba(20, 24, 32, 0.6));
+      background: linear-gradient(135deg, rgba(14, 16, 22, 0.6), rgba(20, 24, 32, 0.4));
       border: 1px solid rgba(255, 255, 255, 0.04);
       border-radius: var(--radius);
       padding: 32px 28px;
-      transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+      transition: box-shadow 0.35s ease, border-color 0.35s ease;
       position: relative;
       overflow: hidden;
+      backdrop-filter: blur(12px);
+      transform-style: preserve-3d;
+      will-change: transform;
+      --mouse-x: 50%;
+      --mouse-y: 50%;
     }
 
-    /* Gradient border on hover */
+    /* Mouse-tracking border glow (Linear-style) */
     .feature-card::before {
       content: '';
       position: absolute;
       inset: 0;
       border-radius: var(--radius);
       padding: 1px;
-      background: linear-gradient(135deg, transparent, transparent);
+      background: radial-gradient(
+        400px circle at var(--mouse-x) var(--mouse-y),
+        rgba(56, 152, 244, 0.3),
+        transparent 60%
+      );
       -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
       -webkit-mask-composite: xor;
       mask-composite: exclude;
-      transition: background 0.35s ease;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      pointer-events: none;
     }
 
     .feature-card:hover::before {
-      background: linear-gradient(135deg, var(--accent), var(--cyan));
+      opacity: 1;
     }
 
+    /* Mouse-tracking light overlay */
+    .feature-card::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: var(--radius);
+      background: radial-gradient(
+        300px circle at var(--mouse-x) var(--mouse-y),
+        rgba(56, 152, 244, 0.04),
+        transparent 60%
+      );
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+    .feature-card:hover::after { opacity: 1; }
+
     .feature-card:hover {
-      transform: translateY(-4px);
       box-shadow: 0 12px 40px rgba(56, 152, 244, 0.12);
-      background: linear-gradient(135deg, rgba(20, 24, 32, 0.9), rgba(26, 30, 40, 0.7));
+      border-color: rgba(56, 152, 244, 0.1);
     }
 
     .feature-icon-wrap {
@@ -794,6 +1036,12 @@
       margin-bottom: 20px;
       font-size: 22px;
       position: relative;
+      transform: translateZ(0);
+      transition: transform 0.35s ease;
+    }
+
+    .feature-card:hover .feature-icon-wrap {
+      transform: translateZ(20px) scale(1.05);
     }
 
     .feature-icon-wrap.gpu { background: rgba(56, 152, 244, 0.12); color: var(--accent-light); }
@@ -916,7 +1164,7 @@
       margin-right: auto;
     }
 
-    /* ── CTA / Download ── */
+    /* ── CTA / Download (circle reveal) ── */
     .cta {
       text-align: center;
       position: relative;
@@ -924,17 +1172,26 @@
 
     .cta-glow {
       position: absolute;
-      width: 500px;
-      height: 300px;
+      width: 600px;
+      height: 400px;
       background: radial-gradient(ellipse, var(--accent-glow) 0%, transparent 70%);
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      opacity: 0.25;
+      opacity: 0.3;
       pointer-events: none;
     }
 
     .cta .container { position: relative; z-index: 1; }
+
+    /* Circle expand reveal */
+    .cta-reveal {
+      clip-path: circle(0% at 50% 50%);
+      transition: clip-path 1s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .cta-reveal.revealed {
+      clip-path: circle(100% at 50% 50%);
+    }
 
     .cta h2 {
       font-size: clamp(32px, 5vw, 48px);
@@ -1003,7 +1260,7 @@
       font-size: 13px;
     }
 
-    /* ── Scroll Fade-in ── */
+    /* ── Scroll Fade-in (enhanced with directional slide) ── */
     .fade-in {
       opacity: 0;
       transform: translateY(24px);
@@ -1012,7 +1269,18 @@
 
     .fade-in.visible {
       opacity: 1;
-      transform: translateY(0);
+      transform: translateY(0) translateX(0);
+    }
+
+    /* Feature cards: slide in from sides */
+    .feature-card.fade-in {
+      transform: translateY(24px) translateX(-30px);
+    }
+    .feature-card.fade-in:nth-child(3n+2) {
+      transform: translateY(30px) translateX(0);
+    }
+    .feature-card.fade-in:nth-child(3n) {
+      transform: translateY(24px) translateX(30px);
     }
 
     /* Staggered children */
@@ -1028,6 +1296,12 @@
     .stagger > .fade-in:nth-child(10) { transition-delay: 0.54s; }
     .stagger > .fade-in:nth-child(11) { transition-delay: 0.60s; }
     .stagger > .fade-in:nth-child(12) { transition-delay: 0.66s; }
+    .stagger > .fade-in:nth-child(13) { transition-delay: 0.72s; }
+    .stagger > .fade-in:nth-child(14) { transition-delay: 0.78s; }
+    .stagger > .fade-in:nth-child(15) { transition-delay: 0.84s; }
+    .stagger > .fade-in:nth-child(16) { transition-delay: 0.90s; }
+    .stagger > .fade-in:nth-child(17) { transition-delay: 0.96s; }
+    .stagger > .fade-in:nth-child(18) { transition-delay: 1.02s; }
 
     /* ── Responsive ── */
     @media (max-width: 768px) {
@@ -1035,7 +1309,14 @@
       .hero { padding: 140px 0 72px; }
       nav .nav-links .nav-hide { display: none; }
 
-      .features-grid { grid-template-columns: 1fr; gap: 16px; }
+      .features-grid { grid-template-columns: 1fr; gap: 16px; perspective: none; }
+      .features-header { position: relative; top: auto; background: none; }
+
+      .feature-card.fade-in,
+      .feature-card.fade-in:nth-child(3n+2),
+      .feature-card.fade-in:nth-child(3n) {
+        transform: translateY(24px) translateX(0);
+      }
 
       .hero-actions { flex-direction: column; align-items: center; }
       .btn { width: 100%; max-width: 280px; justify-content: center; }
@@ -1047,41 +1328,86 @@
       .benchmark-table-wrap { -webkit-overflow-scrolling: touch; }
       .benchmark-table { font-size: 13px; }
 
-      .card-stack {
-        perspective: none;
-        aspect-ratio: auto;
+      .showcase-scroll-runway { height: auto; }
+      .showcase-sticky { position: relative; height: auto; padding: 40px 0; }
+      .showcase-track {
+        padding: 0 24px;
+        overflow-x: auto;
+        scroll-snap-type: x mandatory;
+        -webkit-overflow-scrolling: touch;
+        gap: 16px;
       }
-      .card-stack-item {
-        position: relative;
-        transform: none !important;
-        opacity: 1 !important;
-        display: none;
-        z-index: auto !important;
-      }
-      .card-stack-item.active {
-        display: block;
-      }
-      .card-stack:hover .card-stack-item {
-        transform: none !important;
-        opacity: 1 !important;
-      }
-      .screenshot-caption {
-        position: static;
-        background: none;
+      .showcase-slide {
+        flex: 0 0 85vw;
+        max-width: 85vw;
+        scroll-snap-align: center;
+        transform: scale(1);
         opacity: 1;
-        padding: 12px 0 0;
       }
+
+      #cursorGlow { display: none; }
+      #particleCanvas { display: none; }
     }
 
     @media (min-width: 769px) and (max-width: 1024px) {
       .features-grid { grid-template-columns: repeat(2, 1fr); }
+      .feature-card.fade-in:nth-child(3n) {
+        transform: translateY(24px) translateX(0);
+      }
+      .showcase-slide { flex: 0 0 600px; max-width: 600px; }
+      .showcase-track { padding: 0 calc(50vw - 300px); }
+    }
+
+    /* ── Reduced Motion ── */
+    @media (prefers-reduced-motion: reduce) {
+      .orb { animation: none; }
+      .fade-in { opacity: 1; transform: none; transition: none; }
+      .feature-card.fade-in,
+      .feature-card.fade-in:nth-child(3n+2),
+      .feature-card.fade-in:nth-child(3n) { opacity: 1; transform: none; }
+      .awal-line { opacity: 1; animation: none; }
+      .awal-typewriter { max-width: none; animation: none; border: none; }
+      .awal-reveal { opacity: 1; animation: none; }
+      .ascii-logo span { opacity: 1; transform: none; transition: none; }
+      .hero-tagline .char { opacity: 1; transform: none; filter: none; transition: none; }
+      .hero-sub, .hero-actions, .terminal-demo { opacity: 1; transform: none; transition: none; }
+      .showcase-scroll-runway { height: auto; }
+      .showcase-sticky { position: relative; height: auto; padding: 40px 0; }
+      .showcase-track { overflow-x: auto; scroll-snap-type: x mandatory; padding: 0 24px; }
+      .showcase-slide { scroll-snap-align: center; transform: scale(1); opacity: 1; }
+      .benchmark-table tbody tr { opacity: 1; transform: none; }
+      .benchmark-table .check { transform: scale(1); }
+      .benchmark-table .cross { opacity: 1; }
+      .cta-reveal { clip-path: circle(100% at 50% 50%); }
+      .features-header .clip-reveal { clip-path: inset(0 0% 0 0); }
+      #cursorGlow, #particleCanvas { display: none; }
+      #scrollProgress { display: none; }
+      html { scroll-behavior: auto; }
     }
   </style>
 </head>
 <body>
 
+  <!-- ════ Scroll Progress Bar ════ -->
+  <div id="scrollProgress"></div>
+
+  <!-- ════ Cursor Spotlight ════ -->
+  <div id="cursorGlow"></div>
+
+  <!-- ════ Particle Canvas ════ -->
+  <canvas id="particleCanvas"></canvas>
+
+  <!-- ════ Decorative parallax elements ════ -->
+  <div class="deco deco-line" style="top: 35%; left: -5%;" data-parallax="0.08"></div>
+  <div class="deco deco-line" style="top: 55%; right: -3%; transform: rotate(20deg);" data-parallax="0.12"></div>
+  <div class="deco deco-circle" style="top: 25%; right: 8%;" data-parallax="0.06"></div>
+  <div class="deco deco-circle" style="top: 70%; left: 5%; width: 120px; height: 120px;" data-parallax="0.1"></div>
+  <div class="deco deco-dot" style="top: 40%; left: 15%;" data-parallax="0.15"></div>
+  <div class="deco deco-dot" style="top: 60%; right: 20%;" data-parallax="0.18"></div>
+  <div class="deco deco-dot" style="top: 80%; left: 30%;" data-parallax="0.1"></div>
+
   <!-- ════ Nav ════ -->
-  <nav>
+  <nav id="mainNav">
     <div class="container">
       <a href="#" class="nav-brand">
         <img src="assets/logomark-white.png" alt="Awal">
@@ -1100,27 +1426,31 @@
   </nav>
 
   <!-- ════ Hero ════ -->
-  <section class="hero">
-    <div class="orb orb-1"></div>
-    <div class="orb orb-2"></div>
-    <div class="orb orb-3"></div>
+  <section class="hero" id="hero">
+    <div class="orb orb-1" data-parallax="0.15"></div>
+    <div class="orb orb-2" data-parallax="0.25"></div>
+    <div class="orb orb-3" data-parallax="0.2"></div>
     <div class="container">
-      <div class="ascii-logo" role="img" aria-label="AWAL" id="ascii-logo"></div>
-      <p class="hero-tagline"><span class="t-prompt">$</span> the LLM-native terminal<span class="cursor"></span></p>
-      <p class="hero-sub">Fast, native, and built for AI-first development.</p>
-      <div class="hero-actions">
-        <a href="#" onclick="showDownloadModal(event)" class="btn btn-primary">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          Download for macOS
-        </a>
-        <a href="https://github.com/AwalTerminal/awal-terminal" class="btn btn-secondary">
-          View on GitHub
-        </a>
+      <div class="hero-content" id="heroContent">
+        <div class="ascii-logo" role="img" aria-label="AWAL" id="ascii-logo"></div>
+        <p class="hero-tagline" id="heroTagline"></p>
+        <p class="hero-sub" id="heroSub">Fast, native, and built for AI-first development.</p>
+        <div class="hero-actions" id="heroActions">
+          <a href="#" onclick="showDownloadModal(event)" class="btn btn-primary magnetic-btn">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download for macOS
+          </a>
+          <a href="https://github.com/AwalTerminal/awal-terminal" class="btn btn-secondary magnetic-btn">
+            View on GitHub
+          </a>
+        </div>
       </div>
 
       <!-- Live terminal demo -->
-      <div class="terminal-demo">
-        <div class="awal-window">
+      <div class="terminal-demo" id="terminalDemo">
+        <div class="awal-window" id="awalWindow">
+          <div class="screen-flash"></div>
+          <div class="scanline"></div>
           <div class="awal-titlebar">
             <div class="awal-dots">
               <span class="awal-dot r"></span>
@@ -1141,26 +1471,26 @@
               <div class="awal-banner-title t-orange">Claude Code v2.1.70</div>
               <div class="awal-banner-content">
                 <div class="t-white">Welcome back <span id="randomName"></span>!</div>
-                <div class="t-dim" style="margin-top: 4px;">Opus 4.6 · Claude Max</div>
+                <div class="t-dim" style="margin-top: 4px;">Opus 4.6 &middot; Claude Max</div>
                 <div class="t-dim">~/Projects/awal</div>
               </div>
             </div>
             <div class="awal-line">&nbsp;</div>
-            <div class="awal-line"><span class="t-chevron">❯</span><span class="awal-typewriter">hello claude</span></div>
+            <div class="awal-line"><span class="t-chevron">&#10095;</span><span class="awal-typewriter">hello claude</span></div>
             <div class="awal-line">&nbsp;</div>
-            <div class="awal-line"><span class="t-dim t-indicator">■</span><span class="awal-reveal"> Hello! How can I help you today?</span></div>
+            <div class="awal-line"><span class="t-dim t-indicator">&#9632;</span><span class="awal-reveal"> Hello! How can I help you today?</span></div>
             <div class="awal-line">&nbsp;</div>
-            <div class="awal-line"><span class="t-chevron">❯</span><span class="cursor"></span></div>
+            <div class="awal-line"><span class="t-chevron">&#10095;</span><span class="cursor"></span></div>
           </div>
           <div class="awal-statusbar">
             <div class="awal-statusbar-section">
               <span class="model">Claude</span>
-              <span class="t-dim">MIC ·····</span>
+              <span class="t-dim">MIC &middot;&middot;&middot;&middot;&middot;</span>
               <span class="t-dim">|</span>
               <span>/</span>
             </div>
             <div class="awal-statusbar-section">
-              <span>5.6k ctx · 13 out</span>
+              <span>5.6k ctx &middot; 13 out</span>
               <span class="t-dim">|</span>
               <span>0:30</span>
             </div>
@@ -1170,51 +1500,75 @@
     </div>
   </section>
 
-  <!-- ════ Screenshot Showcase ════ -->
+  <!-- ════ Section Divider ════ -->
+  <div class="section-divider"></div>
+
+  <!-- ════ Screenshot Showcase (horizontal scroll) ════ -->
   <section class="showcase" id="screenshots">
-    <div class="container fade-in">
-      <p class="showcase-label">Preview</p>
-      <h2>See it in action</h2>
-      <div class="card-stack" id="cardStack" role="region" aria-label="Screenshot gallery" tabindex="0">
-        <div class="card-stack-item active" aria-hidden="false">
-          <div class="card-stack-inner">
-            <div class="screenshot-wrap">
-              <img src="assets/awal-1.png" alt="Awal Terminal — Workspace selector with multiple AI providers">
-            </div>
-            <p class="screenshot-caption">Workspace selector with Claude, Gemini, Codex &amp; Shell sessions</p>
-          </div>
-        </div>
-        <div class="card-stack-item" aria-hidden="true">
-          <div class="card-stack-inner">
-            <div class="screenshot-wrap">
-              <img src="assets/awal-2.png" alt="Awal Terminal — AI side panel with diff rendering and context usage">
-            </div>
-            <p class="screenshot-caption">AI side panel with diff rendering, token tracking &amp; file references</p>
-          </div>
-        </div>
-        <div class="card-stack-item" aria-hidden="true">
-          <div class="card-stack-inner">
-            <div class="screenshot-wrap">
-              <img src="assets/awal-3.png" alt="Awal Terminal — Skills, rules, prompts and agents manager">
-            </div>
-            <p class="screenshot-caption">Skills, rules, prompts &amp; agents with the AI components manager</p>
-          </div>
-        </div>
+    <div class="container" style="max-width: 100%; padding: 0;">
+      <div style="max-width: 1040px; margin: 0 auto; padding: 0 24px;">
+        <p class="showcase-label fade-in">Preview</p>
+        <h2 class="fade-in">See it in action</h2>
       </div>
-      <div class="card-stack-dots" id="cardDots">
-        <button class="card-dot active" aria-label="Show screenshot 1"></button>
-        <button class="card-dot" aria-label="Show screenshot 2"></button>
-        <button class="card-dot" aria-label="Show screenshot 3"></button>
+      <div class="showcase-scroll-runway" id="showcaseRunway">
+        <div class="showcase-sticky">
+          <div class="showcase-track" id="showcaseTrack">
+            <div class="showcase-slide" data-index="0">
+              <img src="assets/1.png" alt="Awal Terminal — Workspace selector with tab sidebar">
+              <p class="screenshot-caption">Workspace selector with recent projects, tab sidebar &amp; multi-provider sessions</p>
+            </div>
+            <div class="showcase-slide" data-index="1">
+              <img src="assets/2.png" alt="Awal Terminal — Claude session with AI side panel">
+              <p class="screenshot-caption">Claude session with side panel, token tracking, file references &amp; remote control</p>
+            </div>
+            <div class="showcase-slide" data-index="2">
+              <img src="assets/2.5.png" alt="Awal Terminal — Horizontal tab bar with tab groups">
+              <p class="screenshot-caption">Horizontal tab bar with tab groups, worktree isolation &amp; multiple sessions</p>
+            </div>
+            <div class="showcase-slide" data-index="3">
+              <img src="assets/3.png" alt="Awal Terminal — Security Rules editor">
+              <p class="screenshot-caption">Security Rules editor with regex patterns, severity levels &amp; target matching</p>
+            </div>
+            <div class="showcase-slide" data-index="4">
+              <img src="assets/4.png" alt="Awal Terminal — Remote Control with QR code">
+              <p class="screenshot-caption">Remote Control — scan a QR code to manage sessions from your phone</p>
+            </div>
+            <div class="showcase-slide" data-index="5">
+              <img src="assets/5.png" alt="Awal Terminal — AI Components manager">
+              <p class="screenshot-caption">AI Components manager with registries, skills, rules, prompts &amp; agents</p>
+            </div>
+            <div class="showcase-slide" data-index="6">
+              <img src="assets/6.png" alt="Awal Terminal — Mission Control dashboard">
+              <p class="screenshot-caption">Mission Control — all active agents, spend tracking &amp; context usage at a glance</p>
+            </div>
+          </div>
+          <div class="showcase-dots" id="showcaseDots">
+            <button class="showcase-dot active" aria-label="Show screenshot 1"></button>
+            <button class="showcase-dot" aria-label="Show screenshot 2"></button>
+            <button class="showcase-dot" aria-label="Show screenshot 3"></button>
+            <button class="showcase-dot" aria-label="Show screenshot 4"></button>
+            <button class="showcase-dot" aria-label="Show screenshot 5"></button>
+            <button class="showcase-dot" aria-label="Show screenshot 6"></button>
+            <button class="showcase-dot" aria-label="Show screenshot 7"></button>
+          </div>
+        </div>
       </div>
     </div>
   </section>
 
+  <!-- ════ Section Divider ═══��� -->
+  <div class="section-divider"></div>
+
   <!-- ════ Features ════ -->
   <section class="features" id="features">
     <div class="container">
-      <p class="features-label">Features</p>
-      <h2>Built different</h2>
-      <div class="features-grid stagger">
+      <div class="features-header">
+        <div class="clip-reveal" id="featuresClipReveal">
+          <p class="features-label">Features</p>
+          <h2>Built different</h2>
+        </div>
+      </div>
+      <div class="features-grid stagger" id="featuresGrid">
         <div class="feature-card fade-in">
           <div class="feature-icon-wrap gpu">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
@@ -1345,17 +1699,20 @@
     </div>
   </section>
 
+  <!-- ════ Section Divider ════ -->
+  <div class="section-divider"></div>
+
   <!-- ════ Benchmark ════ -->
   <section class="benchmark" id="benchmark">
     <div class="container fade-in">
       <p class="benchmark-label">Comparison</p>
       <h2>How Awal compares</h2>
       <div class="benchmark-table-wrap">
-        <table class="benchmark-table">
+        <table class="benchmark-table" id="benchmarkTable">
           <thead>
             <tr>
               <th></th>
-              <th class="highlight">Awal</th>
+              <th class="highlight" id="awalHeader">Awal</th>
               <th>iTerm2</th>
               <th>Warp</th>
               <th>Ghostty</th>
@@ -1458,15 +1815,15 @@
   <!-- ════ Download CTA ════ -->
   <section class="cta" id="download">
     <div class="cta-glow"></div>
-    <div class="container fade-in">
+    <div class="container cta-reveal" id="ctaReveal">
       <h2>Ready to try it?</h2>
       <p>Free and open source. Always will be.</p>
       <div class="cta-actions">
-        <a href="#" onclick="showDownloadModal(event)" class="btn btn-primary">
+        <a href="#" onclick="showDownloadModal(event)" class="btn btn-primary magnetic-btn">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           Download for macOS
         </a>
-        <a href="https://github.com/AwalTerminal/awal-terminal" class="btn btn-secondary">Build from Source</a>
+        <a href="https://github.com/AwalTerminal/awal-terminal" class="btn btn-secondary magnetic-btn">Build from Source</a>
       </div>
       <div style="margin-top:1.5rem; background:var(--bg-surface); border:1px solid rgba(255,255,255,0.06); border-radius:12px; padding:1.25rem 1.5rem; max-width:480px; margin-left:auto; margin-right:auto; text-align:left;">
         <p style="color:var(--text); font-size:0.95rem; font-weight:600; margin-bottom:0.5rem;">Or install with Homebrew</p>
@@ -1492,60 +1849,209 @@ brew install --cask awal-terminal</code></pre>
     </div>
   </footer>
 
-  <!-- ════ Scroll Fade-in ════ -->
+  <!-- ════ Scripts ════ -->
   <script>
-    // Random welcome name
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const isMobile = window.innerWidth <= 768;
+    let mouseX = 0, mouseY = 0;
+
+    // ── Random welcome name ──
     (() => {
       const names = [
-        "Alex", "Amira", "Arun", "Bella", "Carlos",
-        "Chloe", "Daniel", "Elena", "Fatima", "Gabriel",
-        "Hana", "Hugo", "Ines", "James", "Karim",
-        "Layla", "Leo", "Luna", "Marco", "Maya",
-        "Nadia", "Noah", "Omar", "Priya", "Quinn",
-        "Rosa", "Ravi", "Samir", "Sofia", "Tariq",
-        "Uma", "Victor", "Wren", "Xena", "Yuki",
-        "Zara", "Aiden", "Dina", "Elias", "Freya",
-        "Gio", "Hector", "Isla", "Juno", "Kai",
-        "Lina", "Malik", "Noor", "Olivia", "Sami"
+        "Alex","Amira","Arun","Bella","Carlos","Chloe","Daniel","Elena","Fatima","Gabriel",
+        "Hana","Hugo","Ines","James","Karim","Layla","Leo","Luna","Marco","Maya",
+        "Nadia","Noah","Omar","Priya","Quinn","Rosa","Ravi","Samir","Sofia","Tariq",
+        "Uma","Victor","Wren","Xena","Yuki","Zara","Aiden","Dina","Elias","Freya",
+        "Gio","Hector","Isla","Juno","Kai","Lina","Malik","Noor","Olivia","Sami"
       ];
       const el = document.getElementById("randomName");
       if (el) el.textContent = names[Math.floor(Math.random() * names.length)];
     })();
 
-    // ASCII block logo
+    // ── ASCII Logo Cascade Reveal ──
     (() => {
       const art = [
-        "  ████    ██      ██    ████    ██      ",
-        "██    ██  ██      ██  ██    ██  ██      ",
-        "████████  ██  ██  ██  ████████  ██      ",
-        "██    ██  ██████████  ██    ██  ██      ",
-        "██    ██  ████  ████  ██    ██  ████████",
+        "  \u2588\u2588\u2588\u2588    \u2588\u2588      \u2588\u2588    \u2588\u2588\u2588\u2588    \u2588\u2588      ",
+        "\u2588\u2588    \u2588\u2588  \u2588\u2588      \u2588\u2588  \u2588\u2588    \u2588\u2588  \u2588\u2588      ",
+        "\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588  \u2588\u2588  \u2588\u2588  \u2588\u2588  \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588  \u2588\u2588      ",
+        "\u2588\u2588    \u2588\u2588  \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588  \u2588\u2588    \u2588\u2588  \u2588\u2588      ",
+        "\u2588\u2588    \u2588\u2588  \u2588\u2588\u2588\u2588  \u2588\u2588\u2588\u2588  \u2588\u2588    \u2588\u2588  \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588",
       ];
-      // Top-row and edge blocks get 'hi' (brighter), rest get 'on'
       const el = document.getElementById('ascii-logo');
+      const spans = [];
+      const centerR = 2, centerC = 20;
+
       art.forEach((row, r) => {
         for (let c = 0; c < 40; c++) {
           const span = document.createElement('span');
-          if (row[c] === '█') {
+          const isFilled = row[c] === '\u2588';
+          if (isFilled) {
             span.className = (r === 0 || r === art.length - 1 || c === 0 || c === 39) ? 'hi' : 'on';
+            const dist = Math.sqrt(Math.pow(r - centerR, 2) + Math.pow((c - centerC) * 0.5, 2));
+            spans.push({ span, dist });
           } else {
             span.className = 'off';
           }
           el.appendChild(span);
         }
       });
+
+      // Cascade reveal with staggered delays
+      if (!prefersReducedMotion) {
+        spans.sort((a, b) => a.dist - b.dist);
+        spans.forEach((item, i) => {
+          setTimeout(() => item.span.classList.add('revealed'), 100 + i * 15);
+        });
+        // Cascade complete
+      } else {
+        spans.forEach(item => item.span.classList.add('revealed'));
+      }
     })();
 
-    const observer = new IntersectionObserver((entries) => {
+    // ── Hero Tagline Character-by-Character Reveal ──
+    (() => {
+      const tagline = document.getElementById('heroTagline');
+      if (!tagline) return;
+
+      const promptSpan = document.createElement('span');
+      promptSpan.className = 'char t-prompt';
+      promptSpan.textContent = '$';
+      tagline.appendChild(promptSpan);
+
+      const spaceSpan = document.createElement('span');
+      spaceSpan.className = 'char space';
+      spaceSpan.innerHTML = '&nbsp;';
+      tagline.appendChild(spaceSpan);
+
+      const text = 'the LLM-native terminal';
+      const chars = [];
+      for (const ch of text) {
+        const span = document.createElement('span');
+        span.className = ch === ' ' ? 'char space' : 'char';
+        span.textContent = ch === ' ' ? '\u00A0' : ch;
+        tagline.appendChild(span);
+        chars.push(span);
+      }
+
+      const cursorEl = document.createElement('span');
+      cursorEl.className = 'cursor';
+      cursorEl.style.width = '2px';
+      cursorEl.style.height = '1.1em';
+      cursorEl.style.background = 'var(--accent-light)';
+      cursorEl.style.opacity = '0';
+      tagline.appendChild(cursorEl);
+
+      if (!prefersReducedMotion) {
+        const baseDelay = 600; // after ASCII logo
+        setTimeout(() => {
+          promptSpan.classList.add('revealed');
+          spaceSpan.classList.add('revealed');
+        }, baseDelay);
+
+        chars.forEach((span, i) => {
+          setTimeout(() => span.classList.add('revealed'), baseDelay + 150 + i * 25);
+        });
+
+        setTimeout(() => { cursorEl.style.opacity = '1'; }, baseDelay + 150 + chars.length * 25 + 100);
+
+        // Reveal sub text and actions
+        setTimeout(() => {
+          document.getElementById('heroSub')?.classList.add('revealed');
+        }, baseDelay + 150 + chars.length * 25 + 200);
+        setTimeout(() => {
+          document.getElementById('heroActions')?.classList.add('revealed');
+        }, baseDelay + 150 + chars.length * 25 + 400);
+        setTimeout(() => {
+          document.getElementById('terminalDemo')?.classList.add('revealed');
+          // Trigger boot sequence
+          const flash = document.querySelector('.screen-flash');
+          const scan = document.querySelector('.scanline');
+          if (flash) flash.classList.add('animate');
+          if (scan) setTimeout(() => scan.classList.add('animate'), 200);
+        }, baseDelay + 150 + chars.length * 25 + 600);
+      } else {
+        promptSpan.classList.add('revealed');
+        spaceSpan.classList.add('revealed');
+        chars.forEach(span => span.classList.add('revealed'));
+        cursorEl.style.opacity = '1';
+        document.getElementById('heroSub')?.classList.add('revealed');
+        document.getElementById('heroActions')?.classList.add('revealed');
+        document.getElementById('terminalDemo')?.classList.add('revealed');
+      }
+    })();
+
+    // ── Intersection Observer for fade-in ──
+    const fadeObserver = new IntersectionObserver((entries) => {
       entries.forEach(entry => {
         if (entry.isIntersecting) {
           entry.target.classList.add('visible');
-          observer.unobserve(entry.target);
+          fadeObserver.unobserve(entry.target);
         }
       });
     }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+    document.querySelectorAll('.fade-in').forEach(el => fadeObserver.observe(el));
 
-    document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+    // ── Features clip-path reveal (observe the section, reveal the heading) ──
+    const featClip = document.getElementById('featuresClipReveal');
+    const featSection = document.getElementById('features');
+    if (featClip && featSection) {
+      const clipObserver = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            featClip.classList.add('revealed');
+            clipObserver.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.01 });
+      clipObserver.observe(featSection);
+    }
+
+    // ── CTA circle reveal (observe the parent section) ──
+    const ctaRevealEl = document.getElementById('ctaReveal');
+    const ctaSection = document.getElementById('download');
+    if (ctaRevealEl && ctaSection) {
+      const ctaObserver = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            ctaRevealEl.classList.add('revealed');
+            ctaObserver.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.01 });
+      ctaObserver.observe(ctaSection);
+    }
+
+    // ── Benchmark table row reveal + check pop ──
+    (() => {
+      const table = document.getElementById('benchmarkTable');
+      if (!table) return;
+      const rows = table.querySelectorAll('tbody tr');
+      const header = document.getElementById('awalHeader');
+
+      const benchObserver = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            // Reveal rows with stagger
+            rows.forEach((row, i) => {
+              setTimeout(() => {
+                row.classList.add('revealed');
+                // Pop checkmarks and crosses within this row
+                setTimeout(() => {
+                  row.querySelectorAll('.check, .cross').forEach(el => el.classList.add('pop'));
+                }, 150);
+              }, i * 100);
+            });
+            // Glow pulse on Awal header
+            if (header) {
+              setTimeout(() => header.classList.add('glow-pulse'), 200);
+            }
+            benchObserver.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.2 });
+
+      benchObserver.observe(table);
+    })();
 
     // Smooth nav scroll
     document.querySelectorAll('nav a[href^="#"]').forEach(link => {
@@ -1555,50 +2061,292 @@ brew install --cask awal-terminal</code></pre>
         if (target) target.scrollIntoView({ behavior: 'smooth' });
       });
     });
-    // Card stack gallery
+
+    // ── Cursor Spotlight (mouse-tracking glow) ──
     (() => {
-      const stack = document.getElementById('cardStack');
-      const dots = document.getElementById('cardDots');
-      if (!stack || !dots) return;
+      if (isMobile || prefersReducedMotion) return;
+      const glow = document.getElementById('cursorGlow');
+      if (!glow) return;
 
-      const items = stack.querySelectorAll('.card-stack-item');
-      const dotBtns = dots.querySelectorAll('.card-dot');
-      let active = 0;
+      document.addEventListener('mousemove', (e) => {
+        mouseX = e.clientX;
+        mouseY = e.clientY;
+        glow.style.transform = `translate(${e.clientX - 300}px, ${e.clientY - 300}px)`;
+      }, { passive: true });
+    })();
 
-      function setActive(index) {
-        active = (index + items.length) % items.length;
-        items.forEach((item, i) => {
-          item.classList.remove('active', 'pos-center', 'pos-left', 'pos-right');
-          item.setAttribute('aria-hidden', 'true');
-          const diff = (i - active + items.length) % items.length;
-          if (diff === 0) {
-            item.classList.add('active', 'pos-center');
-            item.setAttribute('aria-hidden', 'false');
-          } else if (diff === items.length - 1) {
-            item.classList.add('pos-left');
-          } else {
-            item.classList.add('pos-right');
-          }
+    // ── 3D Tilt on Feature Cards ──
+    (() => {
+      if (isMobile || prefersReducedMotion) return;
+      const cards = document.querySelectorAll('.feature-card');
+
+      cards.forEach(card => {
+        card.addEventListener('mousemove', (e) => {
+          const rect = card.getBoundingClientRect();
+          const x = e.clientX - rect.left;
+          const y = e.clientY - rect.top;
+          const centerX = rect.width / 2;
+          const centerY = rect.height / 2;
+
+          const rotateY = ((x - centerX) / centerX) * 8;
+          const rotateX = ((centerY - y) / centerY) * 8;
+
+          card.style.transform = `perspective(800px) rotateX(${rotateX}deg) rotateY(${rotateY}deg)`;
+          card.style.setProperty('--mouse-x', x + 'px');
+          card.style.setProperty('--mouse-y', y + 'px');
         });
-        dotBtns.forEach((dot, i) => dot.classList.toggle('active', i === active));
+
+        card.addEventListener('mouseleave', () => {
+          card.style.transition = 'transform 0.4s ease';
+          card.style.transform = 'perspective(800px) rotateX(0deg) rotateY(0deg)';
+          setTimeout(() => { card.style.transition = ''; }, 400);
+        });
+      });
+    })();
+
+    // ── Magnetic Buttons ──
+    (() => {
+      if (isMobile || prefersReducedMotion) return;
+      const btns = document.querySelectorAll('.magnetic-btn');
+
+      btns.forEach(btn => {
+        const parent = btn.parentElement;
+        btn.addEventListener('mousemove', (e) => {
+          const rect = btn.getBoundingClientRect();
+          const centerX = rect.left + rect.width / 2;
+          const centerY = rect.top + rect.height / 2;
+          const dx = (e.clientX - centerX) * 0.25;
+          const dy = (e.clientY - centerY) * 0.25;
+          btn.style.transform = `translate(${dx}px, ${dy}px)`;
+        });
+
+        btn.addEventListener('mouseleave', () => {
+          btn.style.transition = 'transform 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+          btn.style.transform = 'translate(0, 0)';
+          setTimeout(() => { btn.style.transition = ''; }, 500);
+        });
+      });
+    })();
+
+    // ── Particle Field Canvas ──
+    (() => {
+      if (isMobile || prefersReducedMotion) return;
+      const canvas = document.getElementById('particleCanvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+
+      let w, h;
+      function resize() {
+        w = canvas.width = window.innerWidth;
+        h = canvas.height = window.innerHeight;
+      }
+      resize();
+      window.addEventListener('resize', resize);
+
+      const particles = [];
+      const count = 50;
+
+      for (let i = 0; i < count; i++) {
+        particles.push({
+          x: Math.random() * w,
+          y: Math.random() * h,
+          size: Math.random() * 1.5 + 0.5,
+          speedY: -(Math.random() * 0.3 + 0.1),
+          sway: Math.random() * Math.PI * 2,
+          swaySpeed: Math.random() * 0.002 + 0.001,
+          opacity: Math.random() * 0.3 + 0.05,
+        });
       }
 
-      stack.addEventListener('click', () => setActive(active + 1));
+      // Shooting star
+      let shootingStar = null;
+      function maybeShootingStar() {
+        if (Math.random() < 0.002 && !shootingStar) {
+          shootingStar = {
+            x: Math.random() * w * 0.8,
+            y: Math.random() * h * 0.3,
+            speedX: 3 + Math.random() * 3,
+            speedY: 1 + Math.random() * 2,
+            life: 1,
+            decay: 0.015 + Math.random() * 0.01,
+          };
+        }
+      }
 
-      dotBtns.forEach((dot, i) => {
-        dot.addEventListener('click', e => { e.stopPropagation(); setActive(i); });
+      let lastFrame = 0;
+      const interval = 1000 / 30; // 30fps
+
+      function animate(timestamp) {
+        if (document.hidden) { requestAnimationFrame(animate); return; }
+        if (timestamp - lastFrame < interval) { requestAnimationFrame(animate); return; }
+        lastFrame = timestamp;
+
+        ctx.clearRect(0, 0, w, h);
+
+        for (const p of particles) {
+          p.y += p.speedY;
+          p.sway += p.swaySpeed;
+          p.x += Math.sin(p.sway) * 0.2;
+
+          // Mouse repulsion
+          const dx = p.x - mouseX;
+          const dy = p.y - (mouseY + window.scrollY - window.scrollY);
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < 150 && dist > 0) {
+            const force = (150 - dist) / 150 * 0.5;
+            p.x += (dx / dist) * force;
+            p.y += (dy / dist) * force;
+          }
+
+          if (p.y < -10) { p.y = h + 10; p.x = Math.random() * w; }
+          if (p.x < -10) p.x = w + 10;
+          if (p.x > w + 10) p.x = -10;
+
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(96, 165, 250, ${p.opacity})`;
+          ctx.fill();
+        }
+
+        // Shooting star
+        maybeShootingStar();
+        if (shootingStar) {
+          const s = shootingStar;
+          ctx.beginPath();
+          ctx.moveTo(s.x, s.y);
+          ctx.lineTo(s.x - s.speedX * 8, s.y - s.speedY * 8);
+          ctx.strokeStyle = `rgba(96, 165, 250, ${s.life * 0.6})`;
+          ctx.lineWidth = 1;
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, 1.5, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(255, 255, 255, ${s.life * 0.8})`;
+          ctx.fill();
+
+          s.x += s.speedX;
+          s.y += s.speedY;
+          s.life -= s.decay;
+          if (s.life <= 0) shootingStar = null;
+        }
+
+        requestAnimationFrame(animate);
+      }
+      requestAnimationFrame(animate);
+    })();
+
+    // ── Parallax + Hero scale/fade + Nav + Showcase + Scroll Progress ──
+    (() => {
+      if (prefersReducedMotion) return;
+
+      const nav = document.getElementById('mainNav');
+      const hero = document.getElementById('hero');
+      const heroContent = document.getElementById('heroContent');
+      const terminalDemo = document.getElementById('terminalDemo');
+      const parallaxEls = document.querySelectorAll('[data-parallax]');
+      const showcaseRunway = document.getElementById('showcaseRunway');
+      const showcaseTrack = document.getElementById('showcaseTrack');
+      const showcaseSlides = document.querySelectorAll('.showcase-slide');
+      const showcaseDots = document.querySelectorAll('.showcase-dot');
+      const scrollProgress = document.getElementById('scrollProgress');
+
+      let ticking = false;
+
+      function onScroll() {
+        if (ticking) return;
+        ticking = true;
+        requestAnimationFrame(() => {
+          const scrollY = window.scrollY;
+          const vh = window.innerHeight;
+          const docH = document.documentElement.scrollHeight;
+
+          // ── Scroll progress bar ──
+          if (scrollProgress) {
+            const progress = scrollY / (docH - vh) * 100;
+            scrollProgress.style.width = progress + '%';
+            scrollProgress.classList.toggle('visible', scrollY > vh * 0.5);
+          }
+
+          // ── Nav scroll effect ──
+          if (nav) nav.classList.toggle('nav-scrolled', scrollY > vh * 0.3);
+
+          // ── Parallax layers ──
+          if (!isMobile) {
+            parallaxEls.forEach(el => {
+              const rate = parseFloat(el.dataset.parallax) || 0.1;
+              el.style.transform = `translateY(${scrollY * rate}px)`;
+            });
+          }
+
+          // ── Hero scale/fade on scroll ──
+          if (hero && terminalDemo && !isMobile) {
+            const heroHeight = hero.getBoundingClientRect().height;
+            const progress = Math.max(0, Math.min(1, scrollY / (heroHeight * 0.7)));
+
+            const scale = 1 - progress * 0.12;
+            const opacity = 1 - progress * 1.2;
+            const blur = progress * 6;
+            terminalDemo.style.transform = `scale(${scale})`;
+            terminalDemo.style.opacity = Math.max(0, opacity);
+            terminalDemo.style.filter = `blur(${blur}px)`;
+
+            if (heroContent) {
+              heroContent.style.transform = `translateY(${-scrollY * 0.15}px)`;
+            }
+          }
+
+          // ── Horizontal scroll showcase ──
+          if (showcaseRunway && showcaseTrack && !isMobile) {
+            const runwayRect = showcaseRunway.getBoundingClientRect();
+            const runwayTop = runwayRect.top;
+            const runwayHeight = runwayRect.height - vh;
+
+            if (runwayTop <= 0 && runwayTop >= -runwayHeight) {
+              const progress = Math.abs(runwayTop) / runwayHeight;
+              const slideWidth = 800 + 40;
+              const totalTravel = (showcaseSlides.length - 1) * slideWidth;
+              const translateX = -progress * totalTravel;
+              showcaseTrack.style.transform = `translateX(${translateX}px)`;
+
+              const activeIndex = Math.round(progress * (showcaseSlides.length - 1));
+              showcaseSlides.forEach((slide, i) => slide.classList.toggle('active', i === activeIndex));
+              showcaseDots.forEach((dot, i) => dot.classList.toggle('active', i === activeIndex));
+            }
+          }
+
+          ticking = false;
+        });
+      }
+
+      window.addEventListener('scroll', onScroll, { passive: true });
+      onScroll();
+
+      // Showcase dot clicks
+      showcaseDots.forEach((dot, i) => {
+        dot.addEventListener('click', () => {
+          if (isMobile) return;
+          const runwayHeight = showcaseRunway.getBoundingClientRect().height - window.innerHeight;
+          const targetScroll = showcaseRunway.offsetTop + (i / (showcaseSlides.length - 1)) * runwayHeight;
+          window.scrollTo({ top: targetScroll, behavior: 'smooth' });
+        });
       });
+    })();
 
-      items.forEach((item, i) => {
-        item.addEventListener('mouseenter', () => { if (i !== active) setActive(i); });
-      });
+    // ���─ Mobile showcase: update dots on scroll ─��
+    (() => {
+      if (!isMobile && !prefersReducedMotion) return;
+      const track = document.getElementById('showcaseTrack');
+      const dots = document.querySelectorAll('.showcase-dot');
+      if (!track || !dots.length) return;
 
-      stack.addEventListener('keydown', e => {
-        if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); setActive(active + 1); }
-        if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); setActive(active - 1); }
-      });
-
-      setActive(0);
+      track.addEventListener('scroll', () => {
+        const scrollLeft = track.scrollLeft;
+        const slide = track.querySelector('.showcase-slide');
+        if (!slide) return;
+        const slideWidth = slide.offsetWidth + 16;
+        const activeIndex = Math.round(scrollLeft / slideWidth);
+        dots.forEach((dot, i) => dot.classList.toggle('active', i === activeIndex));
+      }, { passive: true });
     })();
   </script>
 
@@ -1622,16 +2370,16 @@ brew install --cask awal-terminal</code></pre>
     function showDownloadModal(e) {
       e.preventDefault();
       const messages = [
-        "We're not on the App Store yet — but we're working on it. 😉",
-        "Apple hasn't met us yet. When they do, it'll be love at first terminal. 💜",
-        "App Store? Soon. For now, you get the indie experience. 🎸",
-        "Think of this as the VIP early-access version. 🎟️",
-        "We skipped the App Store line. You're welcome. 😎",
-        "No App Store, no rules. Just vibes and fast rendering. ⚡",
-        "Unsigned but unmatched. That's our vibe. ✨",
-        "The app is safe — Apple just hasn't stamped the paperwork yet. 📝",
-        "Consider this the developer's cut — raw and unfiltered. 🎬",
-        "We put our budget into GPU shaders, not Apple fees. Priorities. 🎨",
+        "We're not on the App Store yet \u2014 but we're working on it. \ud83d\ude09",
+        "Apple hasn't met us yet. When they do, it'll be love at first terminal. \ud83d\udc9c",
+        "App Store? Soon. For now, you get the indie experience. \ud83c\udfb8",
+        "Think of this as the VIP early-access version. \ud83c\udf9f\ufe0f",
+        "We skipped the App Store line. You're welcome. \ud83d\ude0e",
+        "No App Store, no rules. Just vibes and fast rendering. \u26a1",
+        "Unsigned but unmatched. That's our vibe. \u2728",
+        "The app is safe \u2014 Apple just hasn't stamped the paperwork yet. \ud83d\udcdd",
+        "Consider this the developer's cut \u2014 raw and unfiltered. \ud83c\udfac",
+        "We put our budget into GPU shaders, not Apple fees. Priorities. \ud83c\udfa8",
       ];
       document.getElementById('modalMessage').textContent = messages[Math.floor(Math.random() * messages.length)];
       const m = document.getElementById('downloadModal');
@@ -1643,9 +2391,7 @@ brew install --cask awal-terminal</code></pre>
       a.click();
       a.remove();
     }
-    function closeDownloadModal() {
-      document.getElementById('downloadModal').style.display = 'none';
-    }
+    function closeDownloadModal() { document.getElementById('downloadModal').style.display = 'none'; }
     function copyCommand(btn) {
       navigator.clipboard.writeText('xattr -cr AwalTerminal.app');
       btn.textContent = 'Copied!';
