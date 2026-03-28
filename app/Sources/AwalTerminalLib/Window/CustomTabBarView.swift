@@ -233,6 +233,7 @@ final class CustomTabBarView: NSView {
         NSLayoutConstraint.activate(borderConstraints)
 
         needsLayout = true
+        scrollView.contentView.scroll(to: .zero)
     }
 
     override func layout() {
@@ -784,7 +785,7 @@ private class TabItemView: NSView {
         self.isGenerating = isGenerating
         self.orientation = orientation
         // Compute effective background: tab color tint, then subtle group tint
-        var base = isSelected ? selectedBgColor : bgColor
+        var base = isSelected ? (selectedBgColor.blended(withFraction: 0.06, of: .white) ?? selectedBgColor) : bgColor
         if isGrouped, let gc = groupColor {
             base = base.blended(withFraction: 0.05, of: gc) ?? base
         }
@@ -836,7 +837,7 @@ private class TabItemView: NSView {
 
     private static func textColor(for bgColor: NSColor, isSelected: Bool, hasTabColor: Bool) -> NSColor {
         guard hasTabColor else {
-            return isSelected ? NSColor(white: 0.85, alpha: 1.0) : NSColor(white: 0.55, alpha: 1.0)
+            return isSelected ? NSColor(white: 0.95, alpha: 1.0) : NSColor(white: 0.55, alpha: 1.0)
         }
         let rgb = bgColor.usingColorSpace(.sRGB) ?? bgColor
         let luminance = 0.299 * rgb.redComponent + 0.587 * rgb.greenComponent + 0.114 * rgb.blueComponent
@@ -854,7 +855,7 @@ private class TabItemView: NSView {
             layer?.cornerRadius = 6
             if isSelected {
                 layer?.borderWidth = 1
-                layer?.borderColor = NSColor(white: 1.0, alpha: 0.08).cgColor
+                layer?.borderColor = NSColor(white: 1.0, alpha: 0.15).cgColor
             }
         }
 
@@ -969,7 +970,7 @@ private class TabItemView: NSView {
                 accentLine.leadingAnchor.constraint(equalTo: leadingAnchor),
                 accentLine.topAnchor.constraint(equalTo: topAnchor, constant: 6),
                 accentLine.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6),
-                accentLine.widthAnchor.constraint(equalToConstant: 3),
+                accentLine.widthAnchor.constraint(equalToConstant: 4),
             ])
         }
     }
