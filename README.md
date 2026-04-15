@@ -3,6 +3,17 @@
 </p>
 
 <h1 align="center">Awal Terminal</h1>
+<p align="center"><sub>ⴰⵡⴰⵍ — "word" in Amazigh</sub></p>
+
+<p align="center">
+  <a href="https://github.com/AwalTerminal/Awal-terminal/releases/latest"><img src="https://img.shields.io/github/v/release/AwalTerminal/Awal-terminal?style=flat-square&color=blue" alt="GitHub Release"></a>
+  <img src="https://img.shields.io/badge/platform-macOS-lightgrey?style=flat-square" alt="macOS">
+  <a href="https://github.com/AwalTerminal/Awal-terminal/blob/main/LICENSE"><img src="https://img.shields.io/github/license/AwalTerminal/Awal-terminal?style=flat-square" alt="License"></a>
+  <img src="https://img.shields.io/badge/homebrew-cask-orange?style=flat-square" alt="Homebrew Cask">
+  <a href="https://github.com/AwalTerminal/Awal-terminal/stargazers"><img src="https://img.shields.io/github/stars/AwalTerminal/Awal-terminal?style=flat-square" alt="Stars"></a>
+  <a href="https://github.com/AwalTerminal/Awal-terminal/releases"><img src="https://img.shields.io/github/downloads/AwalTerminal/Awal-terminal/total?style=flat-square&color=green" alt="Downloads"></a>
+  <img src="https://img.shields.io/badge/Swift-Rust-F05138?style=flat-square&labelColor=DEA584" alt="Swift + Rust">
+</p>
 
 <p align="center">
   The LLM-native terminal emulator for macOS.<br>
