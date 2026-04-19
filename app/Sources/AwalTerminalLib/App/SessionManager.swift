@@ -222,6 +222,16 @@ class SessionManager {
             ))
         }
 
+        // Copilot: show interactive resume if binary exists
+        if binaryExists("copilot") {
+            entries.append(ResumeEntry(
+                modelName: "Copilot", provider: "GitHub",
+                sessionId: nil, projectPath: projectPath,
+                summary: "Resume interactive session",
+                isInteractive: true
+            ))
+        }
+
         // Gemini: list sessions for this project path
         os_log(.debug, log: sessionLog, "Gemini binary exists: %{public}@", binaryExists("gemini") ? "yes" : "no")
         if binaryExists("gemini") {
@@ -308,11 +318,52 @@ class SessionManager {
     }
 
     private func binaryPath(_ name: String) -> String? {
+        // Fast path: common system locations
         for dir in ["/usr/local/bin", "/opt/homebrew/bin"] {
             let path = "\(dir)/\(name)"
             if FileManager.default.isExecutableFile(atPath: path) { return path }
         }
-        return nil
+        // Common user-local locations (npm-managed via fnm/nvm/asdf, bun, pip --user, etc.)
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        for dir in ["\(home)/.local/bin", "\(home)/.bun/bin", "\(home)/bin", "\(home)/.cargo/bin"] {
+            let path = "\(dir)/\(name)"
+            if FileManager.default.isExecutableFile(atPath: path) { return path }
+        }
+        // Fallback: ask the user's interactive login shell to resolve the binary.
+        // Cached so we only pay the shell-startup cost once per binary per launch.
+        if let cached = Self.shellResolveCache[name] { return cached }
+        let resolved = resolveViaShell(name)
+        Self.shellResolveCache[name] = resolved
+        return resolved
+    }
+
+    private static var shellResolveCache: [String: String?] = [:]
+
+    private func resolveViaShell(_ name: String) -> String? {
+        let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: shell)
+        process.arguments = ["-i", "-l", "-c", "command -v \(name) 2>/dev/null"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        do { try process.run() } catch { return nil }
+
+        let deadline = DispatchTime.now() + .seconds(3)
+        let done = DispatchSemaphore(value: 0)
+        DispatchQueue.global().async {
+            process.waitUntilExit()
+            done.signal()
+        }
+        if done.wait(timeout: deadline) == .timedOut {
+            process.terminate()
+            return nil
+        }
+        guard process.terminationStatus == 0 else { return nil }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        guard let str = String(data: data, encoding: .utf8) else { return nil }
+        let path = str.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (path.isEmpty || !FileManager.default.isExecutableFile(atPath: path)) ? nil : path
     }
 
     private func binaryExists(_ name: String) -> Bool {

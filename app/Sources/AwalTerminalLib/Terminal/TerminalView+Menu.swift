@@ -717,6 +717,11 @@ extension TerminalView {
                 "Calibrating synapses...",
                 "Warming up the engines...",
             ]),
+            ({ $0.contains("copilot") || $0.contains("github") }, [
+                "Pairing with Copilot...",
+                "Spinning up the octocat...",
+                "Fetching from the hub...",
+            ]),
         ]
 
         let genericMessages = [
