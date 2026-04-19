@@ -132,7 +132,7 @@ enum AIComponentInjector {
         switch modelName {
         case "Claude":
             result = injectClaude(stacks: stacks, registries: registries, disabledComponents: disabledComponents, blockedComponents: blockedComponents, hooks: hooks)
-        case "Gemini", "Codex":
+        case "Gemini", "Codex", "Copilot":
             result = injectAgentsSkills(stacks: stacks, registries: registries, disabledComponents: disabledComponents, blockedComponents: blockedComponents, hooks: hooks)
         default:
             result = injectGeneric(
@@ -177,7 +177,7 @@ enum AIComponentInjector {
         switch modelName {
         case "Claude":
             cleanupClaude()
-        case "Gemini", "Codex":
+        case "Gemini", "Codex", "Copilot":
             cleanupAgentsSkills()
         default:
             break

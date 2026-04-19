@@ -3,7 +3,7 @@ import AppKit
 // MARK: - Codable Data Model
 
 struct SavedPaneState: Codable {
-    let modelName: String       // "Claude", "Gemini", "Codex", "Shell", ""
+    let modelName: String       // "Claude", "Gemini", "Codex", "Copilot", "Shell", ""
     let workingDir: String?
     let isDangerMode: Bool
     let sessionId: String?      // Claude/Gemini session ID for resume

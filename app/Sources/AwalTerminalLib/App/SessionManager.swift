@@ -222,6 +222,16 @@ class SessionManager {
             ))
         }
 
+        // Copilot: show interactive resume if binary exists
+        if binaryExists("copilot") {
+            entries.append(ResumeEntry(
+                modelName: "Copilot", provider: "GitHub",
+                sessionId: nil, projectPath: projectPath,
+                summary: "Resume interactive session",
+                isInteractive: true
+            ))
+        }
+
         // Gemini: list sessions for this project path
         os_log(.debug, log: sessionLog, "Gemini binary exists: %{public}@", binaryExists("gemini") ? "yes" : "no")
         if binaryExists("gemini") {
