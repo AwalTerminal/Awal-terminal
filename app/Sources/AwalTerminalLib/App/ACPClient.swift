@@ -39,16 +39,13 @@ class ACPClient {
         let kind: ToolCallKind
     }
 
-    func spawn(kiroPath: String, cwd: String, agent: String? = nil) -> Bool {
+    func spawn(kiroPath: String, cwd: String, agent: String? = nil, engine: String? = nil, trustTools: String? = nil) -> Bool {
         let h: OpaquePointer? = kiroPath.withCString { kiroPtr in
             cwd.withCString { cwdPtr in
-                if let agent {
-                    return agent.withCString { agentPtr in
-                        at_acp_spawn(kiroPtr, cwdPtr, agentPtr)
-                    }
-                } else {
-                    return at_acp_spawn(kiroPtr, cwdPtr, nil)
-                }
+                let agentPtr = agent.map { ($0 as NSString).utf8String }
+                let enginePtr = engine.map { ($0 as NSString).utf8String }
+                let trustToolsPtr = trustTools.map { ($0 as NSString).utf8String }
+                return at_acp_spawn(kiroPtr, cwdPtr, agentPtr ?? nil, enginePtr ?? nil, trustToolsPtr ?? nil)
             }
         }
         guard let h else { return false }
@@ -91,6 +88,11 @@ class ACPClient {
     func cancel() -> Bool {
         guard let handle else { return false }
         return at_acp_cancel(handle) == 0
+    }
+
+    func sendRewind() -> Bool {
+        guard let handle else { return false }
+        return at_acp_send_rewind(handle) == 0
     }
 
     func forceKill() {

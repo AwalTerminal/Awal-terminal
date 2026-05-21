@@ -52,6 +52,18 @@ class AISidePanelView: NSView {
     private let phaseLabel = NSTextField(labelWithString: "")
     private var generatingTimer: Timer?
 
+    // Rewind button
+    private let rewindButton: NSButton = {
+        let btn = NSButton(title: "⏪ Rewind", target: nil, action: nil)
+        btn.bezelStyle = .inline
+        btn.font = NSFont.monospacedSystemFont(ofSize: 10.0, weight: .medium)
+        btn.contentTintColor = NSColor(white: 0.7, alpha: 1.0)
+        btn.isHidden = true
+        btn.translatesAutoresizingMaskIntoConstraints = false
+        return btn
+    }()
+    var onRewind: (() -> Void)?
+
     // Git Changes section
     private let gitSeparator = NSView()
     private let gitSectionLabel = NSTextField(labelWithString: "Changes")
@@ -239,6 +251,11 @@ class AISidePanelView: NSView {
         phaseLabel.isHidden = true
         configureLabel(phaseLabel)
 
+        // Rewind button
+        rewindButton.target = self
+        rewindButton.action = #selector(rewindClicked)
+        addSubview(rewindButton)
+
         // Files section
         filesSectionLabel.font = sectionFont
         filesSectionLabel.textColor = sectionColor
@@ -406,9 +423,13 @@ class AISidePanelView: NSView {
             phaseLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -margin),
             phaseLabel.topAnchor.constraint(equalTo: diffCountLabel.bottomAnchor, constant: itemGap),
 
+            // Rewind button
+            rewindButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: margin),
+            rewindButton.topAnchor.constraint(equalTo: phaseLabel.bottomAnchor, constant: itemGap),
+
             // Files section
             filesSectionLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: margin),
-            filesSectionLabel.topAnchor.constraint(equalTo: phaseLabel.bottomAnchor, constant: sectionGap),
+            filesSectionLabel.topAnchor.constraint(equalTo: rewindButton.bottomAnchor, constant: sectionGap),
 
             filesStackView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: margin),
             filesStackView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -margin),
@@ -574,6 +595,15 @@ class AISidePanelView: NSView {
     @objc private func sessionHistoryClicked(_ sender: NSButton) {
         guard let sessionId = sender.identifier?.rawValue else { return }
         onResumeSession?(sessionId)
+    }
+
+    @objc private func rewindClicked() {
+        onRewind?()
+    }
+
+    /// Show or hide the rewind button based on session idle state.
+    func setRewindVisible(_ visible: Bool) {
+        rewindButton.isHidden = !visible
     }
 
     private static func relativeTime(_ date: Date) -> String {

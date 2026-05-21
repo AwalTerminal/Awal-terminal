@@ -116,6 +116,8 @@ struct AppConfig {
     var kiroDefaultAgent: String?
     var kiroTrustLevel: KiroTrustLevel = .safe
     var kiroPermissionTimeout: Int = 60
+    var kiroAgentEngine: String?
+    var kiroTrustedTools: [String] = []
 
     // Sleep prevention (keep display awake during terminal activity)
     var preventSleep: Bool = false
@@ -254,6 +256,10 @@ struct AppConfig {
         if let v = parsed["kiro.default_agent"] { config.kiroDefaultAgent = v }
         if let v = parsed["kiro.trust"] { config.kiroTrustLevel = KiroTrustLevel(rawValue: v) ?? .safe }
         if let v = parsed["kiro.permission_timeout"], let n = Int(v) { config.kiroPermissionTimeout = max(0, n) }
+        if let v = parsed["kiro.agent_engine"] { config.kiroAgentEngine = v }
+        if let v = parsed["kiro.trusted_tools"] {
+            config.kiroTrustedTools = v.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        }
 
         // Sleep prevention
         if let v = parsed["system.prevent_sleep"] { config.preventSleep = v == "true" }

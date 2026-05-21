@@ -437,7 +437,9 @@ char *at_surface_get_input_line(const struct ATSurface *surface);
  */
 struct ATAcpClient *at_acp_spawn(const char *kiro_path,
                                  const char *cwd,
-                                 const char *agent);
+                                 const char *agent,
+                                 const char *engine,
+                                 const char *trust_tools);
 
 /**
  * Poll next event. Returns null if no event available.
@@ -455,6 +457,11 @@ int32_t at_acp_send_prompt(struct ATAcpClient *client,
  * Cancel current operation. Returns 0 on success, -1 on error.
  */
 int32_t at_acp_cancel(struct ATAcpClient *client);
+
+/**
+ * Rewind session to previous turn. Returns 0 on success, -1 on error.
+ */
+int32_t at_acp_send_rewind(struct ATAcpClient *client);
 
 /**
  * Respond to a permission request. Returns 0 on success, -1 on error.

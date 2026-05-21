@@ -99,6 +99,12 @@ pub struct SessionCancelParams {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SessionRewindParams {
+    pub session_id: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SessionResumeParams {
     pub session_id: String,
     pub cwd: String,

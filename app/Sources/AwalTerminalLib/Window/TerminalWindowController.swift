@@ -1689,6 +1689,10 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
             let kiroPath = AppConfig.shared.kiroBinaryPath ?? "kiro-cli"
             self.resumeACPSession(kiroPath: kiroPath, cwd: cwd, sessionId: sessionId)
         }
+        tab.aiSidePanel.onRewind = { [weak tab] in
+            guard let tab else { return }
+            _ = tab.acpClient?.sendRewind()
+        }
     }
 
     private func handleFocusChanged(_ terminal: TerminalView, tab: TabState) {
@@ -2298,7 +2302,10 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
         tab.acpClient?.destroy()
         let client = ACPClient()
         wireACPCallbacks(client, tab: tab)
-        if client.spawn(kiroPath: kiroPath, cwd: cwd) {
+        let config = AppConfig.shared
+        let engine = config.kiroAgentEngine
+        let trustTools = config.kiroTrustedTools.isEmpty ? nil : config.kiroTrustedTools.joined(separator: ",")
+        if client.spawn(kiroPath: kiroPath, cwd: cwd, engine: engine, trustTools: trustTools) {
             tab.acpClient = client
         } else {
             fallbackToPTY(tab: tab, message: "kiro-cli acp unavailable — using PTY mode")
@@ -2324,6 +2331,7 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
             flashStatusBar("ACP: No active session")
             return
         }
+        activeTab.aiSidePanel.setRewindVisible(false)
         if !acpClient.sendPrompt(text) {
             flashStatusBar("ACP: Failed to send prompt")
         }
@@ -2358,6 +2366,7 @@ class TerminalWindowController: NSWindowController, NSWindowDelegate, CustomTabB
             self.toolCallStack?.clearAll()
             self.flashStatusBar("ACP: Turn complete")
             tab.tokenTracker.incrementTurns()
+            tab.aiSidePanel.setRewindVisible(true)
             // Save session metadata
             if let sid = tab.acpClient?.sessionId, let cwd = tab.statusBar.currentPath {
                 let info = SessionManager.SessionInfo(
