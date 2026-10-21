@@ -109,6 +109,13 @@ impl Pty {
                 #[allow(unreachable_code)]
                 {
                     if let Some(cmd) = command {
+                        // Use interactive (-i) login (-l) shell so user rc files
+                        // (e.g. ~/.zshrc) get sourced — needed for tools like
+                        // fnm/nvm/asdf that put node/npm on PATH from .zshrc.
+                        let i_flag = match CString::new("-i") {
+                            Ok(s) => s,
+                            Err(_) => unsafe { libc::_exit(1) },
+                        };
                         let c_flag = match CString::new("-c") {
                             Ok(s) => s,
                             Err(_) => unsafe { libc::_exit(1) },
@@ -117,7 +124,7 @@ impl Pty {
                             Ok(s) => s,
                             Err(_) => unsafe { libc::_exit(1) },
                         };
-                        let _ = execvp(&shell_cstr, &[login_arg, c_flag, c_cmd]);
+                        let _ = execvp(&shell_cstr, &[login_arg, i_flag, c_flag, c_cmd]);
                     } else {
                         let _ = execvp(&shell_cstr, &[login_arg]);
                     }
